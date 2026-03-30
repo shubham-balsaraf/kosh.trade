@@ -45,13 +45,13 @@ export async function POST(
     );
 
     let totalValue = portfolio.cash;
-    const enriched = holdingDetails.map((h) => {
+    const enriched = holdingDetails.map((h: any) => {
       const value = h.shares * h.currentPrice;
       totalValue += value;
       return { ...h, value };
     });
 
-    const withWeights = enriched.map((h) => ({
+    const withWeights = enriched.map((h: any) => ({
       ...h,
       weight: totalValue > 0 ? ((h.value / totalValue) * 100).toFixed(1) + "%" : "0%",
       gainLoss: (((h.currentPrice - h.avgCost) / h.avgCost) * 100).toFixed(1) + "%",
@@ -59,7 +59,7 @@ export async function POST(
 
     const userMessage = `Here is my portfolio (total value: $${totalValue.toFixed(2)}, cash: $${portfolio.cash.toFixed(2)}):
 
-${withWeights.map((h) => `- ${h.ticker}: ${h.shares} shares, avg cost $${h.avgCost.toFixed(2)}, current $${h.currentPrice.toFixed(2)}, value $${h.value.toFixed(2)}, weight ${h.weight}, P&L ${h.gainLoss}, P/E ${h.pe.toFixed(1)}, sector: ${h.sector}`).join("\n")}
+${withWeights.map((h: any) => `- ${h.ticker}: ${h.shares} shares, avg cost $${h.avgCost.toFixed(2)}, current $${h.currentPrice.toFixed(2)}, value $${h.value.toFixed(2)}, weight ${h.weight}, P&L ${h.gainLoss}, P/E ${h.pe.toFixed(1)}, sector: ${h.sector}`).join("\n")}
 
 Please analyze this portfolio.`;
 
