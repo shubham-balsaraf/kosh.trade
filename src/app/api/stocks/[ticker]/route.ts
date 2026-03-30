@@ -33,6 +33,7 @@ export async function GET(
       ratios,
     });
   } catch (e: any) {
+    console.error(`[Stock API] Error fetching ${symbol}:`, e.message);
     return NextResponse.json({ error: e.message || "Failed to fetch stock data" }, { status: 500 });
   }
 }
