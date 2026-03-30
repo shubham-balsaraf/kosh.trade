@@ -29,7 +29,7 @@ export async function POST(
 
   try {
     const holdingDetails = await Promise.all(
-      portfolio.holdings.map(async (h) => {
+      portfolio.holdings.map(async (h: any) => {
         const quote = await getQuote(h.ticker).catch(() => null);
         return {
           ticker: h.ticker,

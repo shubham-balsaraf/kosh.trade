@@ -133,10 +133,10 @@ export default function PortfolioPage() {
           </Button>
         </Card>
       ) : (
-        portfolios.map((portfolio) => {
+        portfolios.map((portfolio: any) => {
           let totalValue = portfolio.cash;
           let totalCost = portfolio.cash;
-          const holdingViews = portfolio.holdings.map((h) => {
+          const holdingViews = portfolio.holdings.map((h: any) => {
             const price = prices[h.ticker] || h.avgCostBasis;
             const value = h.shares * price;
             const cost = h.shares * h.avgCostBasis;
@@ -192,7 +192,7 @@ export default function PortfolioPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {holdingViews.map((h) => (
+                      {holdingViews.map((h: any) => (
                         <tr key={h.id} className="hover:bg-gray-900/50">
                           <td className="py-2 pr-4 font-bold text-white">{h.ticker}</td>
                           <td className="py-2 px-2 text-right text-gray-300">{h.shares}</td>
