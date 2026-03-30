@@ -81,15 +81,15 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
   const priceChangePositive = (q.changesPercentage || 0) >= 0;
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "overview", label: "Overview" },
-    { key: "charts", label: "Charts" },
-    { key: "valuation", label: "Valuation" },
-    { key: "growth", label: "Growth" },
-    { key: "health", label: "Health" },
-    { key: "returns", label: "Returns" },
-    { key: "fcf", label: "FCF Data" },
-    { key: "earnings", label: "Earnings" },
+  const tabs: { key: Tab; label: string; color: string; activeBg: string }[] = [
+    { key: "overview", label: "Overview", color: "bg-indigo-400", activeBg: "bg-indigo-600" },
+    { key: "charts", label: "Charts", color: "bg-blue-400", activeBg: "bg-blue-600" },
+    { key: "valuation", label: "Valuation", color: "bg-emerald-400", activeBg: "bg-emerald-600" },
+    { key: "growth", label: "Growth", color: "bg-cyan-400", activeBg: "bg-cyan-600" },
+    { key: "health", label: "Health", color: "bg-rose-400", activeBg: "bg-rose-600" },
+    { key: "returns", label: "Returns", color: "bg-amber-400", activeBg: "bg-amber-600" },
+    { key: "fcf", label: "FCF Data", color: "bg-purple-400", activeBg: "bg-purple-600" },
+    { key: "earnings", label: "Earnings", color: "bg-orange-400", activeBg: "bg-orange-600" },
   ];
 
   return (
@@ -130,16 +130,17 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
       {/* Tab bar */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        {tabs.map(({ key, label }) => (
+        {tabs.map(({ key, label, color, activeBg }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+            className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
               activeTab === key
-                ? "bg-indigo-600 text-white"
+                ? `${activeBg} text-white`
                 : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
             }`}
           >
+            {activeTab === key && <span className={`w-1.5 h-1.5 rounded-full ${color}`} />}
             {label}
           </button>
         ))}

@@ -9,9 +9,13 @@ export async function GET(
   const symbol = ticker.toUpperCase();
 
   try {
+    if (!process.env.FMP_API_KEY) {
+      return NextResponse.json({ error: "FMP_API_KEY is not configured. Add it to .env and restart." }, { status: 500 });
+    }
+
     const [quote, profile, income, balance, cashflow, metrics, ratios] = await Promise.all([
-      getQuote(symbol).catch(() => null),
-      getProfile(symbol).catch(() => null),
+      getQuote(symbol).catch((e: any) => { console.error(`[Stock API] quote ${symbol}:`, e.message); return null; }),
+      getProfile(symbol).catch((e: any) => { console.error(`[Stock API] profile ${symbol}:`, e.message); return null; }),
       getIncomeStatement(symbol, "annual", 5).catch(() => []),
       getBalanceSheet(symbol, "annual", 5).catch(() => []),
       getCashFlow(symbol, "annual", 5).catch(() => []),

@@ -5,14 +5,25 @@ function apiKey(): string {
 }
 
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
+  const key = apiKey();
+  if (!key) throw new Error("FMP_API_KEY is not configured");
   const url = new URL(`${FMP_BASE}${endpoint}`);
-  url.searchParams.set("apikey", apiKey());
+  url.searchParams.set("apikey", key);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
   const res = await fetch(url.toString(), { next: { revalidate: 300 } });
-  if (!res.ok) throw new Error(`FMP API error: ${res.status}`);
-  return res.json();
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
+    throw new Error(`FMP API error: ${res.status}`);
+  }
+  const json = await res.json();
+  if (json && typeof json === "object" && "Error Message" in json) {
+    console.error(`[FMP] ${endpoint}: ${json["Error Message"]}`);
+    throw new Error(json["Error Message"]);
+  }
+  return json;
 }
 
 export async function getQuote(ticker: string) {
@@ -49,7 +60,10 @@ export async function getHistoricalPrice(ticker: string, from?: string, to?: str
   const params: Record<string, string> = { symbol: ticker.toUpperCase() };
   if (from) params.from = from;
   if (to) params.to = to;
-  return fmpFetch<any>("/historical-price-eod/full", params);
+  const result = await fmpFetch<any>("/historical-price-eod/full", params);
+  if (Array.isArray(result)) return result;
+  if (result?.historical) return result.historical;
+  return [];
 }
 
 export async function searchTicker(query: string) {

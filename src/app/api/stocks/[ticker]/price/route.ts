@@ -11,9 +11,10 @@ export async function GET(
   const to = req.nextUrl.searchParams.get("to") || undefined;
 
   try {
-    const result = await getHistoricalPrice(symbol, from, to);
-    return NextResponse.json({ data: result?.historical || [] });
+    const data = await getHistoricalPrice(symbol, from, to);
+    return NextResponse.json({ data: data || [] });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error(`[Price API] ${symbol}:`, e.message);
+    return NextResponse.json({ data: [], error: e.message }, { status: 200 });
   }
 }

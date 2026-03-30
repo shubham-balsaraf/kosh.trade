@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCashFlow } from "@/lib/api/fmp";
+import { getCashFlow, getIncomeStatement } from "@/lib/api/fmp";
 
 export async function GET(
   req: NextRequest,
@@ -11,23 +11,35 @@ export async function GET(
   const limit = parseInt(req.nextUrl.searchParams.get("limit") || "20");
 
   try {
-    const data = await getCashFlow(symbol, period as "annual" | "quarter", limit);
-    
-    const formatted = (data || []).reverse().map((item: any) => ({
-      date: item.date,
-      period: item.period,
-      freeCashFlow: item.freeCashFlow || 0,
-      fcfPerShare: item.freeCashFlow && item.weightedAverageShsOutDil
-        ? item.freeCashFlow / item.weightedAverageShsOutDil
-        : 0,
-      stockBasedCompensation: item.stockBasedCompensation || 0,
-      sharesOutstanding: item.weightedAverageShsOutDil || 0,
-      operatingCashFlow: item.operatingCashFlow || 0,
-      capitalExpenditure: item.capitalExpenditure || 0,
-    }));
+    const [cashData, incomeData] = await Promise.all([
+      getCashFlow(symbol, period as "annual" | "quarter", limit).catch(() => []),
+      getIncomeStatement(symbol, period as "annual" | "quarter", limit).catch(() => []),
+    ]);
+
+    const sharesMap: Record<string, number> = {};
+    for (const inc of incomeData || []) {
+      if (inc.date) {
+        sharesMap[inc.date] = inc.weightedAverageShsOutDil || inc.weightedAverageShsOut || 0;
+      }
+    }
+
+    const formatted = (cashData || []).reverse().map((item: any) => {
+      const shares = sharesMap[item.date] || item.weightedAverageShsOutDil || item.weightedAverageShsOut || 0;
+      return {
+        date: item.date,
+        period: item.period,
+        freeCashFlow: item.freeCashFlow || 0,
+        fcfPerShare: item.freeCashFlow && shares ? item.freeCashFlow / shares : 0,
+        stockBasedCompensation: item.stockBasedCompensation || 0,
+        sharesOutstanding: shares,
+        operatingCashFlow: item.operatingCashFlow || 0,
+        capitalExpenditure: item.capitalExpenditure || 0,
+      };
+    });
 
     return NextResponse.json({ data: formatted });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error(`[FCF API] ${symbol}:`, e.message);
+    return NextResponse.json({ data: [], error: e.message }, { status: 200 });
   }
 }

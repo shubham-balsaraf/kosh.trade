@@ -47,11 +47,11 @@ export default function SignalsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-white">Signals Dashboard</h1>
 
-      {/* Macro regime */}
+      {/* Macro regime -- amber accent */}
       <Card>
         <div className="flex items-center gap-2 mb-3">
-          <Globe size={18} className="text-indigo-400" />
-          <h2 className="text-sm font-semibold text-gray-400">Macro Regime</h2>
+          <Globe size={18} className="text-amber-400" />
+          <h2 className="text-sm font-semibold text-amber-300/80">Macro Indicators</h2>
         </div>
         {macroLoading ? (
           <div className="skeleton h-20 w-full" />
@@ -89,7 +89,10 @@ export default function SignalsPage() {
 
       {/* Stock-specific signals */}
       <Card>
-        <h2 className="text-sm font-semibold text-gray-400 mb-3">Stock Signals</h2>
+        <div className="flex items-center gap-2 mb-3">
+          <BarChart3 size={18} className="text-rose-400" />
+          <h2 className="text-sm font-semibold text-rose-300/80">Stock Signals</h2>
+        </div>
         <div className="flex gap-3 mb-4">
           <Input
             placeholder="Enter ticker... AAPL"
@@ -102,12 +105,12 @@ export default function SignalsPage() {
 
         {data && (
           <div className="space-y-4">
-            {/* Analyst Recommendations */}
+            {/* Analyst Recommendations -- blue accent */}
             {data.analyst?.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Target size={16} className="text-amber-400" />
-                  <h3 className="text-sm font-semibold text-gray-400">Analyst Recommendations</h3>
+                  <Target size={16} className="text-blue-400" />
+                  <h3 className="text-sm font-semibold text-blue-300/80">Analyst Recommendations</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -156,12 +159,12 @@ export default function SignalsPage() {
               </div>
             )}
 
-            {/* Insider Transactions */}
+            {/* Insider Transactions -- emerald accent */}
             {data.insider?.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Users size={16} className="text-blue-400" />
-                  <h3 className="text-sm font-semibold text-gray-400">Insider Transactions</h3>
+                  <Users size={16} className="text-emerald-400" />
+                  <h3 className="text-sm font-semibold text-emerald-300/80">Insider Transactions</h3>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
