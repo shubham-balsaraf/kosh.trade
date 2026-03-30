@@ -132,7 +132,7 @@ export default async function DashboardPage() {
           </Card>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {recentSearches.map((item) => {
+            {recentSearches.map((item: any) => {
               const verdictColors: Record<string, "green" | "yellow" | "red"> = {
                 CONSIDER: "green",
                 MODERATE: "yellow",
