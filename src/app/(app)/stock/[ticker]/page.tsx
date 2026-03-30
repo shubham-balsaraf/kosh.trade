@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { formatCurrency, formatPercent, formatNumber } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 import FCFChart from "@/components/charts/FCFChart";
 import FCFvsSBCChart from "@/components/charts/FCFvsSBCChart";
 import PriceChart from "@/components/charts/PriceChart";
@@ -75,6 +76,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("ai");
   const [verdict, setVerdict] = useState<VerdictTheme>(null);
+  const mobile = useIsMobile();
 
   const handleVerdictChange = useCallback((signal: string | null) => {
     if (signal === "CONSIDER") setVerdict("consider");
@@ -298,34 +300,58 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       {activeTab === "growth" && (
         <Card>
           <h3 className="text-sm font-semibold text-gray-400 mb-3">Revenue & Earnings Trend</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <th className="text-left py-2 pr-4">Year</th>
-                  <th className="text-right py-2 px-2">Revenue</th>
-                  <th className="text-right py-2 px-2">Net Income</th>
-                  <th className="text-right py-2 px-2">EPS</th>
-                  <th className="text-right py-2 px-2">Gross %</th>
-                  <th className="text-right py-2 px-2">Op %</th>
-                  <th className="text-right py-2 pl-2">Net %</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(income || []).map((yr: any, i: number) => (
-                  <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                    <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.revenue || 0, true)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.netIncome || 0, true)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{(yr.epsDiluted || 0).toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.grossProfit ? formatPercent((yr.grossProfit / yr.revenue) * 100) : "N/A"}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.operatingIncome ? formatPercent((yr.operatingIncome / yr.revenue) * 100) : "N/A"}</td>
-                    <td className="py-2 pl-2 text-right text-gray-300">{yr.revenue && yr.netIncome ? formatPercent((yr.netIncome / yr.revenue) * 100) : "N/A"}</td>
+          {mobile ? (
+            <div className="space-y-3">
+              {(income || []).map((yr: any) => {
+                const year = yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4);
+                const grossM = yr.revenue && yr.grossProfit ? (yr.grossProfit / yr.revenue) * 100 : null;
+                const netM = yr.revenue && yr.netIncome ? (yr.netIncome / yr.revenue) * 100 : null;
+                return (
+                  <div key={yr.date} className="bg-gray-900/50 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-white">{year}</span>
+                      <span className="text-xs text-gray-500">EPS {(yr.epsDiluted || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div><span className="text-gray-500">Revenue</span><div className="text-gray-200 font-medium">{formatCurrency(yr.revenue || 0, true)}</div></div>
+                      <div><span className="text-gray-500">Net Income</span><div className="text-gray-200 font-medium">{formatCurrency(yr.netIncome || 0, true)}</div></div>
+                      <div><span className="text-gray-500">Gross Margin</span><div className="text-gray-200 font-medium">{grossM != null ? formatPercent(grossM) : "N/A"}</div></div>
+                      <div><span className="text-gray-500">Net Margin</span><div className="text-gray-200 font-medium">{netM != null ? formatPercent(netM) : "N/A"}</div></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <th className="text-left py-2 pr-4">Year</th>
+                    <th className="text-right py-2 px-2">Revenue</th>
+                    <th className="text-right py-2 px-2">Net Income</th>
+                    <th className="text-right py-2 px-2">EPS</th>
+                    <th className="text-right py-2 px-2">Gross %</th>
+                    <th className="text-right py-2 px-2">Op %</th>
+                    <th className="text-right py-2 pl-2">Net %</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {(income || []).map((yr: any, i: number) => (
+                    <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                      <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.revenue || 0, true)}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.netIncome || 0, true)}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{(yr.epsDiluted || 0).toFixed(2)}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.grossProfit ? formatPercent((yr.grossProfit / yr.revenue) * 100) : "N/A"}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.operatingIncome ? formatPercent((yr.operatingIncome / yr.revenue) * 100) : "N/A"}</td>
+                      <td className="py-2 pl-2 text-right text-gray-300">{yr.revenue && yr.netIncome ? formatPercent((yr.netIncome / yr.revenue) * 100) : "N/A"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
 
@@ -370,36 +396,56 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
           <Card>
             <h3 className="text-sm font-semibold text-gray-400 mb-3">Balance Sheet Trend</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs border-b border-gray-800">
-                    <th className="text-left py-2 pr-4">Year</th>
-                    <th className="text-right py-2 px-2">Total Debt</th>
-                    <th className="text-right py-2 px-2">Total Equity</th>
-                    <th className="text-right py-2 px-2">D/E</th>
-                    <th className="text-right py-2 px-2">Current Ratio</th>
-                    <th className="text-right py-2 pl-2">FCF</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(balance || []).map((yr: any, i: number) => {
-                    const r = ratios?.[i] || {};
-                    const cf = cashflow?.[i] || {};
-                    return (
-                      <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                        <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalDebt || 0, true)}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalStockholdersEquity || 0, true)}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{r.debtToEquityRatio?.toFixed(2) || "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{r.currentRatio?.toFixed(2) || "N/A"}</td>
-                        <td className="py-2 pl-2 text-right text-gray-300">{formatCurrency(cf.freeCashFlow || 0, true)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {mobile ? (
+              <div className="space-y-3">
+                {(balance || []).map((yr: any, i: number) => {
+                  const r = ratios?.[i] || {};
+                  const cf = cashflow?.[i] || {};
+                  return (
+                    <div key={yr.date} className="bg-gray-900/50 rounded-xl p-3 space-y-2">
+                      <span className="text-sm font-bold text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div><span className="text-gray-500">Total Debt</span><div className="text-gray-200 font-medium">{formatCurrency(yr.totalDebt || 0, true)}</div></div>
+                        <div><span className="text-gray-500">Equity</span><div className="text-gray-200 font-medium">{formatCurrency(yr.totalStockholdersEquity || 0, true)}</div></div>
+                        <div><span className="text-gray-500">D/E</span><div className="text-gray-200 font-medium">{r.debtToEquityRatio?.toFixed(2) || "N/A"}</div></div>
+                        <div><span className="text-gray-500">Current Ratio</span><div className="text-gray-200 font-medium">{r.currentRatio?.toFixed(2) || "N/A"}</div></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                      <th className="text-left py-2 pr-4">Year</th>
+                      <th className="text-right py-2 px-2">Total Debt</th>
+                      <th className="text-right py-2 px-2">Total Equity</th>
+                      <th className="text-right py-2 px-2">D/E</th>
+                      <th className="text-right py-2 px-2">Current Ratio</th>
+                      <th className="text-right py-2 pl-2">FCF</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(balance || []).map((yr: any, i: number) => {
+                      const r = ratios?.[i] || {};
+                      const cf = cashflow?.[i] || {};
+                      return (
+                        <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                          <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalDebt || 0, true)}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalStockholdersEquity || 0, true)}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{r.debtToEquityRatio?.toFixed(2) || "N/A"}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{r.currentRatio?.toFixed(2) || "N/A"}</td>
+                          <td className="py-2 pl-2 text-right text-gray-300">{formatCurrency(cf.freeCashFlow || 0, true)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -408,36 +454,56 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
         <div className="space-y-4">
           <Card>
             <h3 className="text-sm font-semibold text-gray-400 mb-3">Return Metrics Trend</h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs border-b border-gray-800">
-                    <th className="text-left py-2 pr-4">Year</th>
-                    <th className="text-right py-2 px-2">ROE</th>
-                    <th className="text-right py-2 px-2">ROIC</th>
-                    <th className="text-right py-2 px-2">Div/Share</th>
-                    <th className="text-right py-2 px-2">Payout %</th>
-                    <th className="text-right py-2 pl-2">Buybacks</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(metrics || []).map((yr: any, i: number) => {
-                    const cf = cashflow?.[i] || {};
-                    const r = ratios?.[i] || {};
-                    return (
-                      <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                        <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.date?.substring(0, 4)}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnEquity != null ? formatPercent(yr.returnOnEquity * 100) : "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnCapitalEmployed != null ? formatPercent(yr.returnOnCapitalEmployed * 100) : "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{r.dividendPerShare?.toFixed(2) || "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{r.dividendPayoutRatio != null ? formatPercent(r.dividendPayoutRatio * 100) : "N/A"}</td>
-                        <td className="py-2 pl-2 text-right text-gray-300">{cf.commonStockRepurchased ? formatCurrency(Math.abs(cf.commonStockRepurchased), true) : "N/A"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {mobile ? (
+              <div className="space-y-3">
+                {(metrics || []).map((yr: any, i: number) => {
+                  const cf = cashflow?.[i] || {};
+                  const r = ratios?.[i] || {};
+                  return (
+                    <div key={yr.date} className="bg-gray-900/50 rounded-xl p-3 space-y-2">
+                      <span className="text-sm font-bold text-white">{yr.fiscalYear || yr.date?.substring(0, 4)}</span>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div><span className="text-gray-500">ROE</span><div className="text-gray-200 font-medium">{yr.returnOnEquity != null ? formatPercent(yr.returnOnEquity * 100) : "N/A"}</div></div>
+                        <div><span className="text-gray-500">ROIC</span><div className="text-gray-200 font-medium">{yr.returnOnCapitalEmployed != null ? formatPercent(yr.returnOnCapitalEmployed * 100) : "N/A"}</div></div>
+                        <div><span className="text-gray-500">Div/Share</span><div className="text-gray-200 font-medium">{r.dividendPerShare?.toFixed(2) || "N/A"}</div></div>
+                        <div><span className="text-gray-500">Buybacks</span><div className="text-gray-200 font-medium">{cf.commonStockRepurchased ? formatCurrency(Math.abs(cf.commonStockRepurchased), true) : "N/A"}</div></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                      <th className="text-left py-2 pr-4">Year</th>
+                      <th className="text-right py-2 px-2">ROE</th>
+                      <th className="text-right py-2 px-2">ROIC</th>
+                      <th className="text-right py-2 px-2">Div/Share</th>
+                      <th className="text-right py-2 px-2">Payout %</th>
+                      <th className="text-right py-2 pl-2">Buybacks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(metrics || []).map((yr: any, i: number) => {
+                      const cf = cashflow?.[i] || {};
+                      const r = ratios?.[i] || {};
+                      return (
+                        <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                          <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.date?.substring(0, 4)}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnEquity != null ? formatPercent(yr.returnOnEquity * 100) : "N/A"}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnCapitalEmployed != null ? formatPercent(yr.returnOnCapitalEmployed * 100) : "N/A"}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{r.dividendPerShare?.toFixed(2) || "N/A"}</td>
+                          <td className="py-2 px-2 text-right text-gray-300">{r.dividendPayoutRatio != null ? formatPercent(r.dividendPayoutRatio * 100) : "N/A"}</td>
+                          <td className="py-2 pl-2 text-right text-gray-300">{cf.commonStockRepurchased ? formatCurrency(Math.abs(cf.commonStockRepurchased), true) : "N/A"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </div>
       )}
@@ -453,6 +519,7 @@ function FCFTab({ ticker }: { ticker: string }) {
   const [data, setData] = useState<any[]>([]);
   const [period, setPeriod] = useState<"annual" | "quarter">("annual");
   const [loading, setLoading] = useState(true);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     async function load() {
@@ -478,7 +545,7 @@ function FCFTab({ ticker }: { ticker: string }) {
           <button
             key={p}
             onClick={() => setPeriod(p)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            className={`px-4 py-2 sm:py-1.5 rounded-lg text-sm font-medium transition-all min-h-[40px] ${
               period === p ? "bg-indigo-600 text-white" : "bg-gray-900 text-gray-400 hover:text-white"
             }`}
           >
@@ -489,32 +556,51 @@ function FCFTab({ ticker }: { ticker: string }) {
 
       <Card>
         <h3 className="text-sm font-semibold text-gray-400 mb-3">FCF Per Share</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-gray-500 text-xs border-b border-gray-800">
-                <th className="text-left py-2">Period</th>
-                <th className="text-right py-2">FCF</th>
-                <th className="text-right py-2">FCF/Share</th>
-                <th className="text-right py-2">SBC</th>
-                <th className="text-right py-2">Op. Cash Flow</th>
-                <th className="text-right py-2">CapEx</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.map((item: any, i: number) => (
-                <tr key={item.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                  <td className="py-2 font-medium text-white">{item.date?.substring(0, 10)}</td>
-                  <td className="py-2 text-right text-gray-300">{formatCurrency(item.freeCashFlow || 0, true)}</td>
-                  <td className="py-2 text-right text-emerald-400 font-semibold">${(item.fcfPerShare || 0).toFixed(2)}</td>
-                  <td className="py-2 text-right text-amber-400">{formatCurrency(item.stockBasedCompensation || 0, true)}</td>
-                  <td className="py-2 text-right text-gray-300">{formatCurrency(item.operatingCashFlow || 0, true)}</td>
-                  <td className="py-2 text-right text-red-400">{formatCurrency(item.capitalExpenditure || 0, true)}</td>
+        {mobile ? (
+          <div className="space-y-3">
+            {data.map((item: any) => (
+              <div key={item.date} className="bg-gray-900/50 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-white">{item.date?.substring(0, 10)}</span>
+                  <span className="text-emerald-400 font-bold text-sm">${(item.fcfPerShare || 0).toFixed(2)}/sh</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="text-gray-500">FCF</span><div className="text-gray-200 font-medium">{formatCurrency(item.freeCashFlow || 0, true)}</div></div>
+                  <div><span className="text-gray-500">SBC</span><div className="text-amber-400 font-medium">{formatCurrency(item.stockBasedCompensation || 0, true)}</div></div>
+                  <div><span className="text-gray-500">Op. Cash Flow</span><div className="text-gray-200 font-medium">{formatCurrency(item.operatingCashFlow || 0, true)}</div></div>
+                  <div><span className="text-gray-500">CapEx</span><div className="text-red-400 font-medium">{formatCurrency(item.capitalExpenditure || 0, true)}</div></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-gray-500 text-xs border-b border-gray-800">
+                  <th className="text-left py-2">Period</th>
+                  <th className="text-right py-2">FCF</th>
+                  <th className="text-right py-2">FCF/Share</th>
+                  <th className="text-right py-2">SBC</th>
+                  <th className="text-right py-2">Op. Cash Flow</th>
+                  <th className="text-right py-2">CapEx</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {data.map((item: any, i: number) => (
+                  <tr key={item.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                    <td className="py-2 font-medium text-white">{item.date?.substring(0, 10)}</td>
+                    <td className="py-2 text-right text-gray-300">{formatCurrency(item.freeCashFlow || 0, true)}</td>
+                    <td className="py-2 text-right text-emerald-400 font-semibold">${(item.fcfPerShare || 0).toFixed(2)}</td>
+                    <td className="py-2 text-right text-amber-400">{formatCurrency(item.stockBasedCompensation || 0, true)}</td>
+                    <td className="py-2 text-right text-gray-300">{formatCurrency(item.operatingCashFlow || 0, true)}</td>
+                    <td className="py-2 text-right text-red-400">{formatCurrency(item.capitalExpenditure || 0, true)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
     </div>
   );
@@ -524,6 +610,7 @@ function EarningsTab({ ticker }: { ticker: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [yearFilter, setYearFilter] = useState(3);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     async function load() {
@@ -631,48 +718,75 @@ function EarningsTab({ ticker }: { ticker: string }) {
             <h3 className="text-sm font-semibold text-gray-400 mb-3">
               Earnings History <span className="text-gray-600 text-xs ml-1">(last {yearFilter} {yearFilter === 1 ? "year" : "years"})</span>
             </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-gray-500 text-xs border-b border-gray-800">
-                    <th className="text-left py-2 pr-4">Date</th>
-                    <th className="text-right py-2 px-2">EPS Est</th>
-                    <th className="text-right py-2 px-2">EPS Actual</th>
-                    <th className="text-right py-2 px-2">Surprise</th>
-                    <th className="text-right py-2 px-2">Rev Est</th>
-                    <th className="text-right py-2 pl-2">Rev Actual</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {past.map((e: any, i: number) => {
-                    const epsSurprise = e.epsEstimated != null && e.eps != null && Math.abs(e.epsEstimated) > 0.001
-                      ? ((e.eps - e.epsEstimated) / Math.abs(e.epsEstimated) * 100)
-                      : null;
-                    const beat = epsSurprise !== null && epsSurprise >= 0;
-                    return (
-                      <tr key={e.date + i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                        <td className="py-2 pr-4 font-medium text-white">{e.date}</td>
-                        <td className="py-2 px-2 text-right text-gray-400">
-                          {e.epsEstimated != null ? `$${Number(e.epsEstimated).toFixed(2)}` : "—"}
-                        </td>
-                        <td className="py-2 px-2 text-right text-white font-medium">
-                          {e.eps != null ? `$${Number(e.eps).toFixed(2)}` : "—"}
-                        </td>
-                        <td className={`py-2 px-2 text-right font-semibold ${epsSurprise != null ? (beat ? "text-emerald-400" : "text-red-400") : "text-gray-600"}`}>
+            {mobile ? (
+              <div className="space-y-2">
+                {past.map((e: any, i: number) => {
+                  const epsSurprise = e.epsEstimated != null && e.eps != null && Math.abs(e.epsEstimated) > 0.001
+                    ? ((e.eps - e.epsEstimated) / Math.abs(e.epsEstimated) * 100)
+                    : null;
+                  const beat = epsSurprise !== null && epsSurprise >= 0;
+                  return (
+                    <div key={e.date + i} className="bg-gray-900/50 rounded-xl p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold text-white">{e.date}</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-lg ${epsSurprise != null ? (beat ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400") : "bg-gray-800 text-gray-500"}`}>
                           {epsSurprise != null ? `${beat ? "+" : ""}${epsSurprise.toFixed(1)}%` : "—"}
-                        </td>
-                        <td className="py-2 px-2 text-right text-gray-400">
-                          {e.revenueEstimated ? formatCurrency(e.revenueEstimated, true) : "—"}
-                        </td>
-                        <td className="py-2 pl-2 text-right text-white font-medium">
-                          {e.revenue ? formatCurrency(e.revenue, true) : "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div><span className="text-gray-500">EPS Est</span><div className="text-gray-300">{e.epsEstimated != null ? `$${Number(e.epsEstimated).toFixed(2)}` : "—"}</div></div>
+                        <div><span className="text-gray-500">EPS Actual</span><div className="text-white font-medium">{e.eps != null ? `$${Number(e.eps).toFixed(2)}` : "—"}</div></div>
+                        <div><span className="text-gray-500">Rev Est</span><div className="text-gray-300">{e.revenueEstimated ? formatCurrency(e.revenueEstimated, true) : "—"}</div></div>
+                        <div><span className="text-gray-500">Rev Actual</span><div className="text-white font-medium">{e.revenue ? formatCurrency(e.revenue, true) : "—"}</div></div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                      <th className="text-left py-2 pr-4">Date</th>
+                      <th className="text-right py-2 px-2">EPS Est</th>
+                      <th className="text-right py-2 px-2">EPS Actual</th>
+                      <th className="text-right py-2 px-2">Surprise</th>
+                      <th className="text-right py-2 px-2">Rev Est</th>
+                      <th className="text-right py-2 pl-2">Rev Actual</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {past.map((e: any, i: number) => {
+                      const epsSurprise = e.epsEstimated != null && e.eps != null && Math.abs(e.epsEstimated) > 0.001
+                        ? ((e.eps - e.epsEstimated) / Math.abs(e.epsEstimated) * 100)
+                        : null;
+                      const beat = epsSurprise !== null && epsSurprise >= 0;
+                      return (
+                        <tr key={e.date + i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                          <td className="py-2 pr-4 font-medium text-white">{e.date}</td>
+                          <td className="py-2 px-2 text-right text-gray-400">
+                            {e.epsEstimated != null ? `$${Number(e.epsEstimated).toFixed(2)}` : "—"}
+                          </td>
+                          <td className="py-2 px-2 text-right text-white font-medium">
+                            {e.eps != null ? `$${Number(e.eps).toFixed(2)}` : "—"}
+                          </td>
+                          <td className={`py-2 px-2 text-right font-semibold ${epsSurprise != null ? (beat ? "text-emerald-400" : "text-red-400") : "text-gray-600"}`}>
+                            {epsSurprise != null ? `${beat ? "+" : ""}${epsSurprise.toFixed(1)}%` : "—"}
+                          </td>
+                          <td className="py-2 px-2 text-right text-gray-400">
+                            {e.revenueEstimated ? formatCurrency(e.revenueEstimated, true) : "—"}
+                          </td>
+                          <td className="py-2 pl-2 text-right text-white font-medium">
+                            {e.revenue ? formatCurrency(e.revenue, true) : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </Card>
         </>
       )}

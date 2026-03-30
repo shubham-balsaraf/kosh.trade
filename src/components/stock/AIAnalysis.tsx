@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 interface AIAnalysisProps {
   ticker: string;
@@ -73,6 +74,7 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
   const [horizon, setHorizon] = useState("5 years");
   const [tab, setTab] = useState<AnalysisTab>("verdict");
   const [fromCache, setFromCache] = useState(false);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     const cached = loadCached(ticker);
@@ -300,28 +302,45 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
             </h4>
             <SignalBadge signal={a.valuation.overall || "MIXED"} />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <th className="text-left py-2 pr-4">Metric</th>
-                  <th className="text-right py-2 px-2">Value</th>
-                  <th className="text-center py-2 px-2">Signal</th>
-                  <th className="text-left py-2 pl-2">Why</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(a.valuation.metrics || []).map((m: any, i: number) => (
-                  <tr key={i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                    <td className="py-2 pr-4 font-medium text-white">{m.name}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{m.value}</td>
-                    <td className="py-2 px-2 text-center"><SignalBadge signal={m.signal} /></td>
-                    <td className="py-2 pl-2 text-gray-500 text-xs">{m.explanation}</td>
+          {mobile ? (
+            <div className="space-y-2">
+              {(a.valuation.metrics || []).map((m: any, i: number) => (
+                <div key={i} className="bg-gray-900/50 rounded-xl p-3 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-white">{m.name}</div>
+                    <div className="text-xs text-gray-500 truncate">{m.explanation}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-sm text-gray-300 font-medium">{m.value}</span>
+                    <SignalBadge signal={m.signal} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <th className="text-left py-2 pr-4">Metric</th>
+                    <th className="text-right py-2 px-2">Value</th>
+                    <th className="text-center py-2 px-2">Signal</th>
+                    <th className="text-left py-2 pl-2">Why</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {(a.valuation.metrics || []).map((m: any, i: number) => (
+                    <tr key={i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                      <td className="py-2 pr-4 font-medium text-white">{m.name}</td>
+                      <td className="py-2 px-2 text-right text-gray-300">{m.value}</td>
+                      <td className="py-2 px-2 text-center"><SignalBadge signal={m.signal} /></td>
+                      <td className="py-2 pl-2 text-gray-500 text-xs">{m.explanation}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
       )}
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -56,6 +57,7 @@ export default function PriceChart({ ticker }: PriceChartProps) {
   const [loading, setLoading] = useState(true);
   const [refPoint, setRefPoint] = useState<RefPoint | null>(null);
   const [hoverData, setHoverData] = useState<{ price: number; date: string } | null>(null);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     async function load() {
@@ -179,14 +181,14 @@ export default function PriceChart({ ticker }: PriceChartProps) {
       )}
 
       {!refPoint && (
-        <p className="text-[11px] text-gray-600 italic">Click any point on the chart to set an anchor and track % change</p>
+        <p className="text-[11px] text-gray-600 italic">{mobile ? "Tap" : "Click"} any point to set an anchor and track % change</p>
       )}
 
-      <div className="h-80 bg-gray-900/30 rounded-xl p-2">
+      <div className={`${mobile ? "h-56" : "h-80"} bg-gray-900/30 rounded-xl p-2`}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={chartData}
-            margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+            margin={{ top: 10, right: 5, left: 0, bottom: 0 }}
             onClick={handleChartClick}
             onMouseMove={handleMouseMove}
           >
@@ -199,21 +201,21 @@ export default function PriceChart({ ticker }: PriceChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
             <XAxis
               dataKey="date"
-              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              tick={{ fill: "#9ca3af", fontSize: mobile ? 9 : 11 }}
               axisLine={{ stroke: "#1f2937" }}
               tickLine={false}
-              interval={tickInterval}
+              interval={mobile ? Math.max(tickInterval, Math.floor(chartData.length / 5)) : tickInterval}
               angle={range > 365 ? -30 : 0}
               dy={range > 365 ? 8 : 0}
               height={range > 365 ? 50 : 30}
             />
             <YAxis
-              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              tick={{ fill: "#9ca3af", fontSize: mobile ? 9 : 11 }}
               axisLine={false}
               tickLine={false}
               domain={["auto", "auto"]}
               tickFormatter={(v) => `$${v}`}
-              width={60}
+              width={mobile ? 45 : 60}
             />
             <Tooltip
               contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "12px", fontSize: "13px" }}

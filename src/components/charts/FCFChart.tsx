@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { X } from "lucide-react";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 interface FCFChartProps {
   ticker: string;
@@ -38,6 +39,7 @@ export default function FCFChart({ ticker }: FCFChartProps) {
   const [loading, setLoading] = useState(true);
   const [refPoint, setRefPoint] = useState<RefPoint | null>(null);
   const [hoverVal, setHoverVal] = useState<number | null>(null);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     async function load() {
@@ -135,11 +137,11 @@ export default function FCFChart({ ticker }: FCFChartProps) {
         </div>
       )}
 
-      {!refPoint && <p className="text-[11px] text-gray-600 italic">Click to set anchor point</p>}
+      {!refPoint && <p className="text-[11px] text-gray-600 italic">{mobile ? "Tap" : "Click"} to set anchor point</p>}
 
-      <div className="h-80 bg-gray-900/30 rounded-xl p-2">
+      <div className={`${mobile ? "h-56" : "h-80"} bg-gray-900/30 rounded-xl p-2`}>
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }} onClick={handleClick} onMouseMove={handleMouseMove}>
+          <AreaChart data={chartData} margin={{ top: 10, right: 5, left: 0, bottom: 0 }} onClick={handleClick} onMouseMove={handleMouseMove}>
             <defs>
               <linearGradient id={`fcfGrad-${ticker}`} x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -149,15 +151,15 @@ export default function FCFChart({ ticker }: FCFChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
             <XAxis
               dataKey="label"
-              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              tick={{ fill: "#9ca3af", fontSize: mobile ? 9 : 11 }}
               axisLine={{ stroke: "#1f2937" }}
               tickLine={false}
-              interval={Math.max(0, Math.floor(chartData.length / 8) - 1)}
+              interval={Math.max(0, Math.floor(chartData.length / (mobile ? 5 : 8)) - 1)}
               angle={period === "quarter" ? -30 : 0}
               dy={period === "quarter" ? 8 : 0}
               height={period === "quarter" ? 50 : 30}
             />
-            <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} width={60} />
+            <YAxis tick={{ fill: "#9ca3af", fontSize: mobile ? 9 : 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} width={mobile ? 45 : 60} />
             <Tooltip
               contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "12px", fontSize: "13px" }}
               labelStyle={{ color: "#9ca3af" }}

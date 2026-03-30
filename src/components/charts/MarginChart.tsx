@@ -11,6 +11,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { useIsMobile } from "@/hooks/useMediaQuery";
 
 interface MarginChartProps {
   ticker: string;
@@ -19,6 +20,7 @@ interface MarginChartProps {
 export default function MarginChart({ ticker }: MarginChartProps) {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const mobile = useIsMobile();
 
   useEffect(() => {
     async function load() {
@@ -65,22 +67,22 @@ export default function MarginChart({ ticker }: MarginChartProps) {
         </div>
       </div>
 
-      <div className="h-80 bg-gray-900/30 rounded-xl p-2">
+      <div className={`${mobile ? "h-56" : "h-80"} bg-gray-900/30 rounded-xl p-2`}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+          <LineChart data={data} margin={{ top: 10, right: 5, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
             <XAxis
               dataKey="year"
-              tick={{ fill: "#9ca3af", fontSize: 12, fontWeight: 500 }}
+              tick={{ fill: "#9ca3af", fontSize: mobile ? 10 : 12, fontWeight: 500 }}
               axisLine={{ stroke: "#1f2937" }}
               tickLine={false}
             />
             <YAxis
-              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              tick={{ fill: "#9ca3af", fontSize: mobile ? 9 : 11 }}
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) => `${v}%`}
-              width={50}
+              width={mobile ? 40 : 50}
             />
             <Tooltip
               contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "12px", fontSize: "13px" }}
