@@ -62,7 +62,7 @@ export default function Navbar() {
   return (
     <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b ${isPro ? "bg-black/85 border-amber-900/30" : "bg-black/80 border-gray-800"}`}>
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
-        <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
+        <Link href="/" className="flex items-center gap-2 shrink-0">
           <Logo size="md" showDomain isPro={isPro} />
           {isPro && (
             <Badge variant={isAdmin ? "indigo" : "gold"}>
