@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { useEffect, useState, use, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
@@ -14,12 +14,76 @@ import AIAnalysis from "@/components/stock/AIAnalysis";
 
 type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
 
+type VerdictTheme = "consider" | "moderate" | "avoid" | null;
+
+const THEME = {
+  consider: {
+    accent: "text-emerald-400",
+    accentMuted: "text-emerald-500/60",
+    border: "border-emerald-500/15",
+    glow: "shadow-emerald-500/5",
+    gradient: "from-emerald-500/6 via-transparent to-transparent",
+    stripBg: "bg-emerald-500/5",
+    stripBorder: "border-emerald-500/10",
+    tabActive: "bg-emerald-600",
+    dot: "bg-emerald-400",
+    bar: "bg-emerald-500",
+  },
+  moderate: {
+    accent: "text-amber-400",
+    accentMuted: "text-amber-500/60",
+    border: "border-amber-500/15",
+    glow: "shadow-amber-500/5",
+    gradient: "from-amber-500/6 via-transparent to-transparent",
+    stripBg: "bg-amber-500/5",
+    stripBorder: "border-amber-500/10",
+    tabActive: "bg-amber-600",
+    dot: "bg-amber-400",
+    bar: "bg-amber-500",
+  },
+  avoid: {
+    accent: "text-red-400",
+    accentMuted: "text-red-500/60",
+    border: "border-red-500/15",
+    glow: "shadow-red-500/5",
+    gradient: "from-red-500/6 via-transparent to-transparent",
+    stripBg: "bg-red-500/5",
+    stripBorder: "border-red-500/10",
+    tabActive: "bg-red-600",
+    dot: "bg-red-400",
+    bar: "bg-red-500",
+  },
+};
+
+const DEFAULT_THEME = {
+  accent: "text-white",
+  accentMuted: "text-gray-500",
+  border: "border-gray-800",
+  glow: "shadow-transparent",
+  gradient: "from-transparent to-transparent",
+  stripBg: "bg-transparent",
+  stripBorder: "border-gray-800",
+  tabActive: "bg-indigo-600",
+  dot: "bg-indigo-400",
+  bar: "bg-indigo-500",
+};
+
 export default function StockPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker } = use(params);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeTab, setActiveTab] = useState<Tab>("ai");
+  const [verdict, setVerdict] = useState<VerdictTheme>(null);
+
+  const handleVerdictChange = useCallback((signal: string | null) => {
+    if (signal === "CONSIDER") setVerdict("consider");
+    else if (signal === "MODERATE") setVerdict("moderate");
+    else if (signal === "AVOID") setVerdict("avoid");
+    else setVerdict(null);
+  }, []);
+
+  const t = verdict ? THEME[verdict] : DEFAULT_THEME;
 
   useEffect(() => {
     async function load() {
@@ -30,7 +94,6 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
         const json = await res.json();
         setData(json);
         
-        // Save to search history
         if (json.profile) {
           fetch(`/api/stocks/${ticker}/save`, {
             method: "POST",
@@ -82,27 +145,44 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
   const priceChangePositive = (q.changePercentage ?? q.changesPercentage ?? 0) >= 0;
 
-  const tabs: { key: Tab; label: string; color: string; activeBg: string }[] = [
-    { key: "ai", label: "AI Analysis", color: "bg-violet-400", activeBg: "bg-violet-600" },
-    { key: "overview", label: "Overview", color: "bg-indigo-400", activeBg: "bg-indigo-600" },
-    { key: "charts", label: "Charts", color: "bg-blue-400", activeBg: "bg-blue-600" },
-    { key: "valuation", label: "Valuation", color: "bg-emerald-400", activeBg: "bg-emerald-600" },
-    { key: "growth", label: "Growth", color: "bg-cyan-400", activeBg: "bg-cyan-600" },
-    { key: "health", label: "Health", color: "bg-rose-400", activeBg: "bg-rose-600" },
-    { key: "returns", label: "Returns", color: "bg-amber-400", activeBg: "bg-amber-600" },
-    { key: "fcf", label: "FCF Data", color: "bg-purple-400", activeBg: "bg-purple-600" },
-    { key: "earnings", label: "Earnings", color: "bg-orange-400", activeBg: "bg-orange-600" },
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "ai", label: "AI Analysis" },
+    { key: "overview", label: "Overview" },
+    { key: "charts", label: "Charts" },
+    { key: "valuation", label: "Valuation" },
+    { key: "growth", label: "Growth" },
+    { key: "health", label: "Health" },
+    { key: "returns", label: "Returns" },
+    { key: "fcf", label: "FCF Data" },
+    { key: "earnings", label: "Earnings" },
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {/* Subtle verdict gradient overlay at the top */}
+      {verdict && (
+        <div className={`absolute top-0 left-0 right-0 h-48 bg-gradient-to-b ${t.gradient} rounded-3xl pointer-events-none -z-0`} />
+      )}
+
+      {/* Thin accent bar */}
+      {verdict && (
+        <div className={`h-0.5 ${t.bar} rounded-full opacity-40 -mb-2`} />
+      )}
+
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className={`flex flex-wrap items-start justify-between gap-4 relative z-10 rounded-2xl p-4 -mx-4 transition-all duration-700 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-black text-white">{ticker.toUpperCase()}</h1>
+            <h1 className={`text-3xl font-black transition-colors duration-700 ${verdict ? t.accent : "text-white"}`}>
+              {ticker.toUpperCase()}
+            </h1>
             <Badge variant="blue">{p.exchangeShortName || q.exchange || "NASDAQ"}</Badge>
             {p.sector && <Badge variant="gray">{p.sector}</Badge>}
+            {verdict && (
+              <span className={`text-[10px] font-bold uppercase tracking-widest ${t.accentMuted}`}>
+                {verdict}
+              </span>
+            )}
           </div>
           <p className="text-gray-500 text-sm mt-1">{p.companyName || q.name || ticker}</p>
         </div>
@@ -123,33 +203,33 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           { label: "P/E Ratio", value: (q.pe || latestRatios.priceEarningsRatio || 0).toFixed(1) + "x" },
           { label: "Volume", value: formatNumber(q.volume || 0, true) },
         ].map(({ label, value }) => (
-          <Card key={label} className="!p-3 text-center">
-            <div className="text-[11px] text-gray-500 uppercase tracking-wide">{label}</div>
+          <Card key={label} className={`!p-3 text-center transition-all duration-500 ${verdict ? `border ${t.border} shadow-lg ${t.glow}` : ""}`}>
+            <div className={`text-[11px] uppercase tracking-wide transition-colors duration-500 ${verdict ? t.accentMuted : "text-gray-500"}`}>{label}</div>
             <div className="text-base font-bold text-white mt-1">{value}</div>
           </Card>
         ))}
       </div>
 
       {/* Tab bar */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
-        {tabs.map(({ key, label, color, activeBg }) => (
+      <div className={`flex gap-1 overflow-x-auto pb-1 px-1 py-1 rounded-xl transition-all duration-500 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
+        {tabs.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
             className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
               activeTab === key
-                ? `${activeBg} text-white`
-                : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                ? `${t.tabActive} text-white shadow-md`
+                : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
             }`}
           >
-            {activeTab === key && <span className={`w-1.5 h-1.5 rounded-full ${color}`} />}
+            {activeTab === key && <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />}
             {label}
           </button>
         ))}
       </div>
 
       {/* Tab content */}
-      {activeTab === "ai" && <AIAnalysis ticker={ticker} />}
+      {activeTab === "ai" && <AIAnalysis ticker={ticker} onVerdictChange={handleVerdictChange} />}
 
       {activeTab === "overview" && (
         <div className="space-y-4">

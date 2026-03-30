@@ -1,17 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 
 interface AIAnalysisProps {
   ticker: string;
+  onVerdictChange?: (signal: string | null) => void;
 }
 
 type AnalysisTab = "verdict" | "valuation" | "growth" | "health" | "returns" | "scenarios";
 
 const HORIZONS = ["3 years", "5 years", "7 years", "10 years"];
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+function cacheKey(ticker: string) {
+  return `kosh-analysis-${ticker.toUpperCase()}`;
+}
+
+function loadCached(ticker: string) {
+  try {
+    const raw = sessionStorage.getItem(cacheKey(ticker));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (Date.now() - cached.timestamp > CACHE_TTL) {
+      sessionStorage.removeItem(cacheKey(ticker));
+      return null;
+    }
+    return cached;
+  } catch {
+    return null;
+  }
+}
+
+function saveCache(ticker: string, analysis: any, horizon: string) {
+  try {
+    sessionStorage.setItem(
+      cacheKey(ticker),
+      JSON.stringify({ analysis, horizon, timestamp: Date.now() })
+    );
+  } catch { /* storage full — not critical */ }
+}
 
 function VerdictBadge({ signal }: { signal: string }) {
   const config: Record<string, { bg: string; border: string; text: string; icon: string }> = {
@@ -36,17 +66,39 @@ function SignalBadge({ signal }: { signal: string }) {
   return <Badge variant="red">{signal}</Badge>;
 }
 
-export default function AIAnalysis({ ticker }: AIAnalysisProps) {
+export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps) {
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [horizon, setHorizon] = useState("5 years");
   const [tab, setTab] = useState<AnalysisTab>("verdict");
+  const [fromCache, setFromCache] = useState(false);
+
+  useEffect(() => {
+    const cached = loadCached(ticker);
+    if (cached) {
+      setAnalysis(cached.analysis);
+      setHorizon(cached.horizon);
+      setFromCache(true);
+      onVerdictChange?.(cached.analysis?.verdict?.signal || null);
+    }
+  }, [ticker]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleAnalysisResult = useCallback(
+    (result: any, h: string) => {
+      setAnalysis(result);
+      setFromCache(false);
+      saveCache(ticker, result, h);
+      onVerdictChange?.(result?.verdict?.signal || null);
+    },
+    [ticker, onVerdictChange]
+  );
 
   async function runAnalysis() {
     setLoading(true);
     setError("");
     setAnalysis(null);
+    onVerdictChange?.(null);
     try {
       const res = await fetch(`/api/stocks/${ticker}/analysis`, {
         method: "POST",
@@ -55,12 +107,20 @@ export default function AIAnalysis({ ticker }: AIAnalysisProps) {
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
-      setAnalysis(json.analysis);
+      handleAnalysisResult(json.analysis, horizon);
       setTab("verdict");
     } catch (e: any) {
       setError(e.message || "Analysis failed");
     }
     setLoading(false);
+  }
+
+  function clearAndRerun() {
+    sessionStorage.removeItem(cacheKey(ticker));
+    setAnalysis(null);
+    setFromCache(false);
+    setError("");
+    onVerdictChange?.(null);
   }
 
   if (!analysis && !loading) {
@@ -116,6 +176,13 @@ export default function AIAnalysis({ ticker }: AIAnalysisProps) {
     { key: "scenarios", label: "Scenarios" },
   ];
 
+  const verdictSignal = a?.verdict?.signal || "MODERATE";
+  const tabAccent: Record<string, string> = {
+    CONSIDER: "bg-emerald-600",
+    MODERATE: "bg-amber-600",
+    AVOID: "bg-red-600",
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex gap-1.5 overflow-x-auto pb-1">
@@ -124,23 +191,30 @@ export default function AIAnalysis({ ticker }: AIAnalysisProps) {
             key={key}
             onClick={() => setTab(key)}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-              tab === key ? "bg-indigo-600 text-white" : "text-gray-500 hover:text-white hover:bg-gray-800"
+              tab === key
+                ? `${tabAccent[verdictSignal] || "bg-indigo-600"} text-white`
+                : "text-gray-500 hover:text-white hover:bg-gray-800"
             }`}
           >
             {label}
           </button>
         ))}
-        <button
-          onClick={() => { setAnalysis(null); setError(""); }}
-          className="ml-auto px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-300 transition-all"
-        >
-          Re-run
-        </button>
+        <div className="ml-auto flex items-center gap-2">
+          {fromCache && (
+            <span className="text-[10px] text-gray-600 italic">cached</span>
+          )}
+          <button
+            onClick={clearAndRerun}
+            className="px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-300 transition-all"
+          >
+            Re-run
+          </button>
+        </div>
       </div>
 
       {tab === "verdict" && (
         <div className="space-y-4">
-          <VerdictBadge signal={a.verdict?.signal || "MODERATE"} />
+          <VerdictBadge signal={verdictSignal} />
 
           <Card>
             <div className="space-y-3">
