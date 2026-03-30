@@ -23,9 +23,11 @@ export async function GET(
     ]);
 
     if (!cashData || cashData.length === 0) {
-      console.warn(`[FCF API] No cash flow data for ${symbol}`);
+      console.warn(`[FCF API] No cash flow data for ${symbol} (period=${period}, limit=${limit})`);
       return NextResponse.json({ data: [] });
     }
+
+    console.log(`[FCF API] ${symbol}: ${cashData.length} cash flow records, ${(incomeData || []).length} income records`);
 
     const sharesMap: Record<string, number> = {};
     for (const inc of incomeData || []) {

@@ -12,7 +12,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
-  const res = await fetch(url.toString(), { next: { revalidate: 300 } });
+  const res = await fetch(url.toString(), { cache: "no-store" });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
