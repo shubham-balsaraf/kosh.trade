@@ -29,10 +29,10 @@ export default function MarginChart({ ticker }: MarginChartProps) {
         const income = (json.income || []).reverse();
         setData(
           income.map((yr: any) => ({
-            year: yr.calendarYear || yr.date?.substring(0, 4),
-            gross: yr.grossProfitRatio ? +(yr.grossProfitRatio * 100).toFixed(1) : null,
-            operating: yr.operatingIncomeRatio ? +(yr.operatingIncomeRatio * 100).toFixed(1) : null,
-            net: yr.netIncomeRatio ? +(yr.netIncomeRatio * 100).toFixed(1) : null,
+            year: yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4),
+            gross: yr.revenue ? +((yr.grossProfit / yr.revenue) * 100).toFixed(1) : (yr.grossProfitRatio ? +(yr.grossProfitRatio * 100).toFixed(1) : null),
+            operating: yr.revenue ? +((yr.operatingIncome / yr.revenue) * 100).toFixed(1) : (yr.operatingIncomeRatio ? +(yr.operatingIncomeRatio * 100).toFixed(1) : null),
+            net: yr.revenue ? +((yr.netIncome / yr.revenue) * 100).toFixed(1) : (yr.netIncomeRatio ? +(yr.netIncomeRatio * 100).toFixed(1) : null),
           }))
         );
       } catch {

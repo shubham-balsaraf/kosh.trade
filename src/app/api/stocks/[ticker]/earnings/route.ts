@@ -28,12 +28,12 @@ export async function GET(
 
     const past = (earningsHistory || [])
       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 12)
+      .slice(0, 20)
       .map((e: any) => ({
         date: e.date,
-        eps: e.eps ?? e.actualEarningResult ?? null,
+        eps: e.epsActual ?? e.eps ?? e.actualEarningResult ?? null,
         epsEstimated: e.epsEstimated ?? e.estimatedEarning ?? null,
-        revenue: e.revenue ?? null,
+        revenue: e.revenueActual ?? e.revenue ?? null,
         revenueEstimated: e.revenueEstimated ?? null,
         fiscalDateEnding: e.fiscalDateEnding ?? null,
         time: e.time ?? null,

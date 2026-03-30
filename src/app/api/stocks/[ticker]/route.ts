@@ -29,11 +29,11 @@ export async function GET(
 
     // FMP stable API quote doesn't include PE — compute from available data
     if (quote && !quote.pe) {
-      const peFromRatios = ratios?.[0]?.priceEarningsRatio;
+      const peFromRatios = ratios?.[0]?.priceToEarningsRatio;
       if (peFromRatios && peFromRatios > 0) {
         quote.pe = peFromRatios;
       } else {
-        const latestEps = income?.[0]?.epsdiluted;
+        const latestEps = income?.[0]?.epsDiluted;
         if (quote.price && latestEps && latestEps > 0) {
           quote.pe = quote.price / latestEps;
         }

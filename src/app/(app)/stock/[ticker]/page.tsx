@@ -200,7 +200,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           { label: "Market Cap", value: formatCurrency(q.marketCap || 0, true) },
           { label: "52W High", value: formatCurrency(q.yearHigh || 0) },
           { label: "52W Low", value: formatCurrency(q.yearLow || 0) },
-          { label: "P/E Ratio", value: (q.pe || latestRatios.priceEarningsRatio || 0).toFixed(1) + "x" },
+          { label: "P/E Ratio", value: (q.pe || latestRatios.priceToEarningsRatio || 0).toFixed(1) + "x" },
           { label: "Volume", value: formatNumber(q.volume || 0, true) },
         ].map(({ label, value }) => (
           <Card key={label} className={`!p-3 text-center transition-all duration-500 ${verdict ? `border ${t.border} shadow-lg ${t.glow}` : ""}`}>
@@ -247,8 +247,8 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
                   { label: "Gross Margin", value: latestRatios.grossProfitMargin },
                   { label: "Operating Margin", value: latestRatios.operatingProfitMargin },
                   { label: "Net Margin", value: latestRatios.netProfitMargin },
-                  { label: "ROE", value: latestRatios.returnOnEquity },
-                  { label: "ROIC", value: latestRatios.returnOnCapitalEmployed },
+                  { label: "ROE", value: latestMetrics.returnOnEquity },
+                  { label: "ROIC", value: latestMetrics.returnOnCapitalEmployed },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between text-sm">
                     <span className="text-gray-500">{label}</span>
@@ -261,11 +261,11 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               <h3 className="text-sm font-semibold text-gray-400 mb-3">Financial Health</h3>
               <div className="space-y-2">
                 {[
-                  { label: "Debt/Equity", value: latestRatios.debtEquityRatio?.toFixed(2) },
+                  { label: "Debt/Equity", value: latestRatios.debtToEquityRatio?.toFixed(2) },
                   { label: "Current Ratio", value: latestRatios.currentRatio?.toFixed(2) },
-                  { label: "Interest Coverage", value: latestRatios.interestCoverage?.toFixed(1) + "x" },
+                  { label: "Interest Coverage", value: latestRatios.interestCoverageRatio?.toFixed(1) + "x" },
                   { label: "FCF", value: formatCurrency(latestCashflow.freeCashFlow || 0, true) },
-                  { label: "Dividend Yield", value: q.dividendYield ? formatPercent(q.dividendYield) : "N/A" },
+                  { label: "Dividend Yield", value: latestRatios.dividendYieldPercentage ? formatPercent(latestRatios.dividendYieldPercentage) : "N/A" },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between text-sm">
                     <span className="text-gray-500">{label}</span>
@@ -314,13 +314,13 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               <tbody>
                 {(income || []).map((yr: any, i: number) => (
                   <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                    <td className="py-2 pr-4 font-medium text-white">{yr.calendarYear || yr.date?.substring(0, 4)}</td>
+                    <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
                     <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.revenue || 0, true)}</td>
                     <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.netIncome || 0, true)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{(yr.epsdiluted || 0).toFixed(2)}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{yr.grossProfitRatio ? formatPercent(yr.grossProfitRatio * 100) : "N/A"}</td>
-                    <td className="py-2 px-2 text-right text-gray-300">{yr.operatingIncomeRatio ? formatPercent(yr.operatingIncomeRatio * 100) : "N/A"}</td>
-                    <td className="py-2 pl-2 text-right text-gray-300">{yr.netIncomeRatio ? formatPercent(yr.netIncomeRatio * 100) : "N/A"}</td>
+                    <td className="py-2 px-2 text-right text-gray-300">{(yr.epsDiluted || 0).toFixed(2)}</td>
+                    <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.grossProfit ? formatPercent((yr.grossProfit / yr.revenue) * 100) : "N/A"}</td>
+                    <td className="py-2 px-2 text-right text-gray-300">{yr.revenue && yr.operatingIncome ? formatPercent((yr.operatingIncome / yr.revenue) * 100) : "N/A"}</td>
+                    <td className="py-2 pl-2 text-right text-gray-300">{yr.revenue && yr.netIncome ? formatPercent((yr.netIncome / yr.revenue) * 100) : "N/A"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -334,15 +334,15 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           <h3 className="text-sm font-semibold text-gray-400 mb-3">Valuation Metrics</h3>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             {[
-              { label: "P/E (TTM)", value: q.pe || latestRatios.priceEarningsRatio },
-              { label: "P/E (Forward)", value: latestMetrics.peRatio },
-              { label: "EV/EBITDA", value: latestMetrics.enterpriseValueOverEBITDA },
+              { label: "P/E (TTM)", value: latestRatios.priceToEarningsRatio },
+              { label: "Forward PEG", value: latestRatios.forwardPriceToEarningsGrowthRatio },
+              { label: "EV/EBITDA", value: latestMetrics.evToEBITDA },
               { label: "P/S", value: latestRatios.priceToSalesRatio },
               { label: "P/B", value: latestRatios.priceToBookRatio },
-              { label: "P/FCF", value: latestRatios.priceToFreeCashFlowsRatio },
-              { label: "PEG Ratio", value: latestRatios.priceEarningsToGrowthRatio },
+              { label: "P/FCF", value: latestRatios.priceToFreeCashFlowRatio },
+              { label: "PEG Ratio", value: latestRatios.priceToEarningsGrowthRatio },
               { label: "EV/Revenue", value: latestMetrics.evToSales },
-              { label: "Dividend Yield", value: q.dividendYield ? `${q.dividendYield.toFixed(2)}%` : "N/A" },
+              { label: "Dividend Yield", value: latestRatios.dividendYieldPercentage != null ? `${latestRatios.dividendYieldPercentage.toFixed(2)}%` : "N/A" },
             ].map(({ label, value }) => (
               <div key={label} className="text-center p-3 bg-gray-900/50 rounded-xl">
                 <div className="text-[11px] text-gray-500 uppercase">{label}</div>
@@ -357,6 +357,17 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
       {activeTab === "health" && (
         <div className="space-y-4">
+          <HealthStatusBar
+            debtToEquity={latestRatios.debtToEquityRatio}
+            currentRatio={latestRatios.currentRatio}
+            interestCoverage={latestRatios.interestCoverageRatio}
+            fcf={latestCashflow.freeCashFlow}
+            roe={latestMetrics.returnOnEquity}
+            fcfMargin={latestCashflow.freeCashFlow && latestIncome.revenue
+              ? latestCashflow.freeCashFlow / latestIncome.revenue
+              : null}
+          />
+
           <Card>
             <h3 className="text-sm font-semibold text-gray-400 mb-3">Balance Sheet Trend</h3>
             <div className="overflow-x-auto">
@@ -377,10 +388,10 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
                     const cf = cashflow?.[i] || {};
                     return (
                       <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                        <td className="py-2 pr-4 font-medium text-white">{yr.calendarYear || yr.date?.substring(0, 4)}</td>
+                        <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.calendarYear || yr.date?.substring(0, 4)}</td>
                         <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalDebt || 0, true)}</td>
                         <td className="py-2 px-2 text-right text-gray-300">{formatCurrency(yr.totalStockholdersEquity || 0, true)}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{r.debtEquityRatio?.toFixed(2) || "N/A"}</td>
+                        <td className="py-2 px-2 text-right text-gray-300">{r.debtToEquityRatio?.toFixed(2) || "N/A"}</td>
                         <td className="py-2 px-2 text-right text-gray-300">{r.currentRatio?.toFixed(2) || "N/A"}</td>
                         <td className="py-2 pl-2 text-right text-gray-300">{formatCurrency(cf.freeCashFlow || 0, true)}</td>
                       </tr>
@@ -410,15 +421,16 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
                   </tr>
                 </thead>
                 <tbody>
-                  {(ratios || []).map((yr: any, i: number) => {
+                  {(metrics || []).map((yr: any, i: number) => {
                     const cf = cashflow?.[i] || {};
+                    const r = ratios?.[i] || {};
                     return (
                       <tr key={yr.date} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                        <td className="py-2 pr-4 font-medium text-white">{yr.date?.substring(0, 4)}</td>
+                        <td className="py-2 pr-4 font-medium text-white">{yr.fiscalYear || yr.date?.substring(0, 4)}</td>
                         <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnEquity != null ? formatPercent(yr.returnOnEquity * 100) : "N/A"}</td>
                         <td className="py-2 px-2 text-right text-gray-300">{yr.returnOnCapitalEmployed != null ? formatPercent(yr.returnOnCapitalEmployed * 100) : "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{yr.dividendPerShare?.toFixed(2) || "N/A"}</td>
-                        <td className="py-2 px-2 text-right text-gray-300">{yr.payoutRatio != null ? formatPercent(yr.payoutRatio * 100) : "N/A"}</td>
+                        <td className="py-2 px-2 text-right text-gray-300">{r.dividendPerShare?.toFixed(2) || "N/A"}</td>
+                        <td className="py-2 px-2 text-right text-gray-300">{r.dividendPayoutRatio != null ? formatPercent(r.dividendPayoutRatio * 100) : "N/A"}</td>
                         <td className="py-2 pl-2 text-right text-gray-300">{cf.commonStockRepurchased ? formatCurrency(Math.abs(cf.commonStockRepurchased), true) : "N/A"}</td>
                       </tr>
                     );
@@ -511,6 +523,7 @@ function FCFTab({ ticker }: { ticker: string }) {
 function EarningsTab({ ticker }: { ticker: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [yearFilter, setYearFilter] = useState(3);
 
   useEffect(() => {
     async function load() {
@@ -530,10 +543,15 @@ function EarningsTab({ ticker }: { ticker: string }) {
   if (loading) return <div className="skeleton h-64 w-full" />;
 
   const next = data?.nextEarnings;
-  const past = data?.past || [];
+  const allPast = data?.past || [];
+
+  const cutoffDate = new Date();
+  cutoffDate.setFullYear(cutoffDate.getFullYear() - yearFilter);
+  const past = allPast.filter((e: any) => e.date && new Date(e.date) >= cutoffDate);
 
   const beatCount = past.filter((e: any) => e.eps != null && e.epsEstimated != null && e.eps > e.epsEstimated).length;
   const missCount = past.filter((e: any) => e.eps != null && e.epsEstimated != null && e.eps < e.epsEstimated).length;
+  const meetCount = past.filter((e: any) => e.eps != null && e.epsEstimated != null && Math.abs(e.eps - e.epsEstimated) < 0.005).length;
 
   return (
     <div className="space-y-4">
@@ -571,12 +589,31 @@ function EarningsTab({ ticker }: { ticker: string }) {
         </Card>
       )}
 
-      {past.length > 0 && (
+      {allPast.length > 0 && (
         <>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Lookback:</span>
+            {[1, 2, 3, 4, 5].map((y) => (
+              <button
+                key={y}
+                onClick={() => setYearFilter(y)}
+                className={`px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+                  yearFilter === y ? "bg-indigo-600 text-white" : "bg-gray-900 text-gray-400 hover:text-white"
+                }`}
+              >
+                {y}Y
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-4 gap-3">
             <Card className="!p-3 text-center">
               <div className="text-[11px] text-gray-500 uppercase">Beat</div>
               <div className="text-lg font-bold text-emerald-400">{beatCount}</div>
+            </Card>
+            <Card className="!p-3 text-center">
+              <div className="text-[11px] text-gray-500 uppercase">Meet</div>
+              <div className="text-lg font-bold text-blue-400">{meetCount}</div>
             </Card>
             <Card className="!p-3 text-center">
               <div className="text-[11px] text-gray-500 uppercase">Miss</div>
@@ -585,13 +622,15 @@ function EarningsTab({ ticker }: { ticker: string }) {
             <Card className="!p-3 text-center">
               <div className="text-[11px] text-gray-500 uppercase">Beat %</div>
               <div className="text-lg font-bold text-white">
-                {(beatCount + missCount) > 0 ? `${((beatCount / (beatCount + missCount)) * 100).toFixed(0)}%` : "N/A"}
+                {(beatCount + missCount + meetCount) > 0 ? `${((beatCount / (beatCount + missCount + meetCount)) * 100).toFixed(0)}%` : "N/A"}
               </div>
             </Card>
           </div>
 
           <Card>
-            <h3 className="text-sm font-semibold text-gray-400 mb-3">Earnings History</h3>
+            <h3 className="text-sm font-semibold text-gray-400 mb-3">
+              Earnings History <span className="text-gray-600 text-xs ml-1">(last {yearFilter} {yearFilter === 1 ? "year" : "years"})</span>
+            </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -638,11 +677,125 @@ function EarningsTab({ ticker }: { ticker: string }) {
         </>
       )}
 
-      {past.length === 0 && (
+      {allPast.length === 0 && (
         <Card className="text-center py-6">
           <p className="text-gray-500 text-sm">No earnings history available</p>
         </Card>
       )}
     </div>
+  );
+}
+
+function HealthStatusBar({
+  debtToEquity,
+  currentRatio,
+  interestCoverage,
+  fcf,
+  roe,
+  fcfMargin,
+}: {
+  debtToEquity: number | null;
+  currentRatio: number | null;
+  interestCoverage: number | null;
+  fcf: number | null;
+  roe: number | null;
+  fcfMargin: number | null;
+}) {
+  type Level = "strong" | "moderate" | "weak" | "na";
+
+  function grade(val: number | null | undefined, thresholds: { strong: (v: number) => boolean; weak: (v: number) => boolean }): Level {
+    if (val == null || isNaN(val)) return "na";
+    if (thresholds.strong(val)) return "strong";
+    if (thresholds.weak(val)) return "weak";
+    return "moderate";
+  }
+
+  const indicators: { label: string; value: string; level: Level; desc: string }[] = [
+    {
+      label: "Debt/Equity",
+      value: debtToEquity != null ? debtToEquity.toFixed(2) : "N/A",
+      level: grade(debtToEquity, { strong: (v) => v < 0.5, weak: (v) => v > 1.5 }),
+      desc: debtToEquity != null ? (debtToEquity < 0.5 ? "Low leverage" : debtToEquity > 1.5 ? "High leverage" : "Moderate leverage") : "",
+    },
+    {
+      label: "Current Ratio",
+      value: currentRatio != null ? currentRatio.toFixed(2) : "N/A",
+      level: grade(currentRatio, { strong: (v) => v > 1.5, weak: (v) => v < 1.0 }),
+      desc: currentRatio != null ? (currentRatio > 1.5 ? "Strong liquidity" : currentRatio < 1.0 ? "Liquidity risk" : "Adequate liquidity") : "",
+    },
+    {
+      label: "Interest Coverage",
+      value: interestCoverage != null ? `${interestCoverage.toFixed(1)}x` : "N/A",
+      level: interestCoverage === 0 ? "strong" : grade(interestCoverage, { strong: (v) => v > 5, weak: (v) => v < 2 }),
+      desc: interestCoverage != null ? (interestCoverage === 0 ? "Debt-free" : interestCoverage > 5 ? "Well covered" : interestCoverage < 2 ? "Debt strain" : "Manageable") : "",
+    },
+    {
+      label: "Free Cash Flow",
+      value: fcf != null ? (Math.abs(fcf) >= 1e9 ? `$${(fcf / 1e9).toFixed(1)}B` : `$${(fcf / 1e6).toFixed(0)}M`) : "N/A",
+      level: grade(fcf, { strong: (v) => v > 0, weak: (v) => v <= 0 }),
+      desc: fcf != null ? (fcf > 0 ? "Cash generative" : "Cash burn") : "",
+    },
+    {
+      label: "ROE",
+      value: roe != null ? `${(roe * 100).toFixed(1)}%` : "N/A",
+      level: grade(roe, { strong: (v) => v > 0.15, weak: (v) => v < 0.10 }),
+      desc: roe != null ? (roe > 0.15 ? "High returns" : roe < 0.10 ? "Low returns" : "Average returns") : "",
+    },
+    {
+      label: "FCF Margin",
+      value: fcfMargin != null ? `${(fcfMargin * 100).toFixed(1)}%` : "N/A",
+      level: grade(fcfMargin, { strong: (v) => v > 0.15, weak: (v) => v < 0.05 }),
+      desc: fcfMargin != null ? (fcfMargin > 0.15 ? "Excellent conversion" : fcfMargin < 0.05 ? "Thin conversion" : "Decent conversion") : "",
+    },
+  ];
+
+  const strongCount = indicators.filter((x) => x.level === "strong").length;
+  const weakCount = indicators.filter((x) => x.level === "weak").length;
+  const scored = indicators.filter((x) => x.level !== "na").length;
+  const overallPct = scored > 0 ? (strongCount / scored) * 100 : 0;
+  const overallLabel = weakCount >= 3 ? "Weak" : strongCount >= 4 ? "Strong" : "Moderate";
+  const overallColor = weakCount >= 3 ? "text-red-400" : strongCount >= 4 ? "text-emerald-400" : "text-amber-400";
+  const barColor = weakCount >= 3 ? "bg-red-500" : strongCount >= 4 ? "bg-emerald-500" : "bg-amber-500";
+
+  const levelStyles: Record<Level, { bg: string; text: string; dot: string }> = {
+    strong: { bg: "bg-emerald-500/10", text: "text-emerald-400", dot: "bg-emerald-400" },
+    moderate: { bg: "bg-amber-500/10", text: "text-amber-400", dot: "bg-amber-400" },
+    weak: { bg: "bg-red-500/10", text: "text-red-400", dot: "bg-red-400" },
+    na: { bg: "bg-gray-800/50", text: "text-gray-500", dot: "bg-gray-600" },
+  };
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-semibold text-gray-400">Financial Health Score</h3>
+        <div className="flex items-center gap-2">
+          <span className={`text-lg font-bold ${overallColor}`}>{overallLabel}</span>
+          <span className="text-xs text-gray-500">({strongCount}/{scored} strong)</span>
+        </div>
+      </div>
+
+      <div className="w-full h-2.5 bg-gray-800 rounded-full mb-5 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-1000 ${barColor}`}
+          style={{ width: `${Math.max(overallPct, 5)}%` }}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        {indicators.map((ind) => {
+          const s = levelStyles[ind.level];
+          return (
+            <div key={ind.label} className={`rounded-xl p-3 ${s.bg} border border-transparent`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`w-2 h-2 rounded-full ${s.dot}`} />
+                <span className="text-[11px] text-gray-500 uppercase">{ind.label}</span>
+              </div>
+              <div className={`text-base font-bold ${s.text}`}>{ind.value}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{ind.desc}</div>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }
