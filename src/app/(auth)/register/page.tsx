@@ -123,7 +123,13 @@ export default function RegisterPage() {
         </div>
 
         <button
-          onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
+          onClick={async () => {
+            try {
+              await signIn("google", { callbackUrl: "/dashboard" });
+            } catch {
+              window.location.href = "/api/auth/signin/google?callbackUrl=%2Fdashboard";
+            }
+          }}
           className="w-full flex items-center justify-center gap-3 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-xl text-sm font-medium text-gray-200 transition-colors"
         >
           <svg width="18" height="18" viewBox="0 0 24 24">
