@@ -10,15 +10,16 @@ import FCFChart from "@/components/charts/FCFChart";
 import FCFvsSBCChart from "@/components/charts/FCFvsSBCChart";
 import PriceChart from "@/components/charts/PriceChart";
 import MarginChart from "@/components/charts/MarginChart";
+import AIAnalysis from "@/components/stock/AIAnalysis";
 
-type Tab = "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
+type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
 
 export default function StockPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker } = use(params);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
+  const [activeTab, setActiveTab] = useState<Tab>("ai");
 
   useEffect(() => {
     async function load() {
@@ -79,9 +80,10 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const latestMetrics = metrics?.[0] || {};
   const latestRatios = ratios?.[0] || {};
 
-  const priceChangePositive = (q.changesPercentage || 0) >= 0;
+  const priceChangePositive = (q.changePercentage ?? q.changesPercentage ?? 0) >= 0;
 
   const tabs: { key: Tab; label: string; color: string; activeBg: string }[] = [
+    { key: "ai", label: "AI Analysis", color: "bg-violet-400", activeBg: "bg-violet-600" },
     { key: "overview", label: "Overview", color: "bg-indigo-400", activeBg: "bg-indigo-600" },
     { key: "charts", label: "Charts", color: "bg-blue-400", activeBg: "bg-blue-600" },
     { key: "valuation", label: "Valuation", color: "bg-emerald-400", activeBg: "bg-emerald-600" },
@@ -107,7 +109,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
         <div className="text-right">
           <div className="text-3xl font-bold text-white">{formatCurrency(q.price || 0)}</div>
           <div className={`text-sm font-semibold ${priceChangePositive ? "text-emerald-400" : "text-red-400"}`}>
-            {priceChangePositive ? "+" : ""}{formatCurrency(q.change || 0)} ({formatPercent(q.changesPercentage || 0)})
+            {priceChangePositive ? "+" : ""}{formatCurrency(q.change || 0)} ({formatPercent(q.changePercentage ?? q.changesPercentage ?? 0)})
           </div>
         </div>
       </div>
@@ -147,6 +149,8 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       </div>
 
       {/* Tab content */}
+      {activeTab === "ai" && <AIAnalysis ticker={ticker} />}
+
       {activeTab === "overview" && (
         <div className="space-y-4">
           {p.description && (
@@ -448,29 +452,32 @@ function EarningsTab({ ticker }: { ticker: string }) {
   const next = data?.nextEarnings;
   const past = data?.past || [];
 
+  const beatCount = past.filter((e: any) => e.eps != null && e.epsEstimated != null && e.eps > e.epsEstimated).length;
+  const missCount = past.filter((e: any) => e.eps != null && e.epsEstimated != null && e.eps < e.epsEstimated).length;
+
   return (
     <div className="space-y-4">
       {next && (
-        <Card glow className="border-indigo-500/20">
+        <Card glow className="border-orange-500/20">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-gray-400">Next Earnings</h3>
+              <h3 className="text-sm font-semibold text-orange-400">Next Earnings Report</h3>
               <p className="text-2xl font-bold text-white mt-1">{next.date}</p>
-              {next.hour && (
+              {next.time && (
                 <Badge variant="blue" className="mt-2">
-                  {next.hour === "bmo" ? "Before Market Open" : next.hour === "amc" ? "After Market Close" : next.hour}
+                  {next.time === "bmo" ? "Before Market Open" : next.time === "amc" ? "After Market Close" : next.time}
                 </Badge>
               )}
             </div>
-            <div className="text-right">
-              {next.epsEstimate != null && (
+            <div className="text-right space-y-1">
+              {next.epsEstimated != null && (
                 <div className="text-sm text-gray-400">
-                  EPS Est: <span className="text-white font-semibold">${next.epsEstimate?.toFixed(2)}</span>
+                  EPS Est: <span className="text-white font-semibold">${Number(next.epsEstimated).toFixed(2)}</span>
                 </div>
               )}
-              {next.revenueEstimate != null && (
+              {next.revenueEstimated != null && (
                 <div className="text-sm text-gray-400">
-                  Rev Est: <span className="text-white font-semibold">{formatCurrency(next.revenueEstimate, true)}</span>
+                  Rev Est: <span className="text-white font-semibold">{formatCurrency(next.revenueEstimated, true)}</span>
                 </div>
               )}
             </div>
@@ -479,47 +486,81 @@ function EarningsTab({ ticker }: { ticker: string }) {
       )}
 
       {!next && (
-        <Card className="text-center py-8">
-          <p className="text-gray-500">No upcoming earnings date found</p>
+        <Card className="text-center py-6 border-gray-800">
+          <p className="text-gray-500 text-sm">No upcoming earnings date scheduled yet</p>
         </Card>
       )}
 
       {past.length > 0 && (
-        <Card>
-          <h3 className="text-sm font-semibold text-gray-400 mb-3">Recent Earnings</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <th className="text-left py-2 pr-4">Date</th>
-                  <th className="text-right py-2 px-2">EPS Est</th>
-                  <th className="text-right py-2 px-2">EPS Actual</th>
-                  <th className="text-right py-2 px-2">Surprise</th>
-                  <th className="text-right py-2 px-2">Rev Est</th>
-                  <th className="text-right py-2 pl-2">Rev Actual</th>
-                </tr>
-              </thead>
-              <tbody>
-                {past.map((e: any, i: number) => {
-                  const epsSurprise = e.epsEstimated != null && e.eps != null
-                    ? ((e.eps - e.epsEstimated) / Math.abs(e.epsEstimated || 1) * 100)
-                    : null;
-                  return (
-                    <tr key={e.date + i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
-                      <td className="py-2 pr-4 font-medium text-white">{e.date}</td>
-                      <td className="py-2 px-2 text-right text-gray-400">{e.epsEstimated != null ? `$${e.epsEstimated.toFixed(2)}` : "N/A"}</td>
-                      <td className="py-2 px-2 text-right text-white font-medium">{e.eps != null ? `$${e.eps.toFixed(2)}` : "N/A"}</td>
-                      <td className={`py-2 px-2 text-right font-semibold ${epsSurprise != null ? (epsSurprise >= 0 ? "text-emerald-400" : "text-red-400") : "text-gray-600"}`}>
-                        {epsSurprise != null ? `${epsSurprise >= 0 ? "+" : ""}${epsSurprise.toFixed(1)}%` : "—"}
-                      </td>
-                      <td className="py-2 px-2 text-right text-gray-400">{e.revenueEstimated ? formatCurrency(e.revenueEstimated, true) : "N/A"}</td>
-                      <td className="py-2 pl-2 text-right text-white font-medium">{e.revenue ? formatCurrency(e.revenue, true) : "N/A"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="!p-3 text-center">
+              <div className="text-[11px] text-gray-500 uppercase">Beat</div>
+              <div className="text-lg font-bold text-emerald-400">{beatCount}</div>
+            </Card>
+            <Card className="!p-3 text-center">
+              <div className="text-[11px] text-gray-500 uppercase">Miss</div>
+              <div className="text-lg font-bold text-red-400">{missCount}</div>
+            </Card>
+            <Card className="!p-3 text-center">
+              <div className="text-[11px] text-gray-500 uppercase">Beat %</div>
+              <div className="text-lg font-bold text-white">
+                {(beatCount + missCount) > 0 ? `${((beatCount / (beatCount + missCount)) * 100).toFixed(0)}%` : "N/A"}
+              </div>
+            </Card>
           </div>
+
+          <Card>
+            <h3 className="text-sm font-semibold text-gray-400 mb-3">Earnings History</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-gray-800">
+                    <th className="text-left py-2 pr-4">Date</th>
+                    <th className="text-right py-2 px-2">EPS Est</th>
+                    <th className="text-right py-2 px-2">EPS Actual</th>
+                    <th className="text-right py-2 px-2">Surprise</th>
+                    <th className="text-right py-2 px-2">Rev Est</th>
+                    <th className="text-right py-2 pl-2">Rev Actual</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {past.map((e: any, i: number) => {
+                    const epsSurprise = e.epsEstimated != null && e.eps != null && Math.abs(e.epsEstimated) > 0.001
+                      ? ((e.eps - e.epsEstimated) / Math.abs(e.epsEstimated) * 100)
+                      : null;
+                    const beat = epsSurprise !== null && epsSurprise >= 0;
+                    return (
+                      <tr key={e.date + i} className={i % 2 === 0 ? "bg-gray-900/50" : ""}>
+                        <td className="py-2 pr-4 font-medium text-white">{e.date}</td>
+                        <td className="py-2 px-2 text-right text-gray-400">
+                          {e.epsEstimated != null ? `$${Number(e.epsEstimated).toFixed(2)}` : "—"}
+                        </td>
+                        <td className="py-2 px-2 text-right text-white font-medium">
+                          {e.eps != null ? `$${Number(e.eps).toFixed(2)}` : "—"}
+                        </td>
+                        <td className={`py-2 px-2 text-right font-semibold ${epsSurprise != null ? (beat ? "text-emerald-400" : "text-red-400") : "text-gray-600"}`}>
+                          {epsSurprise != null ? `${beat ? "+" : ""}${epsSurprise.toFixed(1)}%` : "—"}
+                        </td>
+                        <td className="py-2 px-2 text-right text-gray-400">
+                          {e.revenueEstimated ? formatCurrency(e.revenueEstimated, true) : "—"}
+                        </td>
+                        <td className="py-2 pl-2 text-right text-white font-medium">
+                          {e.revenue ? formatCurrency(e.revenue, true) : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </>
+      )}
+
+      {past.length === 0 && (
+        <Card className="text-center py-6">
+          <p className="text-gray-500 text-sm">No earnings history available</p>
         </Card>
       )}
     </div>

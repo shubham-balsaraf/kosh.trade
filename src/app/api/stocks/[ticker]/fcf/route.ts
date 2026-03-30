@@ -12,9 +12,20 @@ export async function GET(
 
   try {
     const [cashData, incomeData] = await Promise.all([
-      getCashFlow(symbol, period as "annual" | "quarter", limit).catch(() => []),
-      getIncomeStatement(symbol, period as "annual" | "quarter", limit).catch(() => []),
+      getCashFlow(symbol, period as "annual" | "quarter", limit).catch((e: any) => {
+        console.error(`[FCF API] cashflow ${symbol}:`, e.message);
+        return [];
+      }),
+      getIncomeStatement(symbol, period as "annual" | "quarter", limit).catch((e: any) => {
+        console.error(`[FCF API] income ${symbol}:`, e.message);
+        return [];
+      }),
     ]);
+
+    if (!cashData || cashData.length === 0) {
+      console.warn(`[FCF API] No cash flow data for ${symbol}`);
+      return NextResponse.json({ data: [] });
+    }
 
     const sharesMap: Record<string, number> = {};
     for (const inc of incomeData || []) {
@@ -25,15 +36,19 @@ export async function GET(
 
     const formatted = (cashData || []).reverse().map((item: any) => {
       const shares = sharesMap[item.date] || item.weightedAverageShsOutDil || item.weightedAverageShsOut || 0;
+      const opCF = item.operatingCashFlow || 0;
+      const capEx = item.capitalExpenditure || 0;
+      const fcf = item.freeCashFlow || (opCF && capEx ? opCF - Math.abs(capEx) : 0);
+
       return {
         date: item.date,
         period: item.period,
-        freeCashFlow: item.freeCashFlow || 0,
-        fcfPerShare: item.freeCashFlow && shares ? item.freeCashFlow / shares : 0,
+        freeCashFlow: fcf,
+        fcfPerShare: fcf && shares ? fcf / shares : 0,
         stockBasedCompensation: item.stockBasedCompensation || 0,
         sharesOutstanding: shares,
-        operatingCashFlow: item.operatingCashFlow || 0,
-        capitalExpenditure: item.capitalExpenditure || 0,
+        operatingCashFlow: opCF,
+        capitalExpenditure: capEx,
       };
     });
 

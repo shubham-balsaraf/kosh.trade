@@ -27,6 +27,19 @@ export async function GET(
       return NextResponse.json({ error: "Stock not found" }, { status: 404 });
     }
 
+    // FMP stable API quote doesn't include PE — compute from available data
+    if (quote && !quote.pe) {
+      const peFromRatios = ratios?.[0]?.priceEarningsRatio;
+      if (peFromRatios && peFromRatios > 0) {
+        quote.pe = peFromRatios;
+      } else {
+        const latestEps = income?.[0]?.epsdiluted;
+        if (quote.price && latestEps && latestEps > 0) {
+          quote.pe = quote.price / latestEps;
+        }
+      }
+    }
+
     return NextResponse.json({
       quote,
       profile,

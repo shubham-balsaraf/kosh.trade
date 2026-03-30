@@ -9,11 +9,11 @@ function getClient(): Anthropic {
   return client;
 }
 
-export async function generateCompletion(systemPrompt: string, userMessage: string): Promise<string> {
+export async function generateCompletion(systemPrompt: string, userMessage: string, maxTokens = 2048): Promise<string> {
   const anthropic = getClient();
   const message = await anthropic.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 2048,
+    max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });

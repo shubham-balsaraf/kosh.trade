@@ -84,3 +84,11 @@ export async function getEarningsCalendar(from?: string, to?: string) {
 export async function getInsiderTrading(ticker: string, limit = 20) {
   return fmpFetch<any[]>("/insider-trading", { symbol: ticker.toUpperCase(), limit: String(limit) });
 }
+
+export async function getEarnings(ticker: string) {
+  return fmpFetch<any[]>("/earnings", { symbol: ticker.toUpperCase() });
+}
+
+export async function getEarningsSurprises(ticker: string) {
+  return fmpFetch<any[]>("/earnings-surprises", { symbol: ticker.toUpperCase() });
+}

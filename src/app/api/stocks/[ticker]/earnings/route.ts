@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getEarningsCalendar as fmpEarnings } from "@/lib/api/fmp";
-import { getEarningsCalendar as finnhubEarnings } from "@/lib/api/finnhub";
+import { getEarnings, getEarningsCalendar } from "@/lib/api/fmp";
 
 export async function GET(
   req: NextRequest,
@@ -11,33 +10,52 @@ export async function GET(
 
   try {
     const today = new Date();
-    const from = today.toISOString().split("T")[0];
     const futureDate = new Date(today);
     futureDate.setMonth(futureDate.getMonth() + 6);
+    const from = today.toISOString().split("T")[0];
     const to = futureDate.toISOString().split("T")[0];
 
-    const pastDate = new Date(today);
-    pastDate.setFullYear(pastDate.getFullYear() - 2);
-    const pastFrom = pastDate.toISOString().split("T")[0];
-
-    const [upcomingAll, pastAll] = await Promise.all([
-      finnhubEarnings(from, to).catch(() => ({ earningsCalendar: [] })),
-      fmpEarnings(pastFrom, from).catch(() => []),
+    const [earningsHistory, upcomingAll] = await Promise.all([
+      getEarnings(symbol).catch((e: any) => {
+        console.error(`[Earnings API] history ${symbol}:`, e.message);
+        return [];
+      }),
+      getEarningsCalendar(from, to).catch((e: any) => {
+        console.error(`[Earnings API] calendar ${symbol}:`, e.message);
+        return [];
+      }),
     ]);
 
-    const upcoming = (upcomingAll?.earningsCalendar || [])
-      .filter((e: any) => e.symbol === symbol)
-      .slice(0, 4);
-
-    const past = (pastAll || [])
-      .filter((e: any) => e.symbol === symbol)
+    const past = (earningsHistory || [])
       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, 8);
+      .slice(0, 12)
+      .map((e: any) => ({
+        date: e.date,
+        eps: e.eps ?? e.actualEarningResult ?? null,
+        epsEstimated: e.epsEstimated ?? e.estimatedEarning ?? null,
+        revenue: e.revenue ?? null,
+        revenueEstimated: e.revenueEstimated ?? null,
+        fiscalDateEnding: e.fiscalDateEnding ?? null,
+        time: e.time ?? null,
+      }));
+
+    const upcoming = (upcomingAll || [])
+      .filter((e: any) => e.symbol === symbol)
+      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .slice(0, 4)
+      .map((e: any) => ({
+        date: e.date,
+        epsEstimated: e.epsEstimated ?? e.estimate ?? null,
+        revenueEstimated: e.revenueEstimated ?? null,
+        time: e.time ?? null,
+        fiscalDateEnding: e.fiscalDateEnding ?? null,
+      }));
 
     const nextEarnings = upcoming.length > 0 ? upcoming[0] : null;
 
     return NextResponse.json({ nextEarnings, upcoming, past });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error(`[Earnings API] ${symbol}:`, e.message);
+    return NextResponse.json({ nextEarnings: null, upcoming: [], past: [], error: e.message }, { status: 200 });
   }
 }
