@@ -48,19 +48,44 @@ export default function MarginChart({ ticker }: MarginChartProps) {
     return <div className="h-80 flex items-center justify-center bg-gray-900/50 rounded-2xl text-gray-600">No margin data available</div>;
   }
 
+  const latest = data[data.length - 1];
+
   return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-white">Margin Trends</h3>
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold text-white">Margin Trends</h3>
+          {latest && (
+            <div className="flex gap-4 mt-1 text-xs">
+              <span>Gross <span className="text-indigo-400 font-semibold">{latest.gross ?? "N/A"}%</span></span>
+              <span>Operating <span className="text-emerald-400 font-semibold">{latest.operating ?? "N/A"}%</span></span>
+              <span>Net <span className="text-amber-400 font-semibold">{latest.net ?? "N/A"}%</span></span>
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="h-80 bg-gray-900/30 rounded-xl p-2">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-            <XAxis dataKey="year" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#1f2937" }} tickLine={false} />
-            <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+            <XAxis
+              dataKey="year"
+              tick={{ fill: "#9ca3af", fontSize: 12, fontWeight: 500 }}
+              axisLine={{ stroke: "#1f2937" }}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: "#9ca3af", fontSize: 11 }}
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => `${v}%`}
+              width={50}
+            />
             <Tooltip
               contentStyle={{ background: "#111827", border: "1px solid #374151", borderRadius: "12px", fontSize: "13px" }}
-              labelStyle={{ color: "#9ca3af" }}
-              formatter={(value, name) => {
+              labelStyle={{ color: "#9ca3af", fontWeight: 600 }}
+              formatter={(value: any, name: any) => {
                 const labels: Record<string, string> = { gross: "Gross Margin", operating: "Operating Margin", net: "Net Margin" };
                 return [`${value}%`, labels[String(name)] || String(name)];
               }}
@@ -72,9 +97,9 @@ export default function MarginChart({ ticker }: MarginChartProps) {
               }}
               wrapperStyle={{ fontSize: "12px", color: "#9ca3af" }}
             />
-            <Line type="monotone" dataKey="gross" stroke="#6366f1" strokeWidth={2} dot={{ r: 3, fill: "#6366f1" }} />
-            <Line type="monotone" dataKey="operating" stroke="#22c55e" strokeWidth={2} dot={{ r: 3, fill: "#22c55e" }} />
-            <Line type="monotone" dataKey="net" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3, fill: "#f59e0b" }} />
+            <Line type="monotone" dataKey="gross" stroke="#6366f1" strokeWidth={2.5} dot={{ r: 4, fill: "#6366f1", stroke: "#111827", strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="operating" stroke="#22c55e" strokeWidth={2.5} dot={{ r: 4, fill: "#22c55e", stroke: "#111827", strokeWidth: 2 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="net" stroke="#f59e0b" strokeWidth={2.5} dot={{ r: 4, fill: "#f59e0b", stroke: "#111827", strokeWidth: 2 }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
