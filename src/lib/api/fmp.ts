@@ -12,7 +12,21 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
-  const res = await fetch(url.toString(), { cache: "no-store" });
+
+  const res = await fetch(url.toString(), { next: { revalidate: 120 } });
+
+  if (res.status === 429) {
+    console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 1s`);
+    await new Promise((r) => setTimeout(r, 1000));
+    const retry = await fetch(url.toString(), { cache: "no-store" });
+    if (!retry.ok) throw new Error(`FMP API error: ${retry.status}`);
+    const retryJson = await retry.json();
+    if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {
+      throw new Error(retryJson["Error Message"]);
+    }
+    return retryJson;
+  }
+
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);

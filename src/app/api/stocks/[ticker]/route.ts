@@ -13,9 +13,10 @@ export async function GET(
       return NextResponse.json({ error: "FMP_API_KEY is not configured. Add it to .env and restart." }, { status: 500 });
     }
 
-    const [quote, profile, income, balance, cashflow, metrics, ratios] = await Promise.all([
-      getQuote(symbol).catch((e: any) => { console.error(`[Stock API] quote ${symbol}:`, e.message); return null; }),
-      getProfile(symbol).catch((e: any) => { console.error(`[Stock API] profile ${symbol}:`, e.message); return null; }),
+    const quote = await getQuote(symbol).catch((e: any) => { console.error(`[Stock API] quote ${symbol}:`, e.message); return null; });
+    const profile = await getProfile(symbol).catch((e: any) => { console.error(`[Stock API] profile ${symbol}:`, e.message); return null; });
+
+    const [income, balance, cashflow, metrics, ratios] = await Promise.all([
       getIncomeStatement(symbol, "annual", 5).catch(() => []),
       getBalanceSheet(symbol, "annual", 5).catch(() => []),
       getCashFlow(symbol, "annual", 5).catch(() => []),
