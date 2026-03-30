@@ -86,9 +86,9 @@ export default function SearchPage() {
               onClick={() => goToStock(r.symbol)}
               className="flex items-center justify-between cursor-pointer"
             >
-              <div className="flex items-center gap-3">
-                <span className="text-white font-bold text-sm bg-gray-800 px-2.5 py-1 rounded-lg">{r.symbol}</span>
-                <span className="text-gray-400 text-sm truncate max-w-[300px]">{r.name}</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <span className="text-white font-bold text-sm bg-gray-800 px-2.5 py-1 rounded-lg shrink-0">{r.symbol}</span>
+                <span className="text-gray-400 text-sm truncate">{r.name}</span>
               </div>
               <span className="text-xs text-gray-600 shrink-0">{r.exchangeShortName}</span>
             </Card>

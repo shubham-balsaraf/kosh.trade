@@ -51,9 +51,9 @@ function VerdictBadge({ signal }: { signal: string }) {
   };
   const c = config[signal] || config.MODERATE;
   return (
-    <div className={`${c.bg} border ${c.border} rounded-2xl px-6 py-4 text-center`}>
-      <span className="text-3xl">{c.icon}</span>
-      <span className={`text-2xl font-black ml-3 ${c.text}`}>{signal}</span>
+    <div className={`${c.bg} border ${c.border} rounded-2xl px-4 sm:px-6 py-4 text-center`}>
+      <span className="text-2xl sm:text-3xl">{c.icon}</span>
+      <span className={`text-xl sm:text-2xl font-black ml-2 sm:ml-3 ${c.text}`}>{signal}</span>
     </div>
   );
 }
@@ -185,21 +185,23 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {tabs.map(({ key, label }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-              tab === key
-                ? `${tabAccent[verdictSignal] || "bg-indigo-600"} text-white`
-                : "text-gray-500 hover:text-white hover:bg-gray-800"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
+      <div className="space-y-2">
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {tabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`px-3.5 py-2 sm:py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all min-h-[36px] ${
+                tab === key
+                  ? `${tabAccent[verdictSignal] || "bg-indigo-600"} text-white`
+                  : "text-gray-500 hover:text-white hover:bg-gray-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 justify-end">
           {fromCache && (
             <span className="text-[10px] text-gray-600 italic">cached</span>
           )}
@@ -292,12 +294,10 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
 
       {tab === "valuation" && a.valuation && (
         <Card>
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h4 className="text-sm font-semibold text-gray-400">
-                Sector: {a.overview?.sector} — Primary: {a.valuation.primaryMetric}
-              </h4>
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <h4 className="text-sm font-semibold text-gray-400">
+              Sector: {a.overview?.sector} — Primary: {a.valuation.primaryMetric}
+            </h4>
             <SignalBadge signal={a.valuation.overall || "MIXED"} />
           </div>
           <div className="overflow-x-auto">

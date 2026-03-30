@@ -116,7 +116,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
     return (
       <div className="space-y-4">
         <div className="skeleton h-20 w-full" />
-        <div className="skeleton h-10 w-80" />
+        <div className="skeleton h-10 w-full max-w-xs" />
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[1,2,3,4].map(i => <div key={i} className="skeleton h-24" />)}
         </div>
@@ -170,10 +170,10 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       )}
 
       {/* Header */}
-      <div className={`flex flex-wrap items-start justify-between gap-4 relative z-10 rounded-2xl p-4 -mx-4 transition-all duration-700 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className={`text-3xl font-black transition-colors duration-700 ${verdict ? t.accent : "text-white"}`}>
+      <div className={`flex flex-col sm:flex-row sm:flex-wrap sm:items-start justify-between gap-3 sm:gap-4 relative z-10 rounded-2xl p-4 -mx-4 transition-all duration-700 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <h1 className={`text-2xl sm:text-3xl font-black transition-colors duration-700 ${verdict ? t.accent : "text-white"}`}>
               {ticker.toUpperCase()}
             </h1>
             <Badge variant="blue">{p.exchangeShortName || q.exchange || "NASDAQ"}</Badge>
@@ -184,10 +184,10 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               </span>
             )}
           </div>
-          <p className="text-gray-500 text-sm mt-1">{p.companyName || q.name || ticker}</p>
+          <p className="text-gray-500 text-sm mt-1 truncate">{p.companyName || q.name || ticker}</p>
         </div>
-        <div className="text-right">
-          <div className="text-3xl font-bold text-white">{formatCurrency(q.price || 0)}</div>
+        <div className="flex items-baseline sm:items-end gap-3 sm:flex-col sm:text-right">
+          <div className="text-2xl sm:text-3xl font-bold text-white">{formatCurrency(q.price || 0)}</div>
           <div className={`text-sm font-semibold ${priceChangePositive ? "text-emerald-400" : "text-red-400"}`}>
             {priceChangePositive ? "+" : ""}{formatCurrency(q.change || 0)} ({formatPercent(q.changePercentage ?? q.changesPercentage ?? 0)})
           </div>
@@ -195,7 +195,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       </div>
 
       {/* Key metrics strip */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
         {[
           { label: "Market Cap", value: formatCurrency(q.marketCap || 0, true) },
           { label: "52W High", value: formatCurrency(q.yearHigh || 0) },
@@ -216,7 +216,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+            className={`px-3 sm:px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 sm:gap-2 min-h-[40px] ${
               activeTab === key
                 ? `${t.tabActive} text-white shadow-md`
                 : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
@@ -557,7 +557,7 @@ function EarningsTab({ ticker }: { ticker: string }) {
     <div className="space-y-4">
       {next && (
         <Card glow className="border-orange-500/20">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-orange-400">Next Earnings Report</h3>
               <p className="text-2xl font-bold text-white mt-1">{next.date}</p>
@@ -567,7 +567,7 @@ function EarningsTab({ ticker }: { ticker: string }) {
                 </Badge>
               )}
             </div>
-            <div className="text-right space-y-1">
+            <div className="sm:text-right flex sm:flex-col gap-3 sm:gap-1">
               {next.epsEstimated != null && (
                 <div className="text-sm text-gray-400">
                   EPS Est: <span className="text-white font-semibold">${Number(next.epsEstimated).toFixed(2)}</span>
@@ -606,7 +606,7 @@ function EarningsTab({ ticker }: { ticker: string }) {
             ))}
           </div>
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card className="!p-3 text-center">
               <div className="text-[11px] text-gray-500 uppercase">Beat</div>
               <div className="text-lg font-bold text-emerald-400">{beatCount}</div>

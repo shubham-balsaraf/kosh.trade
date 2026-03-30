@@ -71,7 +71,7 @@ export default function Navbar() {
           )}
         </Link>
 
-        <div ref={searchRef} className="flex-1 max-w-md relative">
+        <div ref={searchRef} className="flex-1 max-w-md relative hidden sm:block">
           <form onSubmit={handleSearch}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 z-10" size={16} />
             <input
@@ -80,7 +80,7 @@ export default function Navbar() {
               value={query}
               onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
               onFocus={() => setShowSuggestions(true)}
-              className={`w-full bg-gray-900 border rounded-xl pl-10 pr-4 py-2 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-1 ${isPro ? "border-amber-900/20 focus:ring-amber-500/50 focus:border-amber-500/50" : "border-gray-800 focus:ring-indigo-500 focus:border-indigo-500"}`}
+              className={`w-full bg-gray-900 border rounded-xl pl-10 pr-4 py-2 text-base sm:text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-1 ${isPro ? "border-amber-900/20 focus:ring-amber-500/50 focus:border-amber-500/50" : "border-gray-800 focus:ring-indigo-500 focus:border-indigo-500"}`}
             />
           </form>
           {showSuggestions && suggestions.length > 0 && (

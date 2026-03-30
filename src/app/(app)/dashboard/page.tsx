@@ -95,14 +95,14 @@ export default async function DashboardPage() {
       ) : (
         <Link href="/pricing">
           <Card hover className="relative overflow-hidden !bg-gradient-to-r from-amber-950/30 via-gray-900 to-amber-950/30 !border-amber-500/15">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-amber-500/10">
-                  <Crown size={24} className="text-amber-400" />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+                <div className="p-2.5 sm:p-3 rounded-xl bg-amber-500/10 shrink-0">
+                  <Crown size={20} className="text-amber-400 sm:w-6 sm:h-6" />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-bold text-white">Unlock Pro Features</h3>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-xs text-gray-400 mt-0.5 truncate sm:whitespace-normal">
                     Options flow, live trading, unlimited AI, and more for $10/mo
                   </p>
                 </div>
@@ -147,7 +147,7 @@ export default async function DashboardPage() {
                           {item.ticker}
                         </span>
                         {item.companyName && (
-                          <p className="text-xs text-gray-500 truncate max-w-[180px]">
+                          <p className="text-xs text-gray-500 truncate">
                             {item.companyName}
                           </p>
                         )}
