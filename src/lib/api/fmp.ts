@@ -1,4 +1,4 @@
-const FMP_BASE = "https://financialmodelingprep.com/api/v3";
+const FMP_BASE = "https://financialmodelingprep.com/stable";
 
 function apiKey(): string {
   return process.env.FMP_API_KEY || "";
@@ -16,44 +16,44 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
 }
 
 export async function getQuote(ticker: string) {
-  const data = await fmpFetch<any[]>(`/quote/${ticker.toUpperCase()}`);
+  const data = await fmpFetch<any[]>("/quote", { symbol: ticker.toUpperCase() });
   return data?.[0] || null;
 }
 
 export async function getProfile(ticker: string) {
-  const data = await fmpFetch<any[]>(`/profile/${ticker.toUpperCase()}`);
+  const data = await fmpFetch<any[]>("/profile", { symbol: ticker.toUpperCase() });
   return data?.[0] || null;
 }
 
 export async function getIncomeStatement(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
-  return fmpFetch<any[]>(`/income-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) });
+  return fmpFetch<any[]>("/income-statement", { symbol: ticker.toUpperCase(), period, limit: String(limit) });
 }
 
 export async function getBalanceSheet(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
-  return fmpFetch<any[]>(`/balance-sheet-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) });
+  return fmpFetch<any[]>("/balance-sheet-statement", { symbol: ticker.toUpperCase(), period, limit: String(limit) });
 }
 
 export async function getCashFlow(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
-  return fmpFetch<any[]>(`/cash-flow-statement/${ticker.toUpperCase()}`, { period, limit: String(limit) });
+  return fmpFetch<any[]>("/cash-flow-statement", { symbol: ticker.toUpperCase(), period, limit: String(limit) });
 }
 
 export async function getKeyMetrics(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
-  return fmpFetch<any[]>(`/key-metrics/${ticker.toUpperCase()}`, { period, limit: String(limit) });
+  return fmpFetch<any[]>("/key-metrics", { symbol: ticker.toUpperCase(), period, limit: String(limit) });
 }
 
 export async function getRatios(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
-  return fmpFetch<any[]>(`/ratios/${ticker.toUpperCase()}`, { period, limit: String(limit) });
+  return fmpFetch<any[]>("/ratios", { symbol: ticker.toUpperCase(), period, limit: String(limit) });
 }
 
 export async function getHistoricalPrice(ticker: string, from?: string, to?: string) {
-  const params: Record<string, string> = {};
+  const params: Record<string, string> = { symbol: ticker.toUpperCase() };
   if (from) params.from = from;
   if (to) params.to = to;
-  return fmpFetch<any>(`/historical-price-full/${ticker.toUpperCase()}`, params);
+  return fmpFetch<any>("/historical-price-eod/full", params);
 }
 
 export async function searchTicker(query: string) {
-  return fmpFetch<any[]>("/search", { query, limit: "10", exchange: "NASDAQ,NYSE" });
+  return fmpFetch<any[]>("/search-name", { query, limit: "10" });
 }
 
 export async function getStockScreener(params: Record<string, string>) {
@@ -64,9 +64,9 @@ export async function getEarningsCalendar(from?: string, to?: string) {
   const params: Record<string, string> = {};
   if (from) params.from = from;
   if (to) params.to = to;
-  return fmpFetch<any[]>("/earning_calendar", params);
+  return fmpFetch<any[]>("/earning-calendar", params);
 }
 
 export async function getInsiderTrading(ticker: string, limit = 20) {
-  return fmpFetch<any[]>(`/insider-trading`, { symbol: ticker.toUpperCase(), limit: String(limit) });
+  return fmpFetch<any[]>("/insider-trading", { symbol: ticker.toUpperCase(), limit: String(limit) });
 }
