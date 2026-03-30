@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TrendingUp, Shield, Zap, BarChart3, Brain, Bell } from "lucide-react";
+import Logo from "@/components/ui/Logo";
 
 export default function LandingPage() {
   return (
@@ -8,9 +9,9 @@ export default function LandingPage() {
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent" />
         <div className="max-w-5xl mx-auto px-4 pt-20 pb-16 text-center relative">
-          <h1 className="text-5xl md:text-7xl font-black text-white tracking-tight">
-            Kosh
-          </h1>
+          <div className="flex justify-center mb-4">
+            <Logo size="xl" showDomain />
+          </div>
           <p className="text-xl md:text-2xl text-gray-400 mt-4 max-w-2xl mx-auto">
             AI-powered fundamental analysis for long-term US stock investors
           </p>
@@ -53,7 +54,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-900 py-8 text-center text-xs text-gray-600">
-        <p>Kosh is for fundamental screening and financial education only. Not investment advice.</p>
+        <p>kosh.trade is for fundamental screening and financial education only. Not investment advice.</p>
         <p className="mt-1">Verify all data independently. Past performance does not guarantee future results.</p>
       </footer>
     </div>

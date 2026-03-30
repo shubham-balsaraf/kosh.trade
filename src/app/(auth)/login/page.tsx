@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
+import Logo from "@/components/ui/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,9 +39,9 @@ export default function LoginPage() {
   return (
     <div className="w-full max-w-sm">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-black text-white">
-          Kosh
-        </h1>
+        <div className="flex justify-center mb-2">
+          <Logo size="lg" showDomain />
+        </div>
         <p className="text-gray-500 text-sm mt-2">Sign in to your account</p>
       </div>
 

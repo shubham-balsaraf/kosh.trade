@@ -6,6 +6,7 @@ import { Search, Bell, User, LogOut, Shield, Crown } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Badge from "@/components/ui/Badge";
+import Logo from "@/components/ui/Logo";
 
 export default function Navbar() {
   const { data: session } = useSession();
@@ -29,9 +30,7 @@ export default function Navbar() {
     <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b ${isPro ? "bg-black/85 border-amber-900/30" : "bg-black/80 border-gray-800"}`}>
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
         <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
-          <span className={`text-xl font-black tracking-tight ${isPro ? "bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400 bg-clip-text text-transparent" : "text-white"}`}>
-            Kosh
-          </span>
+          <Logo size="md" showDomain isPro={isPro} />
           {isPro && (
             <Badge variant={isAdmin ? "indigo" : "gold"}>
               {isAdmin ? <><Shield size={10} className="mr-1" />Admin</> : <><Crown size={10} className="mr-1" />Pro</>}

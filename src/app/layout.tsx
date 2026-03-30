@@ -6,7 +6,7 @@ import Providers from "@/components/Providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Kosh — US Stock Fundamental Analyser",
+  title: "kosh.trade — US Stock Fundamental Analyser",
   description: "AI-powered fundamental analysis, portfolio tracking, signals, and auto-investing for long-term US stock investors.",
 };
 
