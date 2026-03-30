@@ -1,65 +1,61 @@
-import Image from "next/image";
+import Link from "next/link";
+import { TrendingUp, Shield, Zap, BarChart3, Brain, Bell } from "lucide-react";
 
-export default function Home() {
+export default function LandingPage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-black">
+      {/* Hero */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/10 via-transparent to-transparent" />
+        <div className="max-w-5xl mx-auto px-4 pt-20 pb-16 text-center relative">
+          <h1 className="text-5xl md:text-7xl font-black text-white tracking-tight">
+            Kosh
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-xl md:text-2xl text-gray-400 mt-4 max-w-2xl mx-auto">
+            AI-powered fundamental analysis for long-term US stock investors
           </p>
+          <div className="flex justify-center gap-4 mt-8">
+            <Link
+              href="/register"
+              className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/25 transition-all"
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/login"
+              className="px-8 py-3 bg-gray-800 hover:bg-gray-700 text-gray-200 font-semibold rounded-xl border border-gray-700 transition-all"
+            >
+              Sign In
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      </div>
+
+      {/* Features */}
+      <div className="max-w-5xl mx-auto px-4 py-16 grid md:grid-cols-3 gap-6">
+        {[
+          { icon: TrendingUp, title: "Fundamental Analysis", desc: "Deep-dive reports with valuation, growth, health, and peer comparison — like having a Wall Street analyst on demand." },
+          { icon: Brain, title: "AI Portfolio Summary", desc: "Get Claude-powered analysis of your entire portfolio — concentration risks, sector tilts, and rebalancing suggestions." },
+          { icon: BarChart3, title: "FCF & SBC Charts", desc: "Interactive free cash flow per share charts with quarterly/annual views. See FCF vs stock-based compensation side by side." },
+          { icon: Bell, title: "Signal Alerts", desc: "Track insider transactions, analyst estimates, dark pool flow, and congressional trades. Get alerts when signals align." },
+          { icon: Zap, title: "Auto-Invest", desc: "Connect your Alpaca account and let signal-based strategies invest for you — paper or live trading." },
+          { icon: Shield, title: "Dip Finder", desc: "Discover fundamentally strong stocks trading near 52-week lows. Filter by FCF, ROE, debt ratios, and more." },
+        ].map(({ icon: Icon, title, desc }) => (
+          <div key={title} className="bg-gray-900/50 border border-gray-800 rounded-2xl p-6 hover:border-gray-700 transition-colors">
+            <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center mb-4">
+              <Icon size={20} className="text-indigo-400" />
+            </div>
+            <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+            <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Footer */}
+      <footer className="border-t border-gray-900 py-8 text-center text-xs text-gray-600">
+        <p>Kosh is for fundamental screening and financial education only. Not investment advice.</p>
+        <p className="mt-1">Verify all data independently. Past performance does not guarantee future results.</p>
+      </footer>
     </div>
   );
 }

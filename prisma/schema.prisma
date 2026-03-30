@@ -1,0 +1,168 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Tier {
+  FREE
+  PRO
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum TradeSide {
+  BUY
+  SELL
+}
+
+enum TradeStatus {
+  PENDING
+  FILLED
+  CANCELLED
+  FAILED
+}
+
+enum TradeMode {
+  PAPER
+  LIVE
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  passwordHash    String?
+  name            String?
+  image           String?
+  tier            Tier      @default(FREE)
+  role            Role      @default(USER)
+  stripeCustomerId String?
+  alpacaApiKey    String?
+  alpacaSecretKey String?
+  alpacaPaper     Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  searchHistory   SearchHistory[]
+  portfolios      Portfolio[]
+  alerts          Alert[]
+  watchlistItems  WatchlistItem[]
+  accounts        Account[]
+  sessions        Session[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SearchHistory {
+  id           String   @id @default(cuid())
+  userId       String
+  ticker       String
+  companyName  String?
+  sector       String?
+  verdict      String?
+  analysisJson String?
+  createdAt    DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model Portfolio {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  cash      Float    @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  holdings PortfolioHolding[]
+  trades   Trade[]
+}
+
+model PortfolioHolding {
+  id           String   @id @default(cuid())
+  portfolioId  String
+  ticker       String
+  shares       Float
+  avgCostBasis Float
+  addedAt      DateTime @default(now())
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+
+  @@unique([portfolioId, ticker])
+}
+
+model Trade {
+  id            String      @id @default(cuid())
+  portfolioId   String
+  ticker        String
+  side          TradeSide
+  qty           Float
+  price         Float?
+  alpacaOrderId String?
+  status        TradeStatus @default(PENDING)
+  mode          TradeMode   @default(PAPER)
+  signalSource  String?
+  executedAt    DateTime?
+  createdAt     DateTime    @default(now())
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+}
+
+model Alert {
+  id            String   @id @default(cuid())
+  userId        String
+  ticker        String?
+  signalType    String
+  condition     String
+  threshold     Float?
+  isActive      Boolean  @default(true)
+  lastTriggered DateTime?
+  createdAt     DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WatchlistItem {
+  id      String   @id @default(cuid())
+  userId  String
+  ticker  String
+  addedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, ticker])
+}
