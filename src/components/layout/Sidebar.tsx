@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap } from "lucide-react";
+import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap, HelpCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ProBadge from "@/components/ui/ProBadge";
 
@@ -15,6 +15,7 @@ const navItems = [
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder", proOnly: true },
   { href: "/alerts", icon: Bell, label: "Alerts", proOnly: false },
   { href: "/settings", icon: Settings, label: "Settings", proOnly: false },
+  { href: "/support", icon: HelpCircle, label: "Support", proOnly: false },
 ];
 
 export default function Sidebar() {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
-import { Home, Search, Briefcase, BarChart3, MoreHorizontal, TrendingDown, Bell, Settings, X } from "lucide-react";
+import { Home, Search, Briefcase, BarChart3, MoreHorizontal, TrendingDown, Bell, Settings, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
@@ -18,6 +18,7 @@ const moreItems = [
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/settings", icon: Settings, label: "Settings" },
+  { href: "/support", icon: HelpCircle, label: "Support" },
 ];
 
 export default function BottomNav() {
