@@ -15,6 +15,7 @@ import AIAnalysis from "@/components/stock/AIAnalysis";
 import AnalysisHistory from "@/components/stock/AnalysisHistory";
 import Link from "next/link";
 import { Crown, Lock } from "lucide-react";
+import StockLogo from "@/components/ui/StockLogo";
 
 type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
 
@@ -225,6 +226,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       <div className={`flex flex-col sm:flex-row sm:flex-wrap sm:items-start justify-between gap-3 sm:gap-4 relative z-10 rounded-2xl p-4 -mx-4 transition-all duration-700 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
         <div className="min-w-0">
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <StockLogo ticker={ticker} size={mobile ? 36 : 44} />
             <h1 className={`text-2xl sm:text-3xl font-black transition-colors duration-700 ${verdict ? t.accent : "text-white"}`}>
               {ticker.toUpperCase()}
             </h1>

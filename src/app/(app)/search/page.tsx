@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, TrendingUp } from "lucide-react";
 import Input from "@/components/ui/Input";
 import Card from "@/components/ui/Card";
+import StockLogo from "@/components/ui/StockLogo";
 
 const popularTickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "V", "UNH"];
 
@@ -87,7 +88,8 @@ export default function SearchPage() {
               className="flex items-center justify-between cursor-pointer"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <span className="text-white font-bold text-sm bg-gray-800 px-2.5 py-1 rounded-lg shrink-0">{r.symbol}</span>
+                <StockLogo ticker={r.symbol} size={28} className="rounded-md" />
+                <span className="text-white font-bold text-sm shrink-0">{r.symbol}</span>
                 <span className="text-gray-400 text-sm truncate">{r.name}</span>
               </div>
               <span className="text-xs text-gray-600 shrink-0">{r.exchangeShortName}</span>
@@ -114,8 +116,9 @@ export default function SearchPage() {
               <button
                 key={t}
                 onClick={() => goToStock(t)}
-                className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-xl text-sm font-medium text-gray-300 hover:bg-gray-800 hover:border-gray-700 hover:text-white transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 border border-gray-800 rounded-xl text-sm font-medium text-gray-300 hover:bg-gray-800 hover:border-gray-700 hover:text-white transition-all"
               >
+                <StockLogo ticker={t} size={20} className="rounded-md" />
                 {t}
               </button>
             ))}

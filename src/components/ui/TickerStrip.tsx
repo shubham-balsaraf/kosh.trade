@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import StockLogo from "@/components/ui/StockLogo";
 
 interface Ticker {
   symbol: string;
@@ -23,6 +24,7 @@ const FALLBACK: Ticker[] = [
 function TickerItem({ symbol, price, change, up }: Ticker) {
   return (
     <span className="inline-flex items-center gap-2 px-4 whitespace-nowrap">
+      <StockLogo ticker={symbol} size={20} className="rounded-md" />
       <span className="text-gray-400 font-semibold text-xs">{symbol}</span>
       <span className="text-gray-300 text-xs">${price}</span>
       <span className={`text-xs font-medium ${up ? "text-emerald-400" : "text-red-400"}`}>

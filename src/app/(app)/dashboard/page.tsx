@@ -6,6 +6,7 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { Search, TrendingUp, Briefcase, BarChart3, Crown, Zap, Activity, Brain, ArrowRight } from "lucide-react";
 import FearGreedGauge from "@/components/market/FearGreedGauge";
+import StockLogo from "@/components/ui/StockLogo";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -185,15 +186,18 @@ export default async function DashboardPage() {
                 <Link key={item.id} href={`/stock/${item.ticker}`}>
                   <Card hover className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-lg font-bold text-white">
-                          {item.ticker}
-                        </span>
-                        {item.companyName && (
-                          <p className="text-xs text-gray-500 truncate">
-                            {item.companyName}
-                          </p>
-                        )}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <StockLogo ticker={item.ticker} size={36} />
+                        <div className="min-w-0">
+                          <span className="text-lg font-bold text-white">
+                            {item.ticker}
+                          </span>
+                          {item.companyName && (
+                            <p className="text-xs text-gray-500 truncate">
+                              {item.companyName}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       {item.verdict && (
                         <Badge variant={verdictColors[item.verdict] || "gray"}>

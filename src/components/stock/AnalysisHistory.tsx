@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { History, Crown, TrendingUp, ChevronRight, ChevronDown } from "lucide-react";
+import { History, Crown, ChevronRight, ChevronDown } from "lucide-react";
 import { useIsMobile } from "@/hooks/useMediaQuery";
+import StockLogo from "@/components/ui/StockLogo";
 
 interface HistoryItem {
   id: string;
@@ -143,7 +144,7 @@ export default function AnalysisHistory({ currentTicker }: { currentTicker: stri
                       : "text-gray-400 hover:text-white hover:bg-gray-800/50"
                   }`}
                 >
-                  <TrendingUp size={14} className={isActive ? "text-indigo-400" : "text-gray-600"} />
+                  <StockLogo ticker={item.ticker} size={24} className="rounded-md" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-semibold text-xs">{item.ticker}</span>
