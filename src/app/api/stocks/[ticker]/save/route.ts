@@ -23,18 +23,28 @@ export async function POST(
   const body = await req.json();
 
   try {
-    const existing = await prisma.searchHistory.findFirst({
+    const allExisting = await prisma.searchHistory.findMany({
       where: { userId, ticker: symbol },
+      orderBy: { createdAt: "desc" },
     });
 
-    if (existing) {
+    if (allExisting.length > 0) {
+      const keep = allExisting[0];
+      if (allExisting.length > 1) {
+        await prisma.searchHistory.deleteMany({
+          where: {
+            id: { in: allExisting.slice(1).map((e) => e.id) },
+          },
+        });
+      }
+
       const updated = await prisma.searchHistory.update({
-        where: { id: existing.id },
+        where: { id: keep.id },
         data: {
-          companyName: body.companyName || existing.companyName,
-          sector: body.sector || existing.sector,
-          verdict: body.verdict || existing.verdict,
-          analysisJson: body.analysisJson ? JSON.stringify(body.analysisJson) : existing.analysisJson,
+          companyName: body.companyName || keep.companyName,
+          sector: body.sector || keep.sector,
+          verdict: body.verdict || keep.verdict,
+          analysisJson: body.analysisJson ? JSON.stringify(body.analysisJson) : keep.analysisJson,
           createdAt: new Date(),
         },
       });

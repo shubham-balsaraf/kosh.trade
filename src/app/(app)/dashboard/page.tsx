@@ -16,6 +16,7 @@ export default async function DashboardPage() {
     ? await prisma.searchHistory.findMany({
         where: { userId },
         orderBy: { createdAt: "desc" },
+        distinct: ["ticker"],
         take: 20,
       })
     : [];
