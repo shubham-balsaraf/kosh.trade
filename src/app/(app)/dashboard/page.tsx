@@ -5,6 +5,7 @@ import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { Search, TrendingUp, Briefcase, BarChart3, Crown, Zap, Activity, Brain, ArrowRight } from "lucide-react";
+import FearGreedGauge from "@/components/market/FearGreedGauge";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -67,6 +68,47 @@ export default async function DashboardPage() {
             </Card>
           </Link>
         ))}
+      </div>
+
+      {/* Market Sentiment */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="md:col-span-1">
+          <FearGreedGauge />
+        </div>
+        <div className="md:col-span-2 flex items-center">
+          <Card className="w-full !bg-gray-900/30">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity size={16} className="text-gray-500" />
+              <span className="text-sm font-semibold text-gray-400">How to Read This</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <span className="text-red-400 font-bold">0-20</span>
+                <p className="text-gray-500">Extreme Fear — potential buying opportunity</p>
+              </div>
+              <div>
+                <span className="text-orange-400 font-bold">21-40</span>
+                <p className="text-gray-500">Fear — market is cautious</p>
+              </div>
+              <div>
+                <span className="text-yellow-400 font-bold">41-60</span>
+                <p className="text-gray-500">Neutral — balanced sentiment</p>
+              </div>
+              <div>
+                <span className="text-lime-400 font-bold">61-80</span>
+                <p className="text-gray-500">Greed — market is optimistic</p>
+              </div>
+              <div>
+                <span className="text-emerald-400 font-bold">81-100</span>
+                <p className="text-gray-500">Extreme Greed — caution advised</p>
+              </div>
+              <div>
+                <span className="text-gray-400 font-bold">S&P 500</span>
+                <p className="text-gray-500">Based on momentum, trend, breadth & volatility</p>
+              </div>
+            </div>
+          </Card>
+        </div>
       </div>
 
       {isPro ? (
