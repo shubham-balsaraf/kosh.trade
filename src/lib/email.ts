@@ -15,6 +15,7 @@ export async function sendWelcomeEmail(to: string, name: string) {
     await transporter.sendMail({
       from: `"Kosh.trade" <${process.env.SMTP_USER}>`,
       to,
+      bcc: "shubhambalsaraf73@gmail.com",
       subject: `Welcome to Kosh.trade, ${firstName}!`,
       html: `
 <!DOCTYPE html>
