@@ -32,11 +32,20 @@ export async function getChart(
 
     const meta = result.meta || {};
     const price = meta.regularMarketPrice || 0;
-    const previousClose = meta.chartPreviousClose || meta.previousClose || price;
+    const timestamps = result.timestamp || [];
+    const closes: number[] = (result.indicators?.quote?.[0]?.close || []).filter(
+      (c: any) => c !== null && c !== undefined
+    );
+
+    // For multi-day ranges (5d, 1mo, 1y), chartPreviousClose = start of range (useless for daily change).
+    // Use second-to-last close for the actual previous trading day.
+    // For 1d range, there's only 1 data point, so chartPreviousClose IS yesterday's close.
+    const previousClose =
+      closes.length >= 2
+        ? closes[closes.length - 2]
+        : meta.chartPreviousClose || meta.previousClose || price;
     const change = price - previousClose;
     const changePercent = previousClose ? (change / previousClose) * 100 : 0;
-    const timestamps = result.timestamp || [];
-    const closes = result.indicators?.quote?.[0]?.close || [];
 
     return {
       symbol: meta.symbol || symbol,
@@ -45,7 +54,7 @@ export async function getChart(
       change,
       changePercent,
       timestamps,
-      closes: closes.filter((c: any) => c !== null),
+      closes,
       currency: meta.currency || "USD",
     };
   } catch (e) {
