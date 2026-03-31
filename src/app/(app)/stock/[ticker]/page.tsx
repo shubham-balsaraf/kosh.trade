@@ -93,7 +93,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>("ai");
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [verdict, setVerdict] = useState<VerdictTheme>(null);
   const [newsData, setNewsData] = useState<any>(null);
   const [newsLoading, setNewsLoading] = useState(false);
@@ -223,8 +223,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
   const priceChangePositive = (q.changePercentage ?? q.changesPercentage ?? 0) >= 0;
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "ai", label: "AI Analysis" },
+  const tabs: { key: Tab; label: string; icon?: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "charts", label: "Charts" },
     { key: "valuation", label: "Valuation" },
@@ -233,6 +232,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
     { key: "returns", label: "Returns" },
     { key: "fcf", label: "FCF Data" },
     { key: "earnings", label: "Earnings" },
+    { key: "ai", label: "✦ AI Analysis", icon: "ai" },
   ];
 
   return (
@@ -292,17 +292,17 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
       {/* Tab bar */}
       <div className={`flex gap-1 overflow-x-auto pb-1 px-1 py-1 rounded-xl transition-all duration-500 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
-        {tabs.map(({ key, label }) => (
+        {tabs.map(({ key, label, icon }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
             className={`px-3 sm:px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 sm:gap-2 min-h-[40px] ${
               activeTab === key
-                ? `${t.tabActive} text-white shadow-md`
-                : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
+                ? icon === "ai" ? "bg-gradient-to-r from-amber-600 to-amber-500 text-black shadow-md shadow-amber-500/20" : `${t.tabActive} text-white shadow-md`
+                : icon === "ai" ? "text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/15" : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
             }`}
           >
-            {activeTab === key && <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />}
+            {activeTab === key && !icon && <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />}
             {label}
           </button>
         ))}
@@ -313,97 +313,6 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
       {activeTab === "overview" && (
         <div className="space-y-4">
-          {/* Catalysts & News */}
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Zap size={14} className={t.accent} />
-                <h3 className="text-sm font-semibold text-gray-400">Recent Catalysts</h3>
-              </div>
-              {newsData?.sentiment && (
-                <div className="flex items-center gap-2">
-                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${
-                    newsData.sentiment.overall === "bullish"
-                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                      : newsData.sentiment.overall === "bearish"
-                        ? "bg-red-500/10 text-red-400 border border-red-500/20"
-                        : "bg-white/[0.04] text-white/40 border border-white/[0.06]"
-                  }`}>
-                    {newsData.sentiment.overall === "bullish" ? <TrendingUp size={10} /> : newsData.sentiment.overall === "bearish" ? <TrendingDown size={10} /> : <Minus size={10} />}
-                    {newsData.sentiment.overall.charAt(0).toUpperCase() + newsData.sentiment.overall.slice(1)}
-                  </div>
-                  <span className="text-[10px] text-white/15">
-                    {newsData.sentiment.bullish}↑ {newsData.sentiment.bearish}↓ {newsData.sentiment.neutral}—
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {newsLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="animate-pulse flex gap-3">
-                    <div className="w-1 h-12 rounded-full bg-white/[0.04]" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-3 bg-white/[0.04] rounded w-3/4" />
-                      <div className="h-2 bg-white/[0.04] rounded w-1/2" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : newsData?.news?.length > 0 ? (
-              <div className="space-y-0.5">
-                {newsData.news.slice(0, 6).map((item: any, i: number) => {
-                  const sentColor = item.sentiment === "bullish" ? "bg-emerald-500" : item.sentiment === "bearish" ? "bg-red-500" : "bg-white/20";
-                  const timeAgo = getTimeAgo(item.publishedAt);
-                  return (
-                    <a
-                      key={i}
-                      href={item.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex gap-3 p-2.5 -mx-2.5 rounded-xl hover:bg-white/[0.03] transition-colors group"
-                    >
-                      <div className={`w-1 shrink-0 rounded-full ${sentColor} mt-1`} style={{ minHeight: "2rem" }} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/80 font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors">
-                          {item.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] text-white/25">{item.source}</span>
-                          <span className="text-[10px] text-white/10">·</span>
-                          <span className="text-[10px] text-white/25">{timeAgo}</span>
-                          <ExternalLink size={8} className="text-white/10 group-hover:text-white/30 transition-colors ml-auto" />
-                        </div>
-                      </div>
-                    </a>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-xs text-white/20 text-center py-4">No recent news found</p>
-            )}
-
-            {newsData?.sentiment && newsData.news?.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-white/[0.04]">
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 h-1.5 rounded-full bg-white/[0.04] overflow-hidden flex">
-                    {newsData.sentiment.bullish > 0 && (
-                      <div className="h-full bg-emerald-500/60 rounded-l-full" style={{ width: `${(newsData.sentiment.bullish / newsData.news.length) * 100}%` }} />
-                    )}
-                    {newsData.sentiment.neutral > 0 && (
-                      <div className="h-full bg-white/10" style={{ width: `${((newsData.news.length - newsData.sentiment.bullish - newsData.sentiment.bearish) / newsData.news.length) * 100}%` }} />
-                    )}
-                    {newsData.sentiment.bearish > 0 && (
-                      <div className="h-full bg-red-500/60 rounded-r-full" style={{ width: `${(newsData.sentiment.bearish / newsData.news.length) * 100}%` }} />
-                    )}
-                  </div>
-                  <span className="text-[10px] text-white/20 shrink-0">Sentiment</span>
-                </div>
-              </div>
-            )}
-          </Card>
-
           {p.description && (
             <Card>
               <h3 className="text-sm font-semibold text-gray-400 mb-2">About</h3>
@@ -446,6 +355,119 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               </div>
             </Card>
           </div>
+
+          {/* News & Sentiment */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Newspaper size={14} className={t.accent} />
+                <h3 className="text-sm font-semibold text-gray-400">News & Sentiment</h3>
+              </div>
+              {newsData?.sentiment && (
+                <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${
+                    newsData.sentiment.overall === "bullish"
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : newsData.sentiment.overall === "bearish"
+                        ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                        : "bg-white/[0.04] text-white/40 border border-white/[0.06]"
+                  }`}>
+                    {newsData.sentiment.overall === "bullish" ? <TrendingUp size={10} /> : newsData.sentiment.overall === "bearish" ? <TrendingDown size={10} /> : <Minus size={10} />}
+                    {newsData.sentiment.overall.charAt(0).toUpperCase() + newsData.sentiment.overall.slice(1)}
+                  </div>
+                  <span className="text-[10px] text-white/15">
+                    {newsData.sentiment.bullish}↑ {newsData.sentiment.bearish}↓ {newsData.sentiment.neutral}—
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Sentiment bar */}
+            {newsData?.sentiment && newsData.news?.length > 0 && (
+              <div className="mb-4">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-2 rounded-full bg-white/[0.04] overflow-hidden flex">
+                    {newsData.sentiment.bullish > 0 && (
+                      <div className="h-full bg-emerald-500/60 rounded-l-full transition-all" style={{ width: `${(newsData.sentiment.bullish / newsData.news.length) * 100}%` }} />
+                    )}
+                    {(newsData.news.length - newsData.sentiment.bullish - newsData.sentiment.bearish) > 0 && (
+                      <div className="h-full bg-white/10 transition-all" style={{ width: `${((newsData.news.length - newsData.sentiment.bullish - newsData.sentiment.bearish) / newsData.news.length) * 100}%` }} />
+                    )}
+                    {newsData.sentiment.bearish > 0 && (
+                      <div className="h-full bg-red-500/60 rounded-r-full transition-all" style={{ width: `${(newsData.sentiment.bearish / newsData.news.length) * 100}%` }} />
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-between mt-1.5 text-[10px]">
+                  <span className="text-emerald-400/40">Bullish ({newsData.sentiment.bullish})</span>
+                  <span className="text-red-400/40">Bearish ({newsData.sentiment.bearish})</span>
+                </div>
+              </div>
+            )}
+
+            {newsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="animate-pulse flex gap-3">
+                    <div className="w-16 h-16 rounded-xl bg-white/[0.04] shrink-0" />
+                    <div className="flex-1 space-y-2 py-1">
+                      <div className="h-3 bg-white/[0.04] rounded w-full" />
+                      <div className="h-3 bg-white/[0.04] rounded w-3/4" />
+                      <div className="h-2 bg-white/[0.04] rounded w-1/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : newsData?.news?.length > 0 ? (
+              <div className="space-y-1">
+                {newsData.news.slice(0, 6).map((item: any, i: number) => {
+                  const sentColor = item.sentiment === "bullish" ? "border-l-emerald-500" : item.sentiment === "bearish" ? "border-l-red-500" : "border-l-white/10";
+                  const timeAgo = getTimeAgo(item.publishedAt);
+                  return (
+                    <a
+                      key={i}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex gap-3 p-3 -mx-1 rounded-xl hover:bg-white/[0.03] transition-all group border-l-2 ${sentColor}`}
+                    >
+                      {item.image && (
+                        <div className="w-16 h-16 sm:w-20 sm:h-16 rounded-xl overflow-hidden shrink-0 bg-white/[0.03]">
+                          <img
+                            src={item.image}
+                            alt=""
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                          />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/80 font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1.5">
+                          <span className="text-[10px] text-white/30 font-medium">{item.source}</span>
+                          <span className="text-[10px] text-white/10">·</span>
+                          <span className="text-[10px] text-white/20">{timeAgo}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-md ml-auto ${
+                            item.sentiment === "bullish" ? "bg-emerald-500/10 text-emerald-400/60"
+                              : item.sentiment === "bearish" ? "bg-red-500/10 text-red-400/60"
+                                : "bg-white/[0.03] text-white/20"
+                          }`}>
+                            {item.sentiment === "bullish" ? "↑" : item.sentiment === "bearish" ? "↓" : "—"}
+                          </span>
+                          <ExternalLink size={8} className="text-white/10 group-hover:text-white/30 transition-colors" />
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-white/20 text-center py-6">No recent news found for {ticker.toUpperCase()}</p>
+            )}
+          </Card>
         </div>
       )}
 

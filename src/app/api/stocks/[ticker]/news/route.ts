@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStockNews } from "@/lib/api/fmp";
 
 interface NewsItem {
   title: string;
@@ -17,6 +16,7 @@ const BULLISH_KEYWORDS = [
   "gain", "gains", "raised", "raises", "boost", "boosts", "positive", "strong",
   "highest", "breakout", "buy", "partnership", "deal", "approval", "approved",
   "revenue growth", "earnings beat", "dividend", "buyback", "acquisition",
+  "all-time high", "momentum", "upside", "optimistic", "analyst",
 ];
 
 const BEARISH_KEYWORDS = [
@@ -25,6 +25,7 @@ const BEARISH_KEYWORDS = [
   "loss", "losses", "weak", "weakness", "slump", "crash", "plunge", "warning",
   "layoff", "layoffs", "lawsuit", "investigation", "recall", "risk", "concern",
   "worst", "lowest", "below", "negative", "disappointing", "revenue miss",
+  "tariff", "recession", "debt", "default", "bankruptcy",
 ];
 
 function classifySentiment(text: string): "bullish" | "bearish" | "neutral" {
@@ -45,7 +46,43 @@ function classifySentiment(text: string): "bullish" | "bearish" | "neutral" {
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+  return html
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .trim();
+}
+
+async function fetchYahooNews(ticker: string): Promise<NewsItem[]> {
+  try {
+    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=10&quotesCount=0&listsCount=0&enableFuzzyQuery=false&newsQueryId=tss_stock_news`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; KoshApp/1.0)" },
+      next: { revalidate: 600 },
+    });
+    if (!res.ok) return [];
+    const json = await res.json();
+    const news = json?.news || [];
+
+    return news.slice(0, 8).map((n: any) => ({
+      title: n.title || "",
+      url: n.link || n.url || "",
+      source: n.publisher || "Yahoo Finance",
+      publishedAt: n.providerPublishTime
+        ? new Date(n.providerPublishTime * 1000).toISOString()
+        : new Date().toISOString(),
+      snippet: "",
+      sentiment: classifySentiment(n.title || ""),
+      image: n.thumbnail?.resolutions?.[0]?.url || n.thumbnail?.url || undefined,
+    }));
+  } catch (e) {
+    console.error("[YahooNews] Error:", e);
+    return [];
+  }
 }
 
 async function fetchGoogleNews(ticker: string): Promise<NewsItem[]> {
@@ -55,9 +92,7 @@ async function fetchGoogleNews(ticker: string): Promise<NewsItem[]> {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; KoshApp/1.0)" },
       next: { revalidate: 600 },
     });
-
     if (!res.ok) return [];
-
     const xml = await res.text();
 
     const items: NewsItem[] = [];
@@ -72,6 +107,9 @@ async function fetchGoogleNews(ticker: string): Promise<NewsItem[]> {
       const source = stripHtml(block.match(/<source[^>]*>([\s\S]*?)<\/source>/)?.[1] || "Google News");
       const description = stripHtml(block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || "");
 
+      const imgMatch = block.match(/<media:content[^>]*url="([^"]+)"/);
+      const image = imgMatch?.[1] || undefined;
+
       if (!title) continue;
 
       items.push({
@@ -81,6 +119,7 @@ async function fetchGoogleNews(ticker: string): Promise<NewsItem[]> {
         publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
         snippet: description.substring(0, 200),
         sentiment: classifySentiment(title + " " + description),
+        image,
       });
     }
 
@@ -98,26 +137,17 @@ export async function GET(
   const { ticker } = await params;
   const symbol = ticker.toUpperCase();
 
-  const [fmpNews, googleNews] = await Promise.all([
-    getStockNews(symbol, 8).catch(() => []),
+  const [yahooNews, googleNews] = await Promise.all([
+    fetchYahooNews(symbol),
     fetchGoogleNews(symbol),
   ]);
-
-  const fmpItems: NewsItem[] = (fmpNews || []).map((n: any) => ({
-    title: n.title || "",
-    url: n.url || "",
-    source: n.site || n.source || "FMP",
-    publishedAt: n.publishedDate || n.date || new Date().toISOString(),
-    snippet: (n.text || "").substring(0, 200),
-    sentiment: classifySentiment((n.title || "") + " " + (n.text || "")),
-    image: n.image || undefined,
-  }));
 
   const seen = new Set<string>();
   const combined: NewsItem[] = [];
 
-  for (const item of [...fmpItems, ...googleNews]) {
-    const key = item.title.toLowerCase().substring(0, 60);
+  // Yahoo first (has images), then Google as fallback
+  for (const item of [...yahooNews, ...googleNews]) {
+    const key = item.title.toLowerCase().substring(0, 50);
     if (seen.has(key) || !item.title) continue;
     seen.add(key);
     combined.push(item);

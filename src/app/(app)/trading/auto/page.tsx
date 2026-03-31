@@ -377,58 +377,105 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
         ))}
       </div>
 
-      {/* Step 0: Hero */}
+      {/* Step 0: Apple-style Hero */}
       {step === 0 && (
-        <div className="space-y-8">
-          <div className="relative mesh-bg rounded-3xl p-8 sm:p-12 text-center overflow-hidden animate-scale-in">
-            <div className="orb orb-gold-1 top-[-100px] right-[-50px]" />
-            <div className="orb orb-gold-2 bottom-[-60px] left-[-40px]" />
+        <div className="-mx-4 sm:-mx-6 -mt-4 sm:-mt-6">
+          {/* Full-bleed hero */}
+          <div className="relative hero-gradient-bg overflow-hidden">
+            {/* Concentric rings */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="hero-ring hero-ring-1" />
+              <div className="hero-ring hero-ring-2" />
+              <div className="hero-ring hero-ring-3" />
+            </div>
 
-            <div className="relative z-10 space-y-5">
-              <div className="w-20 h-20 rounded-3xl glass-card-gold flex items-center justify-center mx-auto koshpilot-glow">
-                <Navigation size={32} className="text-amber-400" />
+            {/* Floating orbs */}
+            <div className="orb orb-gold-1 top-[-120px] right-[-80px]" />
+            <div className="orb orb-gold-2 bottom-[-80px] left-[-60px]" />
+            <div className="absolute top-1/4 left-1/3 w-[200px] h-[200px] rounded-full bg-amber-500/[0.03] blur-[80px] animate-float-2" />
+
+            {/* Content */}
+            <div className="relative z-10 text-center px-6 pt-16 sm:pt-24 pb-12 sm:pb-16">
+              {/* Icon */}
+              <div className="hero-text-reveal mb-8">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-[1.75rem] mx-auto flex items-center justify-center relative">
+                  <div className="absolute inset-0 rounded-[1.75rem] bg-gradient-to-br from-amber-400/10 to-amber-600/5 border border-amber-500/20" />
+                  <div className="absolute inset-0 rounded-[1.75rem] koshpilot-glow" />
+                  <Navigation size={36} className="text-amber-400 relative z-10" />
+                </div>
               </div>
-              <div>
-                <h1 className="text-4xl sm:text-5xl font-bold tracking-tight gold-gradient-text pb-1">KoshPilot</h1>
-                <p className="text-white/40 text-sm mt-2 max-w-sm mx-auto leading-relaxed">
-                  Your AI co-pilot that scans, analyzes, and executes trades — completely hands-free.
-                </p>
-              </div>
-              <div className="inline-flex items-center gap-2 glass-card px-4 py-2">
-                <Sparkles size={14} className="text-amber-400 koshpilot-pulse" />
-                <span className="text-xs text-white/50">Powered by Claude AI</span>
+
+              {/* Title */}
+              <h1 className="hero-text-reveal-1 text-5xl sm:text-7xl md:text-8xl font-bold tracking-tighter gold-gradient-text pb-2">
+                KoshPilot
+              </h1>
+
+              {/* Divider line */}
+              <div className="h-px w-32 sm:w-48 mx-auto my-6 bg-gradient-to-r from-transparent via-amber-500/30 to-transparent hero-line-grow" />
+
+              {/* Tagline */}
+              <p className="hero-text-reveal-2 text-lg sm:text-xl text-white/50 font-light tracking-wide max-w-md mx-auto leading-relaxed">
+                Your AI co-pilot for the markets.
+              </p>
+              <p className="hero-sub-reveal text-sm text-white/25 mt-2 max-w-sm mx-auto">
+                Scans. Analyzes. Executes. Completely hands-free.
+              </p>
+
+              {/* Badge */}
+              <div className="hero-sub-reveal-1 mt-8 hero-badge-float inline-block">
+                <div className="inline-flex items-center gap-2 glass-card-gold px-5 py-2.5 rounded-full">
+                  <Sparkles size={14} className="text-amber-400 koshpilot-pulse" />
+                  <span className="text-xs text-amber-300/70 font-medium tracking-wide">Powered by Claude AI</span>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Stats strip */}
+          <div className="px-4 sm:px-6 -mt-6 relative z-20">
+            <div className="glass-card-gold p-5 sm:p-6">
+              <div className="grid grid-cols-4 gap-4 text-center">
+                {[
+                  { value: "10+", label: "Signals", delay: "hero-sub-reveal-2" },
+                  { value: "24/7", label: "Scanning", delay: "hero-sub-reveal-3" },
+                  { value: "AI", label: "Powered", delay: "hero-sub-reveal-4" },
+                  { value: "0", label: "Risk", delay: "hero-sub-reveal-5" },
+                ].map((stat) => (
+                  <div key={stat.label} className={stat.delay}>
+                    <p className="text-lg sm:text-xl font-bold text-white/90 tabular-nums">{stat.value}</p>
+                    <p className="text-[10px] sm:text-xs text-white/25 uppercase tracking-wider mt-0.5">{stat.label}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* How it works */}
+          <div className="px-4 sm:px-6 mt-6 space-y-3">
             {HOW_IT_WORKS.map((item, i) => (
               <div
                 key={item.title}
-                className={`glass-card p-4 space-y-3 animate-fade-slide-up-${i + 1}`}
+                className={`glass-card p-4 sm:p-5 flex items-center gap-4 animate-fade-slide-up-${i + 1}`}
               >
-                <div className="w-9 h-9 rounded-xl bg-amber-500/8 border border-amber-500/10 flex items-center justify-center">
-                  <item.icon size={16} className="text-amber-400/80" />
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/8 border border-amber-500/10 flex items-center justify-center shrink-0">
+                  <item.icon size={18} className="text-amber-400/80" />
                 </div>
-                <div>
+                <div className="flex-1 min-w-0">
                   <h3 className="text-white/90 font-semibold text-sm">{item.title}</h3>
-                  <p className="text-white/30 text-xs leading-relaxed mt-1">{item.desc}</p>
+                  <p className="text-white/30 text-xs leading-relaxed mt-0.5">{item.desc}</p>
                 </div>
+                <ChevronRight size={14} className="text-white/10 shrink-0" />
               </div>
             ))}
-          </div>
 
-          <div className="glass-card-gold p-4 flex gap-3 items-start animate-fade-slide-up-4">
-            <Sparkles size={16} className="text-amber-400/80 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-amber-300/90 text-sm font-medium">Start with Simulation Mode</p>
-              <p className="text-white/25 text-xs mt-0.5">Trade with virtual capital for 2-4 weeks before going live.</p>
+            {/* CTA */}
+            <div className="pt-4 pb-2 space-y-3">
+              <button onClick={() => setStep(1)} className="w-full py-4 rounded-2xl font-semibold text-black koshpilot-btn flex items-center justify-center gap-2.5 text-base">
+                Get Started <ArrowRight size={18} />
+              </button>
+              <p className="text-center text-[10px] text-white/15">Start with virtual capital. Zero risk. Switch to live anytime.</p>
             </div>
           </div>
-
-          <button onClick={() => setStep(1)} className="w-full py-3.5 rounded-2xl font-semibold text-black koshpilot-btn flex items-center justify-center gap-2 text-sm">
-            Get Started <ArrowRight size={16} />
-          </button>
         </div>
       )}
 
