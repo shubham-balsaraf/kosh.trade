@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const SEC_API = "https://sec-edgar-insider-alerts-production.up.railway.app";
+const SEC_UA = "KoshApp/1.0 shubhambalsaraf73@gmail.com";
 
 interface InsiderTrade {
   name: string;
@@ -12,85 +12,95 @@ interface InsiderTrade {
   date: string;
 }
 
-async function fetchSECInsiders(ticker: string): Promise<InsiderTrade[]> {
-  const listRes = await fetch(
-    `${SEC_API}/sec/insider-trades/company/${ticker}?days=90&limit=12`,
-    { next: { revalidate: 600 } }
-  );
-  if (!listRes.ok) return [];
-  const listData = await listRes.json();
-  const filings = listData.filings || [];
-  if (filings.length === 0) return [];
+let cachedCIKMap: Record<string, number> | null = null;
+let cikMapTimestamp = 0;
+const CIK_CACHE_MS = 24 * 60 * 60 * 1000;
 
-  const detailPromises = filings.slice(0, 8).map(async (f: any) => {
+async function getTickerCIK(ticker: string): Promise<number | null> {
+  const now = Date.now();
+  if (!cachedCIKMap || now - cikMapTimestamp > CIK_CACHE_MS) {
     try {
-      const dRes = await fetch(`${SEC_API}${f.detailUrl}`, {
-        next: { revalidate: 600 },
-      });
-      if (!dRes.ok) return [];
-      const detail = await dRes.json();
-      const ownerName = detail.owner?.name || f.insider?.name || "Unknown";
-      const ownerTitle = detail.owner?.isOfficer
-        ? detail.owner.officerTitle || "Officer"
-        : detail.owner?.isDirector
-          ? "Director"
-          : detail.owner?.isTenPercentOwner
-            ? "10%+ Owner"
-            : "";
-
-      return (detail.transactions || [])
-        .filter(
-          (tx: any) =>
-            tx.code === "P" || tx.code === "S" || tx.code === "M"
-        )
-        .map((tx: any) => ({
-          name: ownerName,
-          title: ownerTitle,
-          type: tx.code === "S" ? "sell" : "buy",
-          shares: tx.shares || 0,
-          price: tx.pricePerShare || 0,
-          value: (tx.shares || 0) * (tx.pricePerShare || 0),
-          date: tx.date || f.filedDate || "",
-        }));
+      const res = await fetch(
+        "https://www.sec.gov/files/company_tickers.json",
+        { headers: { "User-Agent": SEC_UA } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        cachedCIKMap = {};
+        for (const key of Object.keys(data)) {
+          const entry = data[key];
+          if (entry.ticker && entry.cik_str) {
+            cachedCIKMap[entry.ticker.toUpperCase()] = entry.cik_str;
+          }
+        }
+        cikMapTimestamp = now;
+      }
     } catch {
-      return [];
+      return null;
     }
-  });
-
-  const results = await Promise.all(detailPromises);
-  return results.flat().filter((t) => t.shares > 0);
+  }
+  return cachedCIKMap?.[ticker.toUpperCase()] ?? null;
 }
 
-async function fetchFMPInsiders(ticker: string): Promise<InsiderTrade[]> {
-  const key = process.env.FMP_API_KEY;
-  if (!key) return [];
-  try {
-    const res = await fetch(
-      `https://financialmodelingprep.com/stable/insider-trading?symbol=${ticker}&limit=20&apikey=${key}`,
-      { next: { revalidate: 600 } }
+function extractXML(xml: string, tag: string): string {
+  const re = new RegExp(`<${tag}>\\s*<value>([^<]*)</value>`, "i");
+  const m = xml.match(re);
+  return m ? m[1].trim() : "";
+}
+
+function parseForm4XML(xml: string): InsiderTrade[] {
+  const nameMatch = xml.match(/<rptOwnerName>([^<]+)<\/rptOwnerName>/i);
+  const ownerName = nameMatch ? nameMatch[1].trim() : "Unknown";
+
+  const isOfficer = /<isOfficer>1<\/isOfficer>/i.test(xml);
+  const isDirector = /<isDirector>1<\/isDirector>/i.test(xml);
+  const isTenPct = /<isTenPercentOwner>1<\/isTenPercentOwner>/i.test(xml);
+  const titleMatch = xml.match(/<officerTitle>([^<]+)<\/officerTitle>/i);
+
+  let role = "";
+  if (isOfficer && titleMatch) role = titleMatch[1].trim();
+  else if (isOfficer) role = "Officer";
+  else if (isDirector) role = "Director";
+  else if (isTenPct) role = "10%+ Owner";
+
+  const trades: InsiderTrade[] = [];
+
+  const txBlocks = xml.match(
+    /<nonDerivativeTransaction>([\s\S]*?)<\/nonDerivativeTransaction>/gi
+  );
+  if (!txBlocks) return trades;
+
+  for (const block of txBlocks) {
+    const dateVal = extractXML(block, "transactionDate");
+    const codeMatch = block.match(
+      /<transactionCode>([A-Z])<\/transactionCode>/i
     );
-    if (!res.ok) return [];
-    const raw = await res.json();
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .filter((t: any) => t.securitiesTransacted > 0)
-      .slice(0, 15)
-      .map((t: any) => ({
-        name: t.reportingName || "Unknown",
-        title: t.typeOfOwner || "",
-        type:
-          t.acquistionOrDisposition === "D" ||
-          (t.transactionType && t.transactionType.includes("Sale"))
-            ? "sell"
-            : "buy",
-        shares: t.securitiesTransacted || 0,
-        price: t.price || 0,
-        value: (t.securitiesTransacted || 0) * (t.price || 0),
-        date: t.transactionDate || t.filingDate || "",
-      }));
-  } catch {
-    return [];
+    const code = codeMatch ? codeMatch[1] : "";
+    const sharesVal = extractXML(block, "transactionShares");
+    const priceVal = extractXML(block, "transactionPricePerShare");
+    const adCode = extractXML(block, "transactionAcquiredDisposedCode");
+
+    if (!code || code === "G" || code === "J" || code === "W") continue;
+
+    const shares = parseFloat(sharesVal) || 0;
+    const price = parseFloat(priceVal) || 0;
+
+    if (shares <= 0) continue;
+
+    const isSell = adCode === "D" || code === "S";
+
+    trades.push({
+      name: ownerName,
+      title: role,
+      type: isSell ? "sell" : "buy",
+      shares: Math.round(shares),
+      price,
+      value: Math.round(shares * price),
+      date: dateVal,
+    });
   }
+
+  return trades;
 }
 
 export async function GET(
@@ -100,15 +110,71 @@ export async function GET(
   const { ticker } = await params;
   const symbol = ticker.toUpperCase();
 
-  let trades = await fetchSECInsiders(symbol);
+  try {
+    const cik = await getTickerCIK(symbol);
+    if (!cik) {
+      return NextResponse.json({ trades: [] });
+    }
 
-  if (trades.length === 0) {
-    trades = await fetchFMPInsiders(symbol);
+    const paddedCik = String(cik).padStart(10, "0");
+    const subRes = await fetch(
+      `https://data.sec.gov/submissions/CIK${paddedCik}.json`,
+      {
+        headers: { "User-Agent": SEC_UA },
+        next: { revalidate: 600 },
+      }
+    );
+
+    if (!subRes.ok) {
+      return NextResponse.json({ trades: [] });
+    }
+
+    const subData = await subRes.json();
+    const recent = subData.filings?.recent;
+    if (!recent) {
+      return NextResponse.json({ trades: [] });
+    }
+
+    const forms: string[] = recent.form || [];
+    const accessions: string[] = recent.accessionNumber || [];
+    const docs: string[] = recent.primaryDocument || [];
+
+    const form4Indices: number[] = [];
+    for (let i = 0; i < forms.length && form4Indices.length < 6; i++) {
+      if (forms[i] === "4") form4Indices.push(i);
+    }
+
+    if (form4Indices.length === 0) {
+      return NextResponse.json({ trades: [] });
+    }
+
+    const xmlPromises = form4Indices.map(async (idx) => {
+      try {
+        const accNoDash = accessions[idx].replace(/-/g, "");
+        const docName = docs[idx].replace(/^xslF345X05\//, "");
+        const url = `https://www.sec.gov/Archives/edgar/data/${cik}/${accNoDash}/${docName}`;
+        const res = await fetch(url, {
+          headers: { "User-Agent": SEC_UA },
+          next: { revalidate: 600 },
+        });
+        if (!res.ok) return [];
+        const xml = await res.text();
+        return parseForm4XML(xml);
+      } catch {
+        return [];
+      }
+    });
+
+    const results = await Promise.all(xmlPromises);
+    const allTrades = results
+      .flat()
+      .sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+    return NextResponse.json({ trades: allTrades.slice(0, 12) });
+  } catch (e: any) {
+    console.error("[Insiders]", e.message);
+    return NextResponse.json({ trades: [] });
   }
-
-  trades.sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
-
-  return NextResponse.json({ trades: trades.slice(0, 12) });
 }
