@@ -409,48 +409,50 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             <div className="pilot-ring pilot-ring-3" />
           </div>
 
-          {/* Centered content */}
-          <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
-            {/* Icon */}
-            <div className="pilot-icon-reveal mb-8">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl flex items-center justify-center relative">
-                <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-amber-400/12 to-amber-600/4 border border-amber-500/20" />
-                <div className="absolute inset-0 rounded-3xl koshpilot-glow" />
-                <Navigation size={32} className="text-amber-400 relative z-10 sm:w-9 sm:h-9" />
+          {/* Centered content — safe-area aware, scrollable on short viewports */}
+          <div className="relative z-10 flex flex-col items-center justify-center min-h-full px-6 py-safe overflow-y-auto">
+            <div className="flex flex-col items-center py-12 landscape:py-6">
+              {/* Icon */}
+              <div className="pilot-icon-reveal mb-5 sm:mb-8">
+                <div className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl sm:rounded-3xl flex items-center justify-center relative">
+                  <div className="absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-amber-400/12 to-amber-600/4 border border-amber-500/20" />
+                  <div className="absolute inset-0 rounded-2xl sm:rounded-3xl koshpilot-glow" />
+                  <Navigation size={26} className="text-amber-400 relative z-10 sm:w-8 sm:h-8 md:w-9 md:h-9" />
+                </div>
               </div>
-            </div>
 
-            {/* Title — each letter staggers */}
-            <h1 className="pilot-title-reveal text-6xl sm:text-8xl md:text-9xl font-bold tracking-tighter gold-gradient-text select-none pb-1">
-              KoshPilot
-            </h1>
+              {/* Title */}
+              <h1 className="pilot-title-reveal text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-bold tracking-tighter gold-gradient-text select-none pb-1">
+                KoshPilot
+              </h1>
 
-            {/* Gold line */}
-            <div className="pilot-line-expand h-px w-40 sm:w-56 my-6 sm:my-8 bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
+              {/* Gold line */}
+              <div className="pilot-line-expand h-px w-32 sm:w-40 md:w-56 my-4 sm:my-6 md:my-8 bg-gradient-to-r from-transparent via-amber-400/40 to-transparent" />
 
-            {/* Tagline */}
-            <p className="pilot-tagline-reveal text-base sm:text-xl text-white/40 font-light tracking-wide text-center max-w-sm">
-              Your AI co-pilot for the markets
-            </p>
+              {/* Tagline */}
+              <p className="pilot-tagline-reveal text-sm sm:text-base md:text-xl text-white/40 font-light tracking-wide text-center max-w-xs sm:max-w-sm">
+                Your AI co-pilot for the markets
+              </p>
 
-            {/* Features — minimal */}
-            <div className="pilot-features-reveal flex items-center gap-4 sm:gap-6 mt-8 text-[11px] sm:text-xs text-white/20 tracking-widest uppercase">
-              <span>Scan</span>
-              <span className="w-1 h-1 rounded-full bg-amber-500/30" />
-              <span>Analyze</span>
-              <span className="w-1 h-1 rounded-full bg-amber-500/30" />
-              <span>Execute</span>
-            </div>
+              {/* Features — minimal */}
+              <div className="pilot-features-reveal flex items-center gap-3 sm:gap-4 md:gap-6 mt-5 sm:mt-8 text-[10px] sm:text-[11px] md:text-xs text-white/20 tracking-widest uppercase">
+                <span>Scan</span>
+                <span className="w-1 h-1 rounded-full bg-amber-500/30" />
+                <span>Analyze</span>
+                <span className="w-1 h-1 rounded-full bg-amber-500/30" />
+                <span>Execute</span>
+              </div>
 
-            {/* CTA */}
-            <div className="pilot-cta-reveal mt-12 sm:mt-16 flex flex-col items-center gap-4">
-              <button
-                onClick={() => setStep(1)}
-                className="px-10 sm:px-14 py-4 sm:py-5 rounded-2xl font-semibold text-black koshpilot-btn flex items-center gap-3 text-base sm:text-lg"
-              >
-                Get Started <ArrowRight size={20} />
-              </button>
-              <p className="text-[11px] text-white/10 tracking-wide">Zero risk · Paper trading · Switch to live anytime</p>
+              {/* CTA */}
+              <div className="pilot-cta-reveal mt-8 sm:mt-12 md:mt-16 flex flex-col items-center gap-3 sm:gap-4">
+                <button
+                  onClick={() => setStep(1)}
+                  className="px-8 sm:px-10 md:px-14 py-3.5 sm:py-4 md:py-5 rounded-2xl font-semibold text-black koshpilot-btn flex items-center gap-2.5 sm:gap-3 text-sm sm:text-base md:text-lg"
+                >
+                  Get Started <ArrowRight size={18} className="sm:w-5 sm:h-5" />
+                </button>
+                <p className="text-[10px] sm:text-[11px] text-white/10 tracking-wide">Zero risk · Paper trading · Switch to live anytime</p>
+              </div>
             </div>
           </div>
 

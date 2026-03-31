@@ -564,16 +564,28 @@ body {
 }
 
 .pilot-ring-1 {
-  width: 250px; height: 250px;
+  width: 180px; height: 180px;
   animation: pilotRingExpand 4s ease-out 1s infinite;
 }
 .pilot-ring-2 {
-  width: 450px; height: 450px;
+  width: 320px; height: 320px;
   animation: pilotRingExpand 4s ease-out 2s infinite;
 }
 .pilot-ring-3 {
-  width: 650px; height: 650px;
+  width: 480px; height: 480px;
   animation: pilotRingExpand 4s ease-out 3s infinite;
+}
+
+@media (min-width: 640px) {
+  .pilot-ring-1 { width: 250px; height: 250px; }
+  .pilot-ring-2 { width: 450px; height: 450px; }
+  .pilot-ring-3 { width: 650px; height: 650px; }
+}
+
+@media (min-width: 1024px) {
+  .pilot-ring-1 { width: 300px; height: 300px; }
+  .pilot-ring-2 { width: 550px; height: 550px; }
+  .pilot-ring-3 { width: 800px; height: 800px; }
 }
 
 .pilot-icon-reveal {
@@ -614,6 +626,20 @@ body {
   background: radial-gradient(circle, rgba(251,191,36,0.6), rgba(245,158,11,0.1));
   animation: pilotParticleFloat linear infinite;
   pointer-events: none;
+}
+
+.py-safe {
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .landscape\:py-6 { padding-top: 1.5rem; padding-bottom: 1.5rem; }
+}
+
+@media (max-height: 600px) {
+  .pilot-icon-reveal { margin-bottom: 1rem !important; }
+  .pilot-cta-reveal  { margin-top: 1.5rem !important; }
 }
 
 /* ─── Select Styling ─── */
