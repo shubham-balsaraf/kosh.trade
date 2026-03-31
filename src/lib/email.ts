@@ -84,9 +84,34 @@ export async function sendWelcomeEmail(to: string, name: string) {
 </body>
 </html>`,
     });
+    notifyNewSignup(to, name).catch(() => {});
+
     return true;
   } catch (err) {
     console.error("[EMAIL] Failed to send welcome email:", err);
     return false;
+  }
+}
+
+const ADMIN_EMAIL = "shubhambalsaraf73@gmail.com";
+
+async function notifyNewSignup(userEmail: string, name: string) {
+  try {
+    await transporter.sendMail({
+      from: `"Kosh.trade" <${process.env.SMTP_USER}>`,
+      to: ADMIN_EMAIL,
+      subject: `New signup: ${name || userEmail}`,
+      html: `
+<div style="font-family:sans-serif;padding:20px;background:#111;color:#e5e7eb;border-radius:12px;">
+  <h2 style="color:#818cf8;margin:0 0 16px;">New User Signed Up</h2>
+  <p><strong style="color:#fff;">Name:</strong> ${name || "—"}</p>
+  <p><strong style="color:#fff;">Email:</strong> ${userEmail}</p>
+  <p><strong style="color:#fff;">Time:</strong> ${new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })} IST</p>
+  <hr style="border-color:#1f2937;margin:16px 0;">
+  <p style="color:#6b7280;font-size:12px;">Total users: check via <code>psql</code> or <a href="https://kosh.trade/dashboard" style="color:#818cf8;">dashboard</a></p>
+</div>`,
+    });
+  } catch {
+    console.error("[EMAIL] Failed to send admin notification");
   }
 }
