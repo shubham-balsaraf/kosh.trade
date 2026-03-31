@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Users,
+  Award,
 } from "lucide-react";
 
 interface InsiderTrade {
@@ -26,13 +27,7 @@ function formatCompact(n: number): string {
   return `$${n.toFixed(0)}`;
 }
 
-function FlashCard({
-  trade,
-  isActive,
-}: {
-  trade: InsiderTrade;
-  isActive: boolean;
-}) {
+function FlashCard({ trade, direction }: { trade: InsiderTrade; direction: "enter" | "idle" }) {
   const isBuy = trade.type === "buy";
   const dateStr = trade.date
     ? new Date(trade.date).toLocaleDateString("en-US", {
@@ -44,8 +39,8 @@ function FlashCard({
 
   return (
     <div
-      className={`shrink-0 w-full transition-all duration-500 ease-out ${
-        isActive ? "opacity-100 scale-100" : "opacity-0 scale-95 absolute"
+      className={`w-full transition-all duration-500 ease-out ${
+        direction === "enter" ? "animate-flashcardIn" : ""
       }`}
     >
       <div
@@ -96,8 +91,8 @@ function FlashCard({
               {formatCompact(trade.value)}
             </p>
             <p className="text-[11px] text-white/25 mt-0.5">
-              {trade.shares.toLocaleString()} shares @ $
-              {trade.price.toFixed(2)}
+              {trade.shares.toLocaleString()} shares
+              {trade.price > 0 ? ` @ $${trade.price.toFixed(2)}` : ""}
             </p>
           </div>
           <p className="text-[11px] text-white/20">{dateStr}</p>
@@ -112,6 +107,7 @@ export default function InsiderFlashcards({ ticker }: { ticker: string }) {
   const [loading, setLoading] = useState(true);
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [direction, setDirection] = useState<"enter" | "idle">("enter");
 
   useEffect(() => {
     fetch(`/api/stocks/${ticker}/insiders`)
@@ -121,19 +117,29 @@ export default function InsiderFlashcards({ ticker }: { ticker: string }) {
       .finally(() => setLoading(false));
   }, [ticker]);
 
-  const next = useCallback(() => {
-    setIndex((i) => (i + 1) % trades.length);
-  }, [trades.length]);
+  const go = useCallback(
+    (delta: number) => {
+      setDirection("enter");
+      setIndex((i) => (i + delta + trades.length) % trades.length);
+    },
+    [trades.length]
+  );
 
-  const prev = useCallback(() => {
-    setIndex((i) => (i - 1 + trades.length) % trades.length);
-  }, [trades.length]);
+  const next = useCallback(() => go(1), [go]);
+  const prev = useCallback(() => go(-1), [go]);
 
   useEffect(() => {
     if (trades.length < 2 || paused) return;
-    const id = setInterval(next, 4000);
+    const id = setInterval(next, 4500);
     return () => clearInterval(id);
   }, [trades.length, paused, next]);
+
+  useEffect(() => {
+    if (direction === "enter") {
+      const t = setTimeout(() => setDirection("idle"), 500);
+      return () => clearTimeout(t);
+    }
+  }, [direction, index]);
 
   if (loading) {
     return (
@@ -147,7 +153,22 @@ export default function InsiderFlashcards({ ticker }: { ticker: string }) {
     );
   }
 
-  if (trades.length === 0) return null;
+  if (trades.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Users size={13} className="text-amber-400" />
+          <h3 className="text-xs font-semibold text-gray-400">
+            Insider Activity
+          </h3>
+        </div>
+        <div className="flex items-center justify-center py-6 text-white/15 text-xs gap-2">
+          <Award size={14} />
+          <span>No recent insider transactions found</span>
+        </div>
+      </div>
+    );
+  }
 
   const buys = trades.filter((t) => t.type === "buy").length;
   const sells = trades.length - buys;
@@ -191,22 +212,21 @@ export default function InsiderFlashcards({ ticker }: { ticker: string }) {
         )}
       </div>
 
-      <div className="relative overflow-hidden">
-        {trades.map((trade, i) => (
-          <FlashCard
-            key={`${trade.name}-${trade.date}-${i}`}
-            trade={trade}
-            isActive={i === index}
-          />
-        ))}
-      </div>
+      <FlashCard
+        key={`${trades[index].name}-${trades[index].date}-${index}`}
+        trade={trades[index]}
+        direction={direction}
+      />
 
       {trades.length > 1 && (
         <div className="flex justify-center gap-1 mt-3">
           {trades.map((_, i) => (
             <button
               key={i}
-              onClick={() => setIndex(i)}
+              onClick={() => {
+                setDirection("enter");
+                setIndex(i);
+              }}
               className={`h-1 rounded-full transition-all duration-300 ${
                 i === index
                   ? "w-4 bg-amber-400/50"

@@ -543,6 +543,15 @@ body {
   100% { opacity: 0;   transform: translateY(-10vh) scale(0.5); }
 }
 
+/* ─── Insider Flashcard ─── */
+@keyframes flashcardIn {
+  0%   { opacity: 0; transform: translateX(20px) scale(0.97); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+.animate-flashcardIn {
+  animation: flashcardIn 0.4s ease-out forwards;
+}
+
 .pilot-screen {
   animation: pilotScreenIn 0.6s ease-out forwards, pilotScreenOut 0.5s ease-in 2.8s forwards;
 }
