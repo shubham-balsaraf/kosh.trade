@@ -12,6 +12,9 @@ import FCFvsSBCChart from "@/components/charts/FCFvsSBCChart";
 import PriceChart from "@/components/charts/PriceChart";
 import MarginChart from "@/components/charts/MarginChart";
 import AIAnalysis from "@/components/stock/AIAnalysis";
+import AnalysisHistory from "@/components/stock/AnalysisHistory";
+import Link from "next/link";
+import { Crown, Lock } from "lucide-react";
 
 type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
 
@@ -74,6 +77,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [limitReached, setLimitReached] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("ai");
   const [verdict, setVerdict] = useState<VerdictTheme>(null);
   const mobile = useIsMobile();
@@ -91,20 +95,33 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
     async function load() {
       setLoading(true);
       try {
+        const usageRes = await fetch("/api/usage");
+        const usage = await usageRes.json();
+        const isAllowed = usage.isPro || (usage.tickers || []).includes(ticker.toUpperCase()) || (usage.remaining ?? 0) > 0;
+
+        if (!isAllowed) {
+          setLimitReached(true);
+          setLoading(false);
+          return;
+        }
+
         const res = await fetch(`/api/stocks/${ticker}`);
         if (!res.ok) throw new Error("Stock not found");
         const json = await res.json();
         setData(json);
         
         if (json.profile) {
-          fetch(`/api/stocks/${ticker}/save`, {
+          const saveRes = await fetch(`/api/stocks/${ticker}/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               companyName: json.profile.companyName,
               sector: json.profile.sector,
             }),
-          }).catch(() => {});
+          }).catch(() => null);
+          if (saveRes && saveRes.status === 403) {
+            // already saved but limit check happened server-side too
+          }
         }
       } catch (e: any) {
         setError(e.message);
@@ -123,6 +140,38 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           {[1,2,3,4].map(i => <div key={i} className="skeleton h-24" />)}
         </div>
         <div className="skeleton h-64 w-full" />
+      </div>
+    );
+  }
+
+  if (limitReached) {
+    return (
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className="flex-1">
+          <Card className="text-center py-16">
+            <Lock size={48} className="mx-auto text-gray-600 mb-4" />
+            <h2 className="text-xl font-bold text-white mb-2">Free Analysis Limit Reached</h2>
+            <p className="text-gray-400 text-sm max-w-md mx-auto mb-6">
+              You&apos;ve used all 15 free stock analyses. Upgrade to Pro for unlimited analyses,
+              AI portfolio management, and advanced signals.
+            </p>
+            <Link
+              href="/pricing"
+              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold rounded-xl shadow-lg shadow-amber-500/25 transition-all hover:scale-105"
+            >
+              <Crown size={18} />
+              Upgrade to Pro
+            </Link>
+            <p className="text-gray-600 text-xs mt-4">
+              You can still access your previously analyzed stocks from the sidebar.
+            </p>
+          </Card>
+        </div>
+        <div className="w-full lg:w-64 shrink-0">
+          <Card className="!p-3">
+            <AnalysisHistory currentTicker={ticker} />
+          </Card>
+        </div>
       </div>
     );
   }
@@ -160,7 +209,8 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   ];
 
   return (
-    <div className="space-y-4 relative">
+    <div className="flex flex-col lg:flex-row gap-6">
+    <div className="flex-1 min-w-0 space-y-4 relative">
       {/* Subtle verdict gradient overlay at the top */}
       {verdict && (
         <div className={`absolute top-0 left-0 right-0 h-48 bg-gradient-to-b ${t.gradient} rounded-3xl pointer-events-none -z-0`} />
@@ -511,6 +561,25 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
       {activeTab === "fcf" && <FCFTab ticker={ticker} />}
 
       {activeTab === "earnings" && <EarningsTab ticker={ticker} />}
+    </div>
+
+    {/* History sidebar */}
+    {!mobile && (
+      <div className="w-64 shrink-0 hidden lg:block">
+        <div className="sticky top-20">
+          <Card className="!p-3">
+            <AnalysisHistory currentTicker={ticker} />
+          </Card>
+        </div>
+      </div>
+    )}
+
+    {/* Mobile history - collapsible at bottom */}
+    {mobile && (
+      <Card className="!p-3">
+        <AnalysisHistory currentTicker={ticker} />
+      </Card>
+    )}
     </div>
   );
 }
