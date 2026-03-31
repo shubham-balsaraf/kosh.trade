@@ -209,6 +209,7 @@ model TradingConfig {
   userId            String   @unique
   enabled           Boolean  @default(false)
   mode              TradeMode @default(PAPER)
+  paperBalance      Float    @default(10000)
   maxPositionPct    Float    @default(5)
   maxDailyLossPct   Float    @default(3)
   maxOpenPositions  Int      @default(5)

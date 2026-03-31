@@ -125,6 +125,8 @@ export async function PATCH(req: NextRequest) {
   const updates: any = {};
 
   if (body.enabled !== undefined) updates.enabled = body.enabled;
+  if (body.mode !== undefined) updates.mode = body.mode;
+  if (body.paperBalance !== undefined) updates.paperBalance = body.paperBalance;
   if (body.maxPositionPct !== undefined) updates.maxPositionPct = body.maxPositionPct;
   if (body.maxDailyLossPct !== undefined) updates.maxDailyLossPct = body.maxDailyLossPct;
   if (body.maxOpenPositions !== undefined) updates.maxOpenPositions = body.maxOpenPositions;

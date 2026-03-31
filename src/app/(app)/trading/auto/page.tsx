@@ -16,6 +16,7 @@ import {
 interface TradingConfig {
   enabled: boolean;
   mode: string;
+  paperBalance: number;
   maxPositionPct: number;
   maxDailyLossPct: number;
   maxOpenPositions: number;
@@ -89,6 +90,7 @@ const HOW_IT_WORKS = [
 function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) => void }) {
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<"PAPER" | "LIVE">("PAPER");
+  const [paperBalance, setPaperBalance] = useState(10000);
   const [watchlist, setWatchlist] = useState<string[]>([...DEFAULT_WATCHLIST]);
   const [tickerInput, setTickerInput] = useState("");
   const [maxPositionPct, setMaxPositionPct] = useState(5);
@@ -117,6 +119,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
         body: JSON.stringify({
           enabled: true,
           mode,
+          paperBalance,
           watchlist,
           maxPositionPct,
           maxDailyLossPct,
@@ -268,6 +271,39 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             </button>
           </div>
 
+          {mode === "PAPER" && (
+            <Card className="space-y-3">
+              <h3 className="text-sm font-semibold text-gray-400">Starting Balance</h3>
+              <p className="text-xs text-gray-500">How much virtual money should the bot trade with?</p>
+              <div className="grid grid-cols-4 gap-2">
+                {[1000, 5000, 10000, 25000].map((amount) => (
+                  <button
+                    key={amount}
+                    onClick={() => setPaperBalance(amount)}
+                    className={`py-2.5 rounded-xl text-sm font-medium transition-all ${
+                      paperBalance === amount
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : "bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-600"
+                    }`}
+                  >
+                    ${amount.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1.5">Or enter a custom amount</label>
+                <Input
+                  type="number"
+                  placeholder="e.g. 500"
+                  value={paperBalance || ""}
+                  onChange={(e) => setPaperBalance(Number(e.target.value))}
+                  min={100}
+                  max={1000000}
+                />
+              </div>
+            </Card>
+          )}
+
           <div className="flex gap-3">
             <Button variant="secondary" className="flex-1" onClick={() => setStep(0)}>
               <ArrowLeft size={16} /> Back
@@ -379,6 +415,12 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
                   <span className="text-white font-medium">Mode:</span>{" "}
                   {mode === "PAPER" ? "Paper Trading (virtual money)" : "Live Trading (real money)"}
                 </p>
+                {mode === "PAPER" && (
+                  <p>
+                    <span className="text-white font-medium">Starting Balance:</span>{" "}
+                    ${paperBalance.toLocaleString()}
+                  </p>
+                )}
                 <p>
                   <span className="text-white font-medium">Watching:</span>{" "}
                   {watchlist.length} stocks
@@ -599,6 +641,26 @@ export default function AutoTradingPage() {
       {showSettings && config && (
         <Card className="space-y-4">
           <h3 className="text-sm font-semibold text-gray-400">AutoTrader Settings</h3>
+          {config.mode === "PAPER" && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Paper Trading Balance</label>
+              <div className="flex gap-2">
+                {[1000, 5000, 10000, 25000].map((amt) => (
+                  <button
+                    key={amt}
+                    onClick={() => updateConfig({ paperBalance: amt })}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      config.paperBalance === amt
+                        ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                        : "bg-gray-800 text-gray-400 border border-gray-700 hover:border-gray-600"
+                    }`}
+                  >
+                    ${amt.toLocaleString()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="text-xs text-gray-500 block mb-1">Max Position %</label>
