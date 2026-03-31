@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth/options";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getQuote, getProfile, getIncomeStatement, getBalanceSheet, getCashFlow, getKeyMetrics, getRatios, getEarnings } from "@/lib/api/fmp";
 import { generateCompletion } from "@/lib/ai/claude";
 
@@ -107,6 +110,18 @@ export async function POST(
   const symbol = ticker.toUpperCase();
 
   try {
+    const session = await getServerSession(authOptions);
+    if (session?.user) {
+      const u = session.user as any;
+      const rl = await checkRateLimit(u.id, u.tier, u.role);
+      if (rl.banned) {
+        return NextResponse.json({ error: "Account suspended for excessive API usage. Contact support." }, { status: 403 });
+      }
+      if (!rl.allowed) {
+        return NextResponse.json({ error: "Rate limit exceeded. Please try again later." }, { status: 429 });
+      }
+    }
+
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ error: "AI analysis requires ANTHROPIC_API_KEY" }, { status: 500 });
     }

@@ -1,23 +1,46 @@
 import nodemailer from "nodemailer";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || "smtp.porkbun.com",
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+let _transporter: nodemailer.Transporter | null = null;
+
+function getTransporter(): nodemailer.Transporter {
+  if (!_transporter) {
+    const host = process.env.SMTP_HOST || "smtp.porkbun.com";
+    const port = Number(process.env.SMTP_PORT) || 587;
+    const user = process.env.SMTP_USER;
+    const pass = process.env.SMTP_PASS;
+
+    if (!user || !pass) {
+      console.error("[EMAIL] SMTP_USER or SMTP_PASS not set in environment");
+    }
+
+    _transporter = nodemailer.createTransport({
+      host,
+      port,
+      secure: port === 465,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false },
+    });
+
+    console.log(`[EMAIL] Transporter created: ${user}@${host}:${port}`);
+  }
+  return _transporter;
+}
+
+const ADMIN_EMAIL = "shubhambalsaraf73@gmail.com";
 
 export async function sendWelcomeEmail(to: string, name: string) {
   const firstName = name?.split(" ")[0] || "there";
+  const from = `"Kosh.trade" <${process.env.SMTP_USER || "hello@kosh.trade"}>`;
+
+  console.log(`[EMAIL] Sending welcome email to ${to} from ${from}`);
 
   try {
-    await transporter.sendMail({
-      from: `"Kosh.trade" <${process.env.SMTP_USER}>`,
+    const transporter = getTransporter();
+
+    const info = await transporter.sendMail({
+      from,
       to,
-      bcc: "shubhambalsaraf73@gmail.com",
+      bcc: ADMIN_EMAIL,
       subject: `Welcome to Kosh.trade, ${firstName}!`,
       html: `
 <!DOCTYPE html>
@@ -53,18 +76,25 @@ export async function sendWelcomeEmail(to: string, name: string) {
             <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">Revenue, margins, FCF, valuation, health scores & more</p>
           </div>
         </div>
-        <div style="display:flex;align-items:flex-start;">
+        <div style="display:flex;align-items:flex-start;margin-bottom:16px;">
           <span style="color:#818cf8;font-size:18px;margin-right:12px;">&#127919;</span>
           <div>
-            <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;">Market Sentiment</p>
-            <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">Live Fear & Greed index, dip finder, and signals</p>
+            <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;">KoshPilot AI Trading</p>
+            <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">AI-powered auto-trading with paper or real money</p>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-start;">
+          <span style="color:#818cf8;font-size:18px;margin-right:12px;">&#128176;</span>
+          <div>
+            <p style="color:#ffffff;font-size:14px;font-weight:600;margin:0;">Congressional Trades</p>
+            <p style="color:#6b7280;font-size:13px;margin:2px 0 0;">Track what Congress is buying and selling in real time</p>
           </div>
         </div>
       </div>
 
       <div style="text-align:center;margin:28px 0 8px;">
-        <a href="https://kosh.trade/search" style="display:inline-block;background:#6366f1;color:#ffffff;font-size:15px;font-weight:600;padding:12px 32px;border-radius:12px;text-decoration:none;">
-          Analyse Your First Stock
+        <a href="https://kosh.trade/dashboard" style="display:inline-block;background:#6366f1;color:#ffffff;font-size:15px;font-weight:600;padding:12px 32px;border-radius:12px;text-decoration:none;">
+          Go to Dashboard
         </a>
       </div>
 
@@ -87,21 +117,32 @@ export async function sendWelcomeEmail(to: string, name: string) {
 </body>
 </html>`,
     });
-    notifyNewSignup(to, name).catch(() => {});
+
+    console.log(`[EMAIL] Welcome email sent to ${to}, messageId: ${info.messageId}`);
+
+    notifyNewSignup(to, name).catch((e) => {
+      console.error("[EMAIL] Admin notification failed:", e);
+    });
 
     return true;
-  } catch (err) {
-    console.error("[EMAIL] Failed to send welcome email:", err);
+  } catch (err: any) {
+    console.error("[EMAIL] Failed to send welcome email:", err?.message || err);
+    console.error("[EMAIL] SMTP config: host=%s port=%s user=%s",
+      process.env.SMTP_HOST || "smtp.porkbun.com",
+      process.env.SMTP_PORT || "587",
+      process.env.SMTP_USER ? `${process.env.SMTP_USER.substring(0, 5)}...` : "NOT SET"
+    );
     return false;
   }
 }
 
-const ADMIN_EMAIL = "shubhambalsaraf73@gmail.com";
-
 async function notifyNewSignup(userEmail: string, name: string) {
+  const from = `"Kosh.trade" <${process.env.SMTP_USER || "hello@kosh.trade"}>`;
+
   try {
-    await transporter.sendMail({
-      from: `"Kosh.trade" <${process.env.SMTP_USER}>`,
+    const transporter = getTransporter();
+    const info = await transporter.sendMail({
+      from,
       to: ADMIN_EMAIL,
       subject: `New signup: ${name || userEmail}`,
       html: `
@@ -114,7 +155,38 @@ async function notifyNewSignup(userEmail: string, name: string) {
   <p style="color:#6b7280;font-size:12px;">Total users: check via <code>psql</code> or <a href="https://kosh.trade/dashboard" style="color:#818cf8;">dashboard</a></p>
 </div>`,
     });
-  } catch {
-    console.error("[EMAIL] Failed to send admin notification");
+    console.log(`[EMAIL] Admin notification sent for ${userEmail}, messageId: ${info.messageId}`);
+  } catch (err: any) {
+    console.error("[EMAIL] Failed to send admin notification:", err?.message || err);
+  }
+}
+
+export async function sendRateLimitAlert(userEmail: string, reason: string) {
+  try {
+    const transporter = getTransporter();
+    await transporter.sendMail({
+      from: `"Kosh.trade" <${process.env.SMTP_USER || "hello@kosh.trade"}>`,
+      to: ADMIN_EMAIL,
+      subject: `[RATE LIMIT] ${userEmail} - ${reason}`,
+      html: `
+<div style="font-family:sans-serif;padding:20px;background:#111;color:#e5e7eb;border-radius:12px;">
+  <h2 style="color:#f59e0b;margin:0 0 16px;">Rate Limit Triggered</h2>
+  <p><strong style="color:#fff;">User:</strong> ${userEmail}</p>
+  <p><strong style="color:#fff;">Reason:</strong> ${reason}</p>
+  <p><strong style="color:#fff;">Time:</strong> ${new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" })} IST</p>
+</div>`,
+    });
+  } catch (err: any) {
+    console.error("[EMAIL] Rate limit alert failed:", err?.message || err);
+  }
+}
+
+export async function verifySmtpConnection(): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const transporter = getTransporter();
+    await transporter.verify();
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err?.message || "SMTP verification failed" };
   }
 }

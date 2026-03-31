@@ -75,13 +75,14 @@ export const authOptions: NextAuthOptions = {
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { tier: true, role: true, name: true, image: true },
+          select: { tier: true, role: true, name: true, image: true, bannedUntil: true },
         });
         if (dbUser) {
           token.tier = dbUser.tier;
           token.role = dbUser.role;
           token.name = dbUser.name;
           token.picture = dbUser.image;
+          token.banned = dbUser.bannedUntil && new Date(dbUser.bannedUntil) > new Date();
         }
       }
       return token;
