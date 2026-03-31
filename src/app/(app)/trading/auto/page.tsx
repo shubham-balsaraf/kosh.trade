@@ -10,7 +10,8 @@ import {
   Bot, Power, PowerOff, TrendingUp, DollarSign,
   BarChart3, Target, Clock, Activity, RefreshCw, Settings, Zap,
   Search, Brain, ShieldCheck, ArrowRight, ArrowLeft, Sparkles,
-  Play, X, Plus, ChevronRight,
+  Play, X, Plus, ChevronRight, AlertTriangle, RotateCcw,
+  Wallet, Lock,
 } from "lucide-react";
 
 interface TradingConfig {
@@ -52,6 +53,14 @@ interface AutoTrade {
   entryAt: string | null;
   exitAt: string | null;
   createdAt: string;
+}
+
+interface RunResult {
+  scanned?: number;
+  signals?: number;
+  tradesPlaced?: number;
+  error?: string;
+  message?: string;
 }
 
 const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM"];
@@ -135,7 +144,6 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Progress indicator */}
       <div className="flex items-center gap-2 justify-center">
         {[0, 1, 2].map((s) => (
           <div key={s} className="flex items-center gap-2">
@@ -149,7 +157,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
                     : "bg-gray-800 text-gray-600"
               }`}
             >
-              {s < step ? "✓" : s + 1}
+              {s < step ? "\u2713" : s + 1}
             </button>
             {s < 2 && (
               <div className={`w-12 h-0.5 ${s < step ? "bg-emerald-500/40" : "bg-gray-800"}`} />
@@ -222,9 +230,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
                   <Play size={20} className="text-emerald-400" />
                 </div>
-                {mode === "PAPER" && (
-                  <Badge variant="green">Recommended</Badge>
-                )}
+                {mode === "PAPER" && <Badge variant="green">Recommended</Badge>}
               </div>
               <h3 className="text-white font-bold mb-1">Paper Trading</h3>
               <p className="text-gray-500 text-xs leading-relaxed">
@@ -233,8 +239,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
               <ul className="mt-3 space-y-1.5">
                 {["No real money at risk", "Real market data & signals", "Track performance over time"].map((item) => (
                   <li key={item} className="text-xs text-gray-400 flex items-center gap-2">
-                    <ChevronRight size={12} className="text-emerald-500" />
-                    {item}
+                    <ChevronRight size={12} className="text-emerald-500" /> {item}
                   </li>
                 ))}
               </ul>
@@ -252,9 +257,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
                   <DollarSign size={20} className="text-amber-400" />
                 </div>
-                {mode === "LIVE" && (
-                  <Badge variant="yellow">Advanced</Badge>
-                )}
+                {mode === "LIVE" && <Badge variant="yellow">Advanced</Badge>}
               </div>
               <h3 className="text-white font-bold mb-1">Live Trading</h3>
               <p className="text-gray-500 text-xs leading-relaxed">
@@ -263,13 +266,26 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
               <ul className="mt-3 space-y-1.5">
                 {["Real money execution", "Alpaca API required", "Start small, scale up"].map((item) => (
                   <li key={item} className="text-xs text-gray-400 flex items-center gap-2">
-                    <ChevronRight size={12} className="text-amber-500" />
-                    {item}
+                    <ChevronRight size={12} className="text-amber-500" /> {item}
                   </li>
                 ))}
               </ul>
             </button>
           </div>
+
+          {mode === "LIVE" && (
+            <Card className="!p-4 bg-red-500/5 border-red-500/20">
+              <div className="flex gap-3">
+                <Lock size={18} className="text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-red-300 text-sm font-medium">Live Trading is not enabled for your profile yet</p>
+                  <p className="text-red-400/60 text-xs mt-1">
+                    Complete at least 2 weeks of paper trading first. Contact support to request live trading access.
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {mode === "PAPER" && (
             <Card className="space-y-3">
@@ -308,8 +324,8 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             <Button variant="secondary" className="flex-1" onClick={() => setStep(0)}>
               <ArrowLeft size={16} /> Back
             </Button>
-            <Button className="flex-1" onClick={() => setStep(2)}>
-              Continue <ArrowRight size={16} />
+            <Button className="flex-1" onClick={() => setStep(2)} disabled={mode === "LIVE"}>
+              {mode === "LIVE" ? "Not Available" : <>Continue <ArrowRight size={16} /></>}
             </Button>
           </div>
         </div>
@@ -323,7 +339,6 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             <p className="text-gray-400 text-sm">Set your preferences. You can always change these later.</p>
           </div>
 
-          {/* Watchlist */}
           <Card className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-400">
               Watchlist ({watchlist.length} stocks)
@@ -360,7 +375,6 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             </div>
           </Card>
 
-          {/* Risk Settings */}
           <Card className="space-y-4">
             <h3 className="text-sm font-semibold text-gray-400">Risk Management</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -406,21 +420,18 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             </div>
           </Card>
 
-          {/* Summary */}
           <Card className="!p-4 bg-indigo-500/5 border-indigo-500/20">
             <div className="flex items-start gap-3">
               <Bot size={18} className="text-indigo-400 shrink-0 mt-0.5" />
               <div className="text-xs text-gray-400 space-y-1">
                 <p>
                   <span className="text-white font-medium">Mode:</span>{" "}
-                  {mode === "PAPER" ? "Paper Trading (virtual money)" : "Live Trading (real money)"}
+                  Paper Trading (virtual money)
                 </p>
-                {mode === "PAPER" && (
-                  <p>
-                    <span className="text-white font-medium">Starting Balance:</span>{" "}
-                    ${paperBalance.toLocaleString()}
-                  </p>
-                )}
+                <p>
+                  <span className="text-white font-medium">Starting Balance:</span>{" "}
+                  ${paperBalance.toLocaleString()}
+                </p>
                 <p>
                   <span className="text-white font-medium">Watching:</span>{" "}
                   {watchlist.length} stocks
@@ -460,9 +471,11 @@ export default function AutoTradingPage() {
   const [openTrades, setOpenTrades] = useState<AutoTrade[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<RunResult | null>(null);
   const [toggling, setToggling] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [briefing, setBriefing] = useState<string | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -476,6 +489,7 @@ export default function AutoTradingPage() {
       }
 
       setConfig(configData);
+      setNeedsSetup(false);
 
       const [statsRes, tradesRes, openRes] = await Promise.all([
         fetch("/api/trading/auto?action=stats"),
@@ -521,19 +535,27 @@ export default function AutoTradingPage() {
 
   const runNow = async () => {
     setRunning(true);
+    setRunResult(null);
     try {
-      await fetch("/api/trading/auto", { method: "POST" });
+      const res = await fetch("/api/trading/auto", { method: "POST" });
+      const data = await res.json();
+      setRunResult(data);
       await fetchData();
-    } catch {}
+    } catch (e: any) {
+      setRunResult({ error: e.message || "Failed to run trading cycle" });
+    }
     setRunning(false);
   };
 
   const getBriefing = async () => {
+    setBriefing("Loading AI analysis...");
     try {
       const res = await fetch("/api/trading/auto?action=briefing", { method: "POST" });
       const data = await res.json();
-      setBriefing(data.briefing);
-    } catch {}
+      setBriefing(data.briefing || "No briefing available right now.");
+    } catch {
+      setBriefing("Failed to load briefing. Try again.");
+    }
   };
 
   const updateConfig = async (updates: Partial<TradingConfig>) => {
@@ -546,6 +568,22 @@ export default function AutoTradingPage() {
       const updated = await res.json();
       setConfig(updated);
     } catch {}
+  };
+
+  const resetSetup = async () => {
+    if (!confirm("This will reset your AutoTrader setup. You'll go through the setup wizard again. Continue?")) return;
+    setResetting(true);
+    try {
+      await fetch("/api/trading/auto", { method: "DELETE" });
+      setConfig(null);
+      setNeedsSetup(true);
+      setStats(null);
+      setTrades([]);
+      setOpenTrades([]);
+      setRunResult(null);
+      setBriefing(null);
+    } catch {}
+    setResetting(false);
   };
 
   if (loading) {
@@ -581,17 +619,16 @@ export default function AutoTradingPage() {
                 </span>
               )}
             </h1>
-            <p className="text-gray-500 text-sm">
+            <p className="text-gray-500 text-sm flex items-center gap-2 flex-wrap">
               AI-powered autonomous swing trading
-              {config?.mode && (
-                <Badge variant={config.mode === "PAPER" ? "green" : "yellow"} className="ml-2">
-                  {config.mode}
-                </Badge>
-              )}
+              <Badge variant={config?.mode === "PAPER" ? "green" : "yellow"}>
+                {config?.mode || "PAPER"}
+              </Badge>
+              {!config?.enabled && <Badge variant="gray">Paused</Badge>}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             size="sm"
             variant={config?.enabled ? "danger" : "primary"}
@@ -601,7 +638,7 @@ export default function AutoTradingPage() {
             {config?.enabled ? <><PowerOff size={14} /> Disable</> : <><Power size={14} /> Enable</>}
           </Button>
           <Button size="sm" variant="secondary" onClick={runNow} loading={running} disabled={!config?.enabled}>
-            <RefreshCw size={14} /> Run Now
+            <RefreshCw size={14} className={running ? "animate-spin" : ""} /> {running ? "Scanning..." : "Run Now"}
           </Button>
           <Button size="sm" variant="secondary" onClick={() => setShowSettings(!showSettings)}>
             <Settings size={14} />
@@ -609,42 +646,109 @@ export default function AutoTradingPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Card className="!p-4 text-center">
-            <DollarSign size={18} className="mx-auto text-gray-500 mb-1" />
-            <p className={`text-xl font-bold ${stats.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {stats.totalPnl >= 0 ? "+" : ""}${stats.totalPnl.toFixed(2)}
+      {/* Portfolio Overview - prominent balance */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <Card className="!p-4 text-center md:col-span-1">
+          <Wallet size={18} className="mx-auto text-emerald-500 mb-1" />
+          <p className="text-xl font-bold text-white">
+            ${(config?.paperBalance || 10000).toLocaleString()}
+          </p>
+          <p className="text-xs text-gray-500">
+            {config?.mode === "PAPER" ? "Paper Balance" : "Portfolio"}
+          </p>
+        </Card>
+        <Card className="!p-4 text-center">
+          <DollarSign size={18} className="mx-auto text-gray-500 mb-1" />
+          <p className={`text-xl font-bold ${(stats?.totalPnl || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {(stats?.totalPnl || 0) >= 0 ? "+" : ""}${(stats?.totalPnl || 0).toFixed(2)}
+          </p>
+          <p className="text-xs text-gray-500">Total P&L</p>
+        </Card>
+        <Card className="!p-4 text-center">
+          <Target size={18} className="mx-auto text-gray-500 mb-1" />
+          <p className="text-xl font-bold text-white">{stats?.winRate || 0}%</p>
+          <p className="text-xs text-gray-500">Win Rate</p>
+        </Card>
+        <Card className="!p-4 text-center">
+          <BarChart3 size={18} className="mx-auto text-gray-500 mb-1" />
+          <p className="text-xl font-bold text-white">{stats?.totalTrades || 0}</p>
+          <p className="text-xs text-gray-500">Total Trades</p>
+        </Card>
+        <Card className="!p-4 text-center">
+          <Activity size={18} className="mx-auto text-gray-500 mb-1" />
+          <p className="text-xl font-bold text-indigo-400">{stats?.openPositions || 0}</p>
+          <p className="text-xs text-gray-500">Open Positions</p>
+        </Card>
+      </div>
+
+      {/* Run Result Feedback */}
+      {runResult && (
+        <Card className={`!p-4 ${runResult.error ? "bg-red-500/5 border-red-500/20" : "bg-emerald-500/5 border-emerald-500/20"}`}>
+          <div className="flex items-start gap-3">
+            {runResult.error ? (
+              <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+            ) : (
+              <Zap size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+            )}
+            <div className="text-sm">
+              {runResult.error ? (
+                <p className="text-red-300">{runResult.error}</p>
+              ) : (
+                <div className="space-y-1">
+                  <p className="text-emerald-300 font-medium">Trading cycle completed</p>
+                  <div className="text-xs text-gray-400 space-y-0.5">
+                    {runResult.scanned !== undefined && (
+                      <p>Scanned: {runResult.scanned} stocks</p>
+                    )}
+                    {runResult.signals !== undefined && (
+                      <p>Signals found: {runResult.signals}</p>
+                    )}
+                    {runResult.tradesPlaced !== undefined && (
+                      <p>Trades placed: {runResult.tradesPlaced}</p>
+                    )}
+                    {runResult.message && <p>{runResult.message}</p>}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={() => setRunResult(null)} className="ml-auto text-gray-600 hover:text-gray-400 shrink-0">
+              <X size={14} />
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Not enabled prompt */}
+      {!config?.enabled && (
+        <Card className="!p-5 bg-indigo-500/5 border-indigo-500/20 text-center space-y-3">
+          <Bot size={40} className="mx-auto text-indigo-400" />
+          <div>
+            <p className="text-white font-semibold">AutoTrader is paused</p>
+            <p className="text-gray-400 text-sm mt-1">
+              Click <span className="text-indigo-400 font-medium">Enable</span> above to start the AI trading bot.
+              It will scan your watchlist for opportunities during market hours.
             </p>
-            <p className="text-xs text-gray-500">Total P&L</p>
-          </Card>
-          <Card className="!p-4 text-center">
-            <Target size={18} className="mx-auto text-gray-500 mb-1" />
-            <p className="text-xl font-bold text-white">{stats.winRate}%</p>
-            <p className="text-xs text-gray-500">Win Rate</p>
-          </Card>
-          <Card className="!p-4 text-center">
-            <BarChart3 size={18} className="mx-auto text-gray-500 mb-1" />
-            <p className="text-xl font-bold text-white">{stats.totalTrades}</p>
-            <p className="text-xs text-gray-500">Total Trades</p>
-          </Card>
-          <Card className="!p-4 text-center">
-            <Activity size={18} className="mx-auto text-gray-500 mb-1" />
-            <p className="text-xl font-bold text-indigo-400">{stats.openPositions}</p>
-            <p className="text-xs text-gray-500">Open Positions</p>
-          </Card>
-        </div>
+          </div>
+          <Button onClick={toggleEnabled} loading={toggling}>
+            <Power size={16} /> Enable AutoTrader
+          </Button>
+        </Card>
       )}
 
       {/* Settings Panel */}
       {showSettings && config && (
         <Card className="space-y-4">
-          <h3 className="text-sm font-semibold text-gray-400">AutoTrader Settings</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-400">AutoTrader Settings</h3>
+            <Button size="sm" variant="secondary" onClick={resetSetup} loading={resetting}>
+              <RotateCcw size={12} /> Re-run Setup
+            </Button>
+          </div>
+
           {config.mode === "PAPER" && (
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Paper Trading Balance</label>
-              <div className="flex gap-2">
+              <label className="text-xs text-gray-500 block mb-1.5">Paper Trading Balance</label>
+              <div className="flex flex-wrap gap-2">
                 {[1000, 5000, 10000, 25000].map((amt) => (
                   <button
                     key={amt}
@@ -661,6 +765,7 @@ export default function AutoTradingPage() {
               </div>
             </div>
           )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="text-xs text-gray-500 block mb-1">Max Position %</label>
@@ -699,13 +804,18 @@ export default function AutoTradingPage() {
               </select>
             </div>
           </div>
+
           <div>
             <label className="text-xs text-gray-500 block mb-1">
               Watchlist ({config.watchlist.length} stocks)
             </label>
-            <p className="text-xs text-gray-600">
-              {config.watchlist.join(", ")}
-            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {config.watchlist.map((t) => (
+                <span key={t} className="inline-flex items-center gap-1 bg-gray-800 rounded px-2 py-1 text-xs text-gray-300">
+                  <StockLogo ticker={t} size={14} /> {t}
+                </span>
+              ))}
+            </div>
           </div>
         </Card>
       )}
@@ -778,7 +888,9 @@ export default function AutoTradingPage() {
             <BarChart3 size={32} className="mx-auto text-gray-700 mb-2" />
             <p className="text-gray-500 text-sm">No completed trades yet</p>
             <p className="text-gray-600 text-xs mt-1">
-              {config?.enabled ? "The bot will start trading when it finds good setups" : "Enable the AutoTrader to start"}
+              {config?.enabled
+                ? "The bot will start trading when it finds high-conviction setups during market hours"
+                : "Enable the AutoTrader to start scanning for trades"}
             </p>
           </Card>
         ) : (

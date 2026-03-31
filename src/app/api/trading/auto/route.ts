@@ -141,3 +141,14 @@ export async function PATCH(req: NextRequest) {
 
   return NextResponse.json(config);
 }
+
+export async function DELETE(req: NextRequest) {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const userId = (session.user as any).id;
+
+  await prisma.tradingConfig.deleteMany({ where: { userId } });
+  return NextResponse.json({ deleted: true });
+}
