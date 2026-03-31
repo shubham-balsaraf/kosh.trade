@@ -4,17 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
-import { Home, Search, Briefcase, BarChart3, MoreHorizontal, TrendingDown, Bell, Settings, HelpCircle, X } from "lucide-react";
+import { Home, Search, Bot, BarChart3, MoreHorizontal, Briefcase, TrendingDown, Bell, Settings, HelpCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
   { href: "/dashboard", icon: Home, label: "Home" },
   { href: "/search", icon: Search, label: "Search" },
-  { href: "/portfolio", icon: Briefcase, label: "Portfolio" },
+  { href: "/trading/auto", icon: Bot, label: "AutoTrader" },
   { href: "/signals", icon: BarChart3, label: "Signals" },
 ];
 
 const moreItems = [
+  { href: "/portfolio", icon: Briefcase, label: "Portfolio" },
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
   { href: "/settings", icon: Settings, label: "Settings" },

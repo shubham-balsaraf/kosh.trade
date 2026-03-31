@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap, HelpCircle } from "lucide-react";
+import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap, HelpCircle, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ProBadge from "@/components/ui/ProBadge";
 
@@ -11,6 +11,7 @@ const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard", proOnly: false },
   { href: "/search", icon: Search, label: "Search", proOnly: false },
   { href: "/portfolio", icon: Briefcase, label: "Portfolio", proOnly: false },
+  { href: "/trading/auto", icon: Bot, label: "AutoTrader", proOnly: false },
   { href: "/signals", icon: BarChart3, label: "Signals", proOnly: true },
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder", proOnly: true },
   { href: "/alerts", icon: Bell, label: "Alerts", proOnly: false },
