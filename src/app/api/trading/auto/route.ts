@@ -67,11 +67,9 @@ export async function GET(req: NextRequest) {
   const action = req.nextUrl.searchParams.get("action");
 
   if (action === "config") {
-    let config = await prisma.tradingConfig.findUnique({ where: { userId } });
+    const config = await prisma.tradingConfig.findUnique({ where: { userId } });
     if (!config) {
-      config = await prisma.tradingConfig.create({
-        data: { userId },
-      });
+      return NextResponse.json({ setup: false });
     }
     return NextResponse.json(config);
   }
