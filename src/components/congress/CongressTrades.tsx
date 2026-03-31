@@ -19,16 +19,26 @@ interface Trade {
   publishedDate: string;
 }
 
+const PHOTO_SOURCES = [
+  (id: string) =>
+    `https://unitedstates.github.io/images/congress/225x275/${id}.jpg`,
+  (id: string) =>
+    `https://www.congress.gov/img/member/${id.toLowerCase()}_200.jpg`,
+];
+
 function PoliticianPhoto({
   bioguideId,
   name,
   party,
+  size = 40,
 }: {
   bioguideId: string;
   name: string;
   party: string;
+  size?: number;
 }) {
-  const [error, setError] = useState(false);
+  const [sourceIdx, setSourceIdx] = useState(0);
+  const [allFailed, setAllFailed] = useState(false);
   const borderColor =
     party === "Democrat"
       ? "ring-blue-500/50"
@@ -36,13 +46,14 @@ function PoliticianPhoto({
         ? "ring-red-500/50"
         : "ring-gray-500/50";
 
-  if (error || !bioguideId) {
-    const initials = name
-      .split(" ")
-      .map((n) => n[0])
-      .join("")
-      .slice(0, 2)
-      .toUpperCase();
+  const initials = name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  if (allFailed || !bioguideId) {
     const bgColor =
       party === "Democrat"
         ? "bg-blue-900/50 text-blue-300"
@@ -51,7 +62,8 @@ function PoliticianPhoto({
           : "bg-gray-800 text-gray-400";
     return (
       <div
-        className={`w-10 h-10 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ring-2 ${borderColor} ${bgColor}`}
+        className={`rounded-full flex items-center justify-center font-bold shrink-0 ring-2 ${borderColor} ${bgColor}`}
+        style={{ width: size, height: size, fontSize: size * 0.3 }}
       >
         {initials}
       </div>
@@ -60,16 +72,27 @@ function PoliticianPhoto({
 
   return (
     <img
-      src={`https://theunitedstates.io/images/congress/225x275/${bioguideId}.jpg`}
+      src={PHOTO_SOURCES[sourceIdx](bioguideId)}
       alt={name}
-      width={40}
-      height={40}
-      className={`w-10 h-10 rounded-full object-cover shrink-0 ring-2 ${borderColor} bg-gray-800`}
-      onError={() => setError(true)}
+      width={size}
+      height={size}
+      className={`rounded-full object-cover shrink-0 ring-2 ${borderColor} bg-gray-800`}
+      style={{ width: size, height: size }}
+      crossOrigin="anonymous"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (sourceIdx < PHOTO_SOURCES.length - 1) {
+          setSourceIdx((prev) => prev + 1);
+        } else {
+          setAllFailed(true);
+        }
+      }}
       loading="lazy"
     />
   );
 }
+
+export { PoliticianPhoto };
 
 function TradeCard({ trade }: { trade: Trade }) {
   const isBuy = trade.type === "buy";

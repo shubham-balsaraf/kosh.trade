@@ -5,6 +5,7 @@ import TickerStrip from "@/components/ui/TickerStrip";
 import AnimatedCounter from "@/components/ui/AnimatedCounter";
 import LandingNav from "@/components/ui/LandingNav";
 import HeroCTA from "@/components/ui/HeroCTA";
+import CongressShowcase from "@/components/congress/CongressShowcase";
 
 const features = [
   {
@@ -149,6 +150,9 @@ export default function LandingPage() {
 
       {/* Ticker Strip */}
       <TickerStrip />
+
+      {/* Congressional Trades Showcase */}
+      <CongressShowcase />
 
       {/* Stats Section */}
       <div className="max-w-4xl mx-auto px-4 py-20">
