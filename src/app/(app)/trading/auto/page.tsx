@@ -56,11 +56,14 @@ interface AutoTrade {
 }
 
 interface RunResult {
+  status?: string;
+  reason?: string;
   scanned?: number;
-  signals?: number;
-  tradesPlaced?: number;
+  signalsFound?: number;
+  tradesExecuted?: number;
+  exitsExecuted?: number;
+  details?: any[];
   error?: string;
-  message?: string;
 }
 
 const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM"];
@@ -651,11 +654,16 @@ export default function AutoTradingPage() {
         <Card className="!p-4 text-center md:col-span-1">
           <Wallet size={18} className="mx-auto text-emerald-500 mb-1" />
           <p className="text-xl font-bold text-white">
-            ${(config?.paperBalance || 10000).toLocaleString()}
+            ${((config?.paperBalance || 10000) + (stats?.totalPnl || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
           <p className="text-xs text-gray-500">
             {config?.mode === "PAPER" ? "Paper Balance" : "Portfolio"}
           </p>
+          {config?.mode === "PAPER" && (stats?.totalPnl || 0) !== 0 && (
+            <p className="text-[10px] text-gray-600 mt-0.5">
+              Started: ${(config?.paperBalance || 10000).toLocaleString()}
+            </p>
+          )}
         </Card>
         <Card className="!p-4 text-center">
           <DollarSign size={18} className="mx-auto text-gray-500 mb-1" />
@@ -683,31 +691,68 @@ export default function AutoTradingPage() {
 
       {/* Run Result Feedback */}
       {runResult && (
-        <Card className={`!p-4 ${runResult.error ? "bg-red-500/5 border-red-500/20" : "bg-emerald-500/5 border-emerald-500/20"}`}>
+        <Card className={`!p-4 ${
+          runResult.status === "ERROR" ? "bg-red-500/5 border-red-500/20"
+            : runResult.status === "SKIPPED" ? "bg-amber-500/5 border-amber-500/20"
+              : "bg-emerald-500/5 border-emerald-500/20"
+        }`}>
           <div className="flex items-start gap-3">
-            {runResult.error ? (
+            {runResult.status === "ERROR" ? (
               <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+            ) : runResult.status === "SKIPPED" ? (
+              <Clock size={18} className="text-amber-400 shrink-0 mt-0.5" />
             ) : (
               <Zap size={18} className="text-emerald-400 shrink-0 mt-0.5" />
             )}
-            <div className="text-sm">
-              {runResult.error ? (
-                <p className="text-red-300">{runResult.error}</p>
+            <div className="text-sm flex-1">
+              {runResult.status === "ERROR" ? (
+                <p className="text-red-300">{runResult.reason || runResult.error}</p>
+              ) : runResult.status === "SKIPPED" ? (
+                <p className="text-amber-300">{runResult.reason}</p>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-2">
                   <p className="text-emerald-300 font-medium">Trading cycle completed</p>
-                  <div className="text-xs text-gray-400 space-y-0.5">
-                    {runResult.scanned !== undefined && (
-                      <p>Scanned: {runResult.scanned} stocks</p>
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <span className="flex items-center gap-1.5 bg-gray-800/50 rounded-lg px-2.5 py-1.5">
+                      <Search size={12} className="text-indigo-400" />
+                      <span className="text-white font-medium">{runResult.scanned || 0}</span>
+                      <span className="text-gray-500">scanned</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-gray-800/50 rounded-lg px-2.5 py-1.5">
+                      <Brain size={12} className="text-amber-400" />
+                      <span className="text-white font-medium">{runResult.signalsFound || 0}</span>
+                      <span className="text-gray-500">signals</span>
+                    </span>
+                    <span className="flex items-center gap-1.5 bg-gray-800/50 rounded-lg px-2.5 py-1.5">
+                      <TrendingUp size={12} className="text-emerald-400" />
+                      <span className="text-white font-medium">{runResult.tradesExecuted || 0}</span>
+                      <span className="text-gray-500">trades</span>
+                    </span>
+                    {(runResult.exitsExecuted || 0) > 0 && (
+                      <span className="flex items-center gap-1.5 bg-gray-800/50 rounded-lg px-2.5 py-1.5">
+                        <DollarSign size={12} className="text-gray-400" />
+                        <span className="text-white font-medium">{runResult.exitsExecuted}</span>
+                        <span className="text-gray-500">exits</span>
+                      </span>
                     )}
-                    {runResult.signals !== undefined && (
-                      <p>Signals found: {runResult.signals}</p>
-                    )}
-                    {runResult.tradesPlaced !== undefined && (
-                      <p>Trades placed: {runResult.tradesPlaced}</p>
-                    )}
-                    {runResult.message && <p>{runResult.message}</p>}
                   </div>
+                  {runResult.details && runResult.details.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {runResult.details.slice(0, 5).map((d: any, i: number) => (
+                        <div key={i} className="text-xs text-gray-400 flex items-center gap-2">
+                          <Badge variant={d.action === "BUY" ? "green" : d.action === "SELL" ? "red" : "gray"}>
+                            {d.action}
+                          </Badge>
+                          <span className="text-white font-medium">{d.ticker}</span>
+                          {d.qty && <span>{d.qty} shares @ ${d.price?.toFixed(2)}</span>}
+                          {d.reason && <span className="text-gray-600">- {d.reason}</span>}
+                        </div>
+                      ))}
+                      {runResult.details.length > 5 && (
+                        <p className="text-gray-600 text-xs">+ {runResult.details.length - 5} more actions</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
