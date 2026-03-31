@@ -129,6 +129,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           aiConfidence: signal.confidence,
           signalScore: signal.score,
           status: "OPEN",
+          mode: "PAPER",
           entryAt: new Date(),
         },
       });

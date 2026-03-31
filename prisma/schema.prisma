@@ -193,6 +193,7 @@ model AutoTrade {
   signalScore   Float?
   alpacaOrderId String?
   status        AutoTradeStatus @default(PENDING)
+  mode          TradeMode       @default(PAPER)
   exitReason    String?
   entryAt       DateTime?
   exitAt        DateTime?
@@ -202,6 +203,7 @@ model AutoTrade {
 
   @@index([userId, status])
   @@index([userId, createdAt(sort: Desc)])
+  @@index([userId, mode])
 }
 
 model TradingConfig {

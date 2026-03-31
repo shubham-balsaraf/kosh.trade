@@ -69,6 +69,7 @@ export async function executeEntry(
         signalScore,
         alpacaOrderId: order.id,
         status: order.status === "filled" ? "OPEN" : "PENDING",
+        mode: "LIVE",
         entryAt: order.filled_at ? new Date(order.filled_at) : new Date(),
       },
     });

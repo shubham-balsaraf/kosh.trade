@@ -38,10 +38,10 @@ function macdSignal(m: ScanResult["macd"]): Signal {
   if (isNaN(m.macd) || isNaN(m.signal)) return { name: "MACD", score: 0, weight: 1, reason: "No data" };
 
   const crossover = m.histogram;
-  if (crossover > 0 && m.macd > 0) return { name: "MACD", score: 50, weight: 2, reason: "Bullish crossover, above zero" };
-  if (crossover > 0) return { name: "MACD", score: 30, weight: 1.5, reason: "Bullish crossover" };
-  if (crossover < 0 && m.macd < 0) return { name: "MACD", score: -50, weight: 2, reason: "Bearish crossover, below zero" };
-  if (crossover < 0) return { name: "MACD", score: -25, weight: 1.5, reason: "Bearish crossover" };
+  if (crossover > 0 && m.macd > 0) return { name: "MACD", score: 50, weight: 2.5, reason: "Bullish crossover, above zero" };
+  if (crossover > 0) return { name: "MACD", score: 30, weight: 2, reason: "Bullish crossover" };
+  if (crossover < 0 && m.macd < 0) return { name: "MACD", score: -50, weight: 2.5, reason: "Bearish crossover, below zero" };
+  if (crossover < 0) return { name: "MACD", score: -25, weight: 2, reason: "Bearish crossover" };
   return { name: "MACD", score: 0, weight: 1, reason: "Neutral" };
 }
 
@@ -65,16 +65,16 @@ function trendSignal(price: number, sma20: number, sma50: number, ema9: number):
   const aboveEma9 = price > ema9;
 
   if (aboveSma20 && aboveSma50 && goldenCross && aboveEma9) {
-    return { name: "Trend", score: 60, weight: 2, reason: "Strong uptrend — above all MAs, golden cross" };
+    return { name: "Trend", score: 60, weight: 2.5, reason: "Strong uptrend — above all MAs, golden cross" };
   }
   if (aboveSma20 && aboveSma50) {
-    return { name: "Trend", score: 35, weight: 1.5, reason: "Uptrend — above SMA20 and SMA50" };
+    return { name: "Trend", score: 35, weight: 2, reason: "Uptrend — above SMA20 and SMA50" };
   }
   if (!aboveSma20 && !aboveSma50 && !goldenCross) {
-    return { name: "Trend", score: -55, weight: 2, reason: "Strong downtrend — below all MAs, death cross" };
+    return { name: "Trend", score: -55, weight: 2.5, reason: "Strong downtrend — below all MAs, death cross" };
   }
   if (!aboveSma20 && !aboveSma50) {
-    return { name: "Trend", score: -30, weight: 1.5, reason: "Downtrend — below SMA20 and SMA50" };
+    return { name: "Trend", score: -30, weight: 2, reason: "Downtrend — below SMA20 and SMA50" };
   }
   return { name: "Trend", score: 0, weight: 1, reason: "Mixed trend" };
 }
@@ -103,6 +103,33 @@ function momentumSignal(weekReturn: number, monthReturn: number): Signal {
   return { name: "Momentum", score: 0, weight: 0.8, reason: `Flat momentum (${weekReturn.toFixed(1)}% week)` };
 }
 
+function vwapSignal(price: number, vwapVal: number): Signal {
+  if (isNaN(vwapVal) || vwapVal === 0) return { name: "VWAP", score: 0, weight: 0.5, reason: "No VWAP data" };
+
+  const deviation = ((price - vwapVal) / vwapVal) * 100;
+
+  if (deviation < -3) return { name: "VWAP", score: 55, weight: 1.8, reason: `${deviation.toFixed(1)}% below VWAP — institutional discount zone` };
+  if (deviation < -1) return { name: "VWAP", score: 30, weight: 1.5, reason: `${deviation.toFixed(1)}% below VWAP — undervalued vs volume` };
+  if (deviation > 3) return { name: "VWAP", score: -45, weight: 1.8, reason: `+${deviation.toFixed(1)}% above VWAP — overextended` };
+  if (deviation > 1) return { name: "VWAP", score: -20, weight: 1.2, reason: `+${deviation.toFixed(1)}% above VWAP — premium price` };
+  return { name: "VWAP", score: 5, weight: 1, reason: `Near VWAP (${deviation > 0 ? "+" : ""}${deviation.toFixed(1)}%) — fair value` };
+}
+
+function supportResistanceSignal(price: number, high20: number, low20: number): Signal {
+  if (high20 === low20) return { name: "S/R", score: 0, weight: 0.5, reason: "No range data" };
+
+  const range = high20 - low20;
+  const positionInRange = (price - low20) / range;
+  const distToSupport = ((price - low20) / price) * 100;
+  const distToResistance = ((high20 - price) / price) * 100;
+
+  if (positionInRange < 0.1) return { name: "S/R", score: 60, weight: 2, reason: `At 20-day support ($${low20.toFixed(2)}) — ${distToSupport.toFixed(1)}% away` };
+  if (positionInRange < 0.25) return { name: "S/R", score: 35, weight: 1.5, reason: `Near support zone — lower quarter of 20-day range` };
+  if (positionInRange > 0.9) return { name: "S/R", score: -50, weight: 2, reason: `At 20-day resistance ($${high20.toFixed(2)}) — ${distToResistance.toFixed(1)}% away` };
+  if (positionInRange > 0.75) return { name: "S/R", score: -25, weight: 1.5, reason: `Near resistance — upper quarter of 20-day range` };
+  return { name: "S/R", score: 0, weight: 0.8, reason: `Mid-range (${(positionInRange * 100).toFixed(0)}% of 20-day range)` };
+}
+
 function detectStrategy(signals: Signal[], rsiVal: number): StrategyType {
   const rsiOversold = rsiVal < 35;
   const trendSig = signals.find((s) => s.name === "Trend");
@@ -121,6 +148,8 @@ export function generateSignals(scan: ScanResult): TradeSignal {
     trendSignal(scan.price, scan.sma20, scan.sma50, scan.ema9),
     volumeSignal(scan.volumeRatio),
     momentumSignal(scan.weekReturn, scan.monthReturn),
+    vwapSignal(scan.price, scan.vwap),
+    supportResistanceSignal(scan.price, scan.high20, scan.low20),
   ];
 
   let totalWeightedScore = 0;
@@ -162,8 +191,18 @@ export function generateSignals(scan: ScanResult): TradeSignal {
 }
 
 export function rankSignals(scanResults: ScanResult[]): TradeSignal[] {
-  return scanResults
-    .map(generateSignals)
+  const allSignals = scanResults.map(generateSignals);
+
+  const bearishCount = allSignals.filter((s) => s.score < -10).length;
+  const bearishRatio = scanResults.length > 0 ? bearishCount / scanResults.length : 0;
+  const marketRegimePenalty = bearishRatio > 0.6 ? 0.7 : bearishRatio > 0.4 ? 0.85 : 1;
+
+  return allSignals
+    .map((s) => ({
+      ...s,
+      score: s.score * marketRegimePenalty,
+      confidence: Math.round(s.confidence * marketRegimePenalty),
+    }))
     .filter((s) => s.action === "BUY" || s.action === "STRONG_BUY")
     .sort((a, b) => b.score - a.score);
 }

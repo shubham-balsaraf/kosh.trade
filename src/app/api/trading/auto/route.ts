@@ -76,8 +76,11 @@ export async function GET(req: NextRequest) {
 
   if (action === "trades") {
     const status = req.nextUrl.searchParams.get("status") || undefined;
+    const modeParam = req.nextUrl.searchParams.get("mode") as any;
+    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true } });
+    const mode = modeParam || config?.mode || "PAPER";
     const trades = await prisma.autoTrade.findMany({
-      where: { userId, ...(status ? { status: status as any } : {}) },
+      where: { userId, mode, ...(status ? { status: status as any } : {}) },
       orderBy: { createdAt: "desc" },
       take: 50,
     });
@@ -85,8 +88,10 @@ export async function GET(req: NextRequest) {
   }
 
   if (action === "stats") {
+    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true } });
+    const mode = config?.mode || "PAPER";
     const allTrades = await prisma.autoTrade.findMany({
-      where: { userId, status: "CLOSED" },
+      where: { userId, status: "CLOSED", mode },
       select: { pnl: true, entryPrice: true, exitPrice: true, strategy: true },
     });
 
@@ -97,7 +102,7 @@ export async function GET(req: NextRequest) {
     const avgPnl = totalTrades > 0 ? totalPnl / totalTrades : 0;
 
     const openTrades = await prisma.autoTrade.count({
-      where: { userId, status: "OPEN" },
+      where: { userId, status: "OPEN", mode },
     });
 
     return NextResponse.json({

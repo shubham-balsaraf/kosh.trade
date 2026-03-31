@@ -8,6 +8,7 @@ import {
   volumeSpike,
   atr,
   priceChangePercent,
+  vwap,
 } from "./indicators";
 
 export const DEFAULT_WATCHLIST = [
@@ -32,6 +33,9 @@ export interface ScanResult {
   ema9: number;
   volumeRatio: number;
   atr: number;
+  vwap: number;
+  high20: number;
+  low20: number;
   weekReturn: number;
   monthReturn: number;
 }
@@ -67,6 +71,13 @@ export async function scanStock(ticker: string): Promise<ScanResult | null> {
     const lows = closes.map((c) => c * 0.995);
     const atrVal = atr(highs, lows, closes);
 
+    const vwapVols = volumes.length >= closes.length ? volumes : closes.map(() => 1);
+    const vwapResult = vwap(closes, highs, lows, vwapVols);
+
+    const recent20 = closes.slice(-20);
+    const high20 = Math.max(...recent20);
+    const low20 = Math.min(...recent20);
+
     return {
       ticker,
       price: data.price,
@@ -80,6 +91,9 @@ export async function scanStock(ticker: string): Promise<ScanResult | null> {
       ema9: ema9[ema9.length - 1],
       volumeRatio: volRatio,
       atr: atrVal,
+      vwap: vwapResult.current,
+      high20,
+      low20,
       weekReturn: priceChangePercent(closes, 5),
       monthReturn: priceChangePercent(closes, 21),
     };
