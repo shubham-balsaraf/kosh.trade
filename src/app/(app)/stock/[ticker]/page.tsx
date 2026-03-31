@@ -14,7 +14,7 @@ import MarginChart from "@/components/charts/MarginChart";
 import AIAnalysis from "@/components/stock/AIAnalysis";
 import AnalysisHistory from "@/components/stock/AnalysisHistory";
 import Link from "next/link";
-import { Crown, Lock } from "lucide-react";
+import { Crown, Lock, TrendingUp, TrendingDown, Minus, Newspaper, ExternalLink, Zap } from "lucide-react";
 import StockLogo from "@/components/ui/StockLogo";
 
 type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
@@ -73,6 +73,20 @@ const DEFAULT_THEME = {
   bar: "bg-indigo-500",
 };
 
+function getTimeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 export default function StockPage({ params }: { params: Promise<{ ticker: string }> }) {
   const { ticker } = use(params);
   const [data, setData] = useState<any>(null);
@@ -81,6 +95,8 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const [limitReached, setLimitReached] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("ai");
   const [verdict, setVerdict] = useState<VerdictTheme>(null);
+  const [newsData, setNewsData] = useState<any>(null);
+  const [newsLoading, setNewsLoading] = useState(false);
   const mobile = useIsMobile();
 
   const handleVerdictChange = useCallback((signal: string | null) => {
@@ -131,6 +147,16 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
     }
     load();
   }, [ticker]);
+
+  useEffect(() => {
+    if (!data || newsData) return;
+    setNewsLoading(true);
+    fetch(`/api/stocks/${ticker}/news`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d) setNewsData(d); })
+      .catch(() => {})
+      .finally(() => setNewsLoading(false));
+  }, [data, ticker, newsData]);
 
   if (loading) {
     return (
@@ -287,6 +313,97 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
       {activeTab === "overview" && (
         <div className="space-y-4">
+          {/* Catalysts & News */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Zap size={14} className={t.accent} />
+                <h3 className="text-sm font-semibold text-gray-400">Recent Catalysts</h3>
+              </div>
+              {newsData?.sentiment && (
+                <div className="flex items-center gap-2">
+                  <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${
+                    newsData.sentiment.overall === "bullish"
+                      ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                      : newsData.sentiment.overall === "bearish"
+                        ? "bg-red-500/10 text-red-400 border border-red-500/20"
+                        : "bg-white/[0.04] text-white/40 border border-white/[0.06]"
+                  }`}>
+                    {newsData.sentiment.overall === "bullish" ? <TrendingUp size={10} /> : newsData.sentiment.overall === "bearish" ? <TrendingDown size={10} /> : <Minus size={10} />}
+                    {newsData.sentiment.overall.charAt(0).toUpperCase() + newsData.sentiment.overall.slice(1)}
+                  </div>
+                  <span className="text-[10px] text-white/15">
+                    {newsData.sentiment.bullish}↑ {newsData.sentiment.bearish}↓ {newsData.sentiment.neutral}—
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {newsLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="animate-pulse flex gap-3">
+                    <div className="w-1 h-12 rounded-full bg-white/[0.04]" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-white/[0.04] rounded w-3/4" />
+                      <div className="h-2 bg-white/[0.04] rounded w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : newsData?.news?.length > 0 ? (
+              <div className="space-y-0.5">
+                {newsData.news.slice(0, 6).map((item: any, i: number) => {
+                  const sentColor = item.sentiment === "bullish" ? "bg-emerald-500" : item.sentiment === "bearish" ? "bg-red-500" : "bg-white/20";
+                  const timeAgo = getTimeAgo(item.publishedAt);
+                  return (
+                    <a
+                      key={i}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex gap-3 p-2.5 -mx-2.5 rounded-xl hover:bg-white/[0.03] transition-colors group"
+                    >
+                      <div className={`w-1 shrink-0 rounded-full ${sentColor} mt-1`} style={{ minHeight: "2rem" }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/80 font-medium leading-snug line-clamp-2 group-hover:text-white transition-colors">
+                          {item.title}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[10px] text-white/25">{item.source}</span>
+                          <span className="text-[10px] text-white/10">·</span>
+                          <span className="text-[10px] text-white/25">{timeAgo}</span>
+                          <ExternalLink size={8} className="text-white/10 group-hover:text-white/30 transition-colors ml-auto" />
+                        </div>
+                      </div>
+                    </a>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-white/20 text-center py-4">No recent news found</p>
+            )}
+
+            {newsData?.sentiment && newsData.news?.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-white/[0.04]">
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 rounded-full bg-white/[0.04] overflow-hidden flex">
+                    {newsData.sentiment.bullish > 0 && (
+                      <div className="h-full bg-emerald-500/60 rounded-l-full" style={{ width: `${(newsData.sentiment.bullish / newsData.news.length) * 100}%` }} />
+                    )}
+                    {newsData.sentiment.neutral > 0 && (
+                      <div className="h-full bg-white/10" style={{ width: `${((newsData.news.length - newsData.sentiment.bullish - newsData.sentiment.bearish) / newsData.news.length) * 100}%` }} />
+                    )}
+                    {newsData.sentiment.bearish > 0 && (
+                      <div className="h-full bg-red-500/60 rounded-r-full" style={{ width: `${(newsData.sentiment.bearish / newsData.news.length) * 100}%` }} />
+                    )}
+                  </div>
+                  <span className="text-[10px] text-white/20 shrink-0">Sentiment</span>
+                </div>
+              </div>
+            )}
+          </Card>
+
           {p.description && (
             <Card>
               <h3 className="text-sm font-semibold text-gray-400 mb-2">About</h3>

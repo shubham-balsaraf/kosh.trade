@@ -106,3 +106,7 @@ export async function getEarnings(ticker: string) {
 export async function getEarningsSurprises(ticker: string) {
   return fmpFetch<any[]>("/earnings-surprises", { symbol: ticker.toUpperCase() });
 }
+
+export async function getStockNews(ticker: string, limit = 10) {
+  return fmpFetch<any[]>("/stock-news", { symbol: ticker.toUpperCase(), limit: String(limit) });
+}
