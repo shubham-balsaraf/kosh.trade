@@ -1,25 +1,5 @@
 import { NextResponse } from "next/server";
-
-const FMP_BASE = "https://financialmodelingprep.com/stable";
-
-function apiKey(): string {
-  return process.env.FMP_API_KEY || "";
-}
-
-async function fmpGet<T>(endpoint: string, params: Record<string, string> = {}): Promise<T | null> {
-  const key = apiKey();
-  if (!key) return null;
-  const url = new URL(`${FMP_BASE}${endpoint}`);
-  url.searchParams.set("apikey", key);
-  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  try {
-    const res = await fetch(url.toString(), { next: { revalidate: 600 } });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
-  }
-}
+import { getChart } from "@/lib/api/yahoo";
 
 function clamp(val: number, min: number, max: number) {
   return Math.max(min, Math.min(max, val));
@@ -35,31 +15,18 @@ function ratingFromScore(score: number): string {
 
 export async function GET() {
   try {
-    const now = new Date();
-    const from = new Date(now);
-    from.setDate(from.getDate() - 250);
-    const fromStr = from.toISOString().split("T")[0];
-    const toStr = now.toISOString().split("T")[0];
-
-    const [spyQuote, spyHistory, sectorPerf] = await Promise.all([
-      fmpGet<any[]>("/quote", { symbol: "SPY" }),
-      fmpGet<any>("/historical-price-eod/full", { symbol: "SPY", from: fromStr, to: toStr }),
-      fmpGet<any[]>("/sector-performance"),
+    const [spy, vix] = await Promise.all([
+      getChart("SPY", "1y", "1d"),
+      getChart("%5EVIX", "5d", "1d"),
     ]);
-
-    const spy = spyQuote?.[0];
-    const history = Array.isArray(spyHistory)
-      ? spyHistory
-      : spyHistory?.historical || [];
-
-    const sorted = [...history].sort(
-      (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
 
     const signals: { name: string; score: number; signal: string }[] = [];
 
-    // 1. Market Momentum (SPY daily change)
-    const dailyChange = spy?.changePercentage ?? spy?.changesPercentage ?? 0;
+    const closes = spy?.closes || [];
+    const spyPrice = spy?.price || 0;
+    const dailyChange = spy?.changePercent || 0;
+
+    // 1. Market Momentum (daily change)
     const momScore = clamp(50 + dailyChange * 15, 0, 100);
     signals.push({
       name: "Market Momentum",
@@ -67,70 +34,64 @@ export async function GET() {
       signal: momScore > 60 ? "Bullish" : momScore < 40 ? "Bearish" : "Neutral",
     });
 
-    // 2. Price vs 50-day SMA
-    if (sorted.length >= 50 && spy?.price) {
-      const last50 = sorted.slice(-50);
-      const sma50 = last50.reduce((s: number, d: any) => s + (d.close || d.adjClose || 0), 0) / 50;
-      const pctAbove50 = ((spy.price - sma50) / sma50) * 100;
-      const sma50Score = clamp(50 + pctAbove50 * 5, 0, 100);
+    // 2. VIX (Volatility Index) — high VIX = fear
+    const vixPrice = vix?.price || 20;
+    // VIX ranges: <15 = calm, 15-20 = normal, 20-30 = elevated, >30 = panic
+    const vixScore = clamp(100 - (vixPrice - 12) * 3.5, 0, 100);
+    signals.push({
+      name: "VIX (Fear Index)",
+      score: Math.round(vixScore),
+      signal: vixPrice > 30 ? "High Fear" : vixPrice > 20 ? "Elevated" : vixPrice < 15 ? "Calm" : "Normal",
+    });
+
+    // 3. Price vs 50-day SMA
+    if (closes.length >= 50 && spyPrice) {
+      const sma50 = closes.slice(-50).reduce((s, c) => s + c, 0) / 50;
+      const pctAbove = ((spyPrice - sma50) / sma50) * 100;
+      const sma50Score = clamp(50 + pctAbove * 5, 0, 100);
       signals.push({
         name: "50-Day Trend",
         score: Math.round(sma50Score),
-        signal: pctAbove50 > 2 ? "Above SMA" : pctAbove50 < -2 ? "Below SMA" : "Near SMA",
+        signal: pctAbove > 2 ? "Above SMA" : pctAbove < -2 ? "Below SMA" : "Near SMA",
       });
     }
 
-    // 3. Price vs 200-day SMA
-    if (sorted.length >= 200 && spy?.price) {
-      const last200 = sorted.slice(-200);
-      const sma200 = last200.reduce((s: number, d: any) => s + (d.close || d.adjClose || 0), 0) / 200;
-      const pctAbove200 = ((spy.price - sma200) / sma200) * 100;
-      const sma200Score = clamp(50 + pctAbove200 * 3, 0, 100);
+    // 4. Price vs 200-day SMA
+    if (closes.length >= 200 && spyPrice) {
+      const sma200 = closes.slice(-200).reduce((s, c) => s + c, 0) / 200;
+      const pctAbove = ((spyPrice - sma200) / sma200) * 100;
+      const sma200Score = clamp(50 + pctAbove * 3, 0, 100);
       signals.push({
         name: "200-Day Trend",
         score: Math.round(sma200Score),
-        signal: pctAbove200 > 3 ? "Bullish" : pctAbove200 < -3 ? "Bearish" : "Neutral",
+        signal: pctAbove > 3 ? "Bullish" : pctAbove < -3 ? "Bearish" : "Neutral",
       });
     }
 
-    // 4. Market Breadth (sectors up vs down)
-    if (sectorPerf && sectorPerf.length > 0) {
-      const changes = sectorPerf.map((s: any) => parseFloat(s.changesPercentage ?? s.changePercentage ?? 0));
-      const up = changes.filter((c: number) => c > 0).length;
-      const breadthPct = (up / Math.max(changes.length, 1)) * 100;
-      const breadthScore = clamp(breadthPct, 0, 100);
-      signals.push({
-        name: "Market Breadth",
-        score: Math.round(breadthScore),
-        signal: breadthPct > 65 ? "Broad Rally" : breadthPct < 35 ? "Broad Decline" : "Mixed",
-      });
-    }
-
-    // 5. 30-Day Volatility (rolling std of daily returns)
-    if (sorted.length >= 30) {
-      const last30 = sorted.slice(-30);
+    // 5. 30-Day Volatility (rolling std of returns)
+    if (closes.length >= 30) {
+      const last30 = closes.slice(-30);
       const returns = [];
       for (let i = 1; i < last30.length; i++) {
-        const prev = last30[i - 1].close || last30[i - 1].adjClose || 1;
-        const curr = last30[i].close || last30[i].adjClose || 1;
-        returns.push((curr - prev) / prev * 100);
+        if (last30[i - 1] > 0) returns.push(((last30[i] - last30[i - 1]) / last30[i - 1]) * 100);
       }
-      const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
-      const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
-      const volatility = Math.sqrt(variance);
-      // High vol = fear, low vol = greed. Typical range: 0.5% (calm) to 2.5% (panic)
-      const volScore = clamp(100 - (volatility - 0.5) * 40, 0, 100);
-      signals.push({
-        name: "Volatility",
-        score: Math.round(volScore),
-        signal: volatility > 1.8 ? "High Vol" : volatility < 0.8 ? "Low Vol" : "Normal",
-      });
+      if (returns.length > 0) {
+        const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+        const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
+        const vol = Math.sqrt(variance);
+        const volScore = clamp(100 - (vol - 0.5) * 40, 0, 100);
+        signals.push({
+          name: "Volatility",
+          score: Math.round(volScore),
+          signal: vol > 1.8 ? "High Vol" : vol < 0.8 ? "Low Vol" : "Normal",
+        });
+      }
     }
 
     // 6. 1-Month Performance
-    if (sorted.length >= 22) {
-      const monthAgo = sorted[sorted.length - 22]?.close || sorted[sorted.length - 22]?.adjClose || 1;
-      const current = sorted[sorted.length - 1]?.close || sorted[sorted.length - 1]?.adjClose || 1;
+    if (closes.length >= 22) {
+      const monthAgo = closes[closes.length - 22] || 1;
+      const current = closes[closes.length - 1] || 1;
       const monthReturn = ((current - monthAgo) / monthAgo) * 100;
       const monthScore = clamp(50 + monthReturn * 5, 0, 100);
       signals.push({
@@ -140,16 +101,31 @@ export async function GET() {
       });
     }
 
-    const overallScore = signals.length > 0
-      ? Math.round(signals.reduce((s, sig) => s + sig.score, 0) / signals.length)
-      : 50;
+    // 7. 52-Week High/Low Position
+    if (closes.length > 50) {
+      const high52 = Math.max(...closes);
+      const low52 = Math.min(...closes.filter((c) => c > 0));
+      const range = high52 - low52;
+      const position = range > 0 ? ((spyPrice - low52) / range) * 100 : 50;
+      signals.push({
+        name: "52-Week Position",
+        score: Math.round(clamp(position, 0, 100)),
+        signal: position > 80 ? "Near High" : position < 20 ? "Near Low" : "Mid Range",
+      });
+    }
+
+    const overallScore =
+      signals.length > 0
+        ? Math.round(signals.reduce((s, sig) => s + sig.score, 0) / signals.length)
+        : 50;
 
     return NextResponse.json({
       score: overallScore,
       rating: ratingFromScore(overallScore),
       signals,
-      spyPrice: spy?.price || null,
+      spyPrice,
       spyChange: dailyChange,
+      vix: vixPrice,
       updatedAt: new Date().toISOString(),
     });
   } catch (e: any) {

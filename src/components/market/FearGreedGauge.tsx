@@ -15,6 +15,7 @@ interface FearGreedData {
   signals: Signal[];
   spyPrice: number | null;
   spyChange: number;
+  vix: number | null;
   updatedAt: string;
 }
 
@@ -175,14 +176,24 @@ export default function FearGreedGauge() {
           <Activity size={16} className={config.color} />
           <span className="text-sm font-semibold text-gray-300">Market Sentiment</span>
         </div>
-        {data.spyPrice && (
-          <div className="text-right">
-            <span className="text-xs text-gray-500">S&P 500</span>
-            <span className={`text-xs font-semibold ml-1.5 ${data.spyChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-              {data.spyChange >= 0 ? "+" : ""}{data.spyChange.toFixed(2)}%
-            </span>
-          </div>
-        )}
+        <div className="text-right space-y-0.5">
+          {data.spyPrice != null && (
+            <div>
+              <span className="text-[10px] text-gray-500">SPY</span>
+              <span className={`text-[10px] font-semibold ml-1 ${data.spyChange >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {data.spyChange >= 0 ? "+" : ""}{data.spyChange.toFixed(2)}%
+              </span>
+            </div>
+          )}
+          {data.vix != null && (
+            <div>
+              <span className="text-[10px] text-gray-500">VIX</span>
+              <span className={`text-[10px] font-semibold ml-1 ${data.vix > 25 ? "text-red-400" : data.vix > 18 ? "text-amber-400" : "text-emerald-400"}`}>
+                {data.vix.toFixed(1)}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <GaugeSVG score={data.score} />

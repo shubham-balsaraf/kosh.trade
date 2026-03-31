@@ -1,21 +1,26 @@
 "use client";
 
-const tickers = [
-  { symbol: "AAPL", price: "198.52", change: "+1.24%", up: true },
-  { symbol: "MSFT", price: "425.10", change: "-0.31%", up: false },
-  { symbol: "NVDA", price: "890.00", change: "+2.87%", up: true },
-  { symbol: "GOOGL", price: "172.45", change: "+0.68%", up: true },
-  { symbol: "AMZN", price: "186.30", change: "-0.52%", up: false },
-  { symbol: "META", price: "510.75", change: "+1.93%", up: true },
-  { symbol: "TSLA", price: "245.20", change: "-1.15%", up: false },
-  { symbol: "JPM", price: "198.80", change: "+0.42%", up: true },
-  { symbol: "V", price: "280.90", change: "+0.78%", up: true },
-  { symbol: "UNH", price: "520.15", change: "-0.89%", up: false },
-  { symbol: "BRK.B", price: "410.50", change: "+0.35%", up: true },
-  { symbol: "LLY", price: "780.25", change: "+2.14%", up: true },
+import { useState, useEffect } from "react";
+
+interface Ticker {
+  symbol: string;
+  price: string;
+  change: string;
+  up: boolean;
+}
+
+const FALLBACK: Ticker[] = [
+  { symbol: "AAPL", price: "—", change: "—", up: true },
+  { symbol: "MSFT", price: "—", change: "—", up: true },
+  { symbol: "NVDA", price: "—", change: "—", up: true },
+  { symbol: "GOOGL", price: "—", change: "—", up: true },
+  { symbol: "AMZN", price: "—", change: "—", up: false },
+  { symbol: "META", price: "—", change: "—", up: true },
+  { symbol: "TSLA", price: "—", change: "—", up: false },
+  { symbol: "JPM", price: "—", change: "—", up: true },
 ];
 
-function TickerItem({ symbol, price, change, up }: typeof tickers[number]) {
+function TickerItem({ symbol, price, change, up }: Ticker) {
   return (
     <span className="inline-flex items-center gap-2 px-4 whitespace-nowrap">
       <span className="text-gray-400 font-semibold text-xs">{symbol}</span>
@@ -28,6 +33,17 @@ function TickerItem({ symbol, price, change, up }: typeof tickers[number]) {
 }
 
 export default function TickerStrip() {
+  const [tickers, setTickers] = useState<Ticker[]>(FALLBACK);
+
+  useEffect(() => {
+    fetch("/api/market/tickers")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.tickers?.length > 0) setTickers(data.tickers);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="w-full overflow-hidden border-y border-gray-800/50 bg-gray-950/50 py-2.5">
       <div className="animate-scroll-ticker flex w-max">
