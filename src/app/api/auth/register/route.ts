@@ -21,10 +21,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await prisma.user.findUnique({
+      where: { email },
+      include: { accounts: { select: { provider: true }, take: 1 } },
+    });
     if (existing) {
+      const googleLinked = existing.accounts?.some(
+        (a: { provider: string }) => a.provider === "google"
+      );
+      if (googleLinked) {
+        return NextResponse.json(
+          {
+            error: "This email is already registered with Google. Please sign in with Google instead.",
+            code: "GOOGLE_ACCOUNT",
+          },
+          { status: 409 }
+        );
+      }
       return NextResponse.json(
-        { error: "An account with this email already exists" },
+        {
+          error: "An account with this email already exists. Please sign in instead.",
+          code: "EXISTING_ACCOUNT",
+        },
         { status: 409 }
       );
     }

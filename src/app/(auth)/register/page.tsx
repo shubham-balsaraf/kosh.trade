@@ -14,11 +14,13 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setErrorCode("");
     setLoading(true);
 
     try {
@@ -32,6 +34,7 @@ export default function RegisterPage() {
 
       if (!res.ok) {
         setError(data.error || "Registration failed");
+        setErrorCode(data.code || "");
         setLoading(false);
         return;
       }
@@ -67,8 +70,19 @@ export default function RegisterPage() {
       <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-2xl p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl px-4 py-2">
-              {error}
+            <div className={`text-sm rounded-xl px-4 py-2.5 ${
+              errorCode === "GOOGLE_ACCOUNT"
+                ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                : errorCode === "EXISTING_ACCOUNT"
+                  ? "bg-amber-500/10 border border-amber-500/20 text-amber-400"
+                  : "bg-red-500/10 border border-red-500/20 text-red-400"
+            }`}>
+              <p>{error}</p>
+              {(errorCode === "GOOGLE_ACCOUNT" || errorCode === "EXISTING_ACCOUNT") && (
+                <Link href="/login" className="mt-1.5 inline-block font-medium underline underline-offset-2 hover:opacity-80">
+                  Go to Sign In &rarr;
+                </Link>
+              )}
             </div>
           )}
 

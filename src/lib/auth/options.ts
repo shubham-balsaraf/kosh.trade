@@ -25,9 +25,20 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          include: { accounts: { select: { provider: true }, take: 1 } },
         });
 
-        if (!user || !user.passwordHash) return null;
+        if (!user) return null;
+
+        if (!user.passwordHash) {
+          const isGoogle = user.accounts?.some(
+            (a: { provider: string }) => a.provider === "google"
+          );
+          if (isGoogle) {
+            throw new Error("GOOGLE_ACCOUNT");
+          }
+          return null;
+        }
 
         const valid = await argon2.verify(user.passwordHash, credentials.password);
         if (!valid) return null;

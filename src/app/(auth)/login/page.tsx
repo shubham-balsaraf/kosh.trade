@@ -15,9 +15,12 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsGoogleAccount(false);
     setLoading(true);
 
     const result = await signIn("credentials", {
@@ -29,7 +32,12 @@ export default function LoginPage() {
     setLoading(false);
 
     if (result?.error) {
-      setError("Invalid email or password");
+      if (result.error.includes("GOOGLE_ACCOUNT")) {
+        setIsGoogleAccount(true);
+        setError("This account was created with Google. Please use the Google button below to sign in.");
+      } else {
+        setError("Invalid email or password");
+      }
     } else {
       router.push("/dashboard");
       router.refresh();
@@ -48,7 +56,11 @@ export default function LoginPage() {
       <div className="bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-2xl p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm rounded-xl px-4 py-2">
+            <div className={`text-sm rounded-xl px-4 py-2.5 ${
+              isGoogleAccount
+                ? "bg-blue-500/10 border border-blue-500/20 text-blue-400"
+                : "bg-red-500/10 border border-red-500/20 text-red-400"
+            }`}>
               {error}
             </div>
           )}
