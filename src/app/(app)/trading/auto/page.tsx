@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import StockLogo from "@/components/ui/StockLogo";
 import {
-  Navigation, Power, PowerOff, TrendingUp, DollarSign,
+  Navigation, Power, PowerOff, TrendingUp, TrendingDown, DollarSign,
   BarChart3, Target, Clock, Activity, RefreshCw, Settings, Zap,
   Search, Brain, ShieldCheck, ArrowRight, ArrowLeft, Sparkles,
   X, Plus, ChevronRight, AlertTriangle, RotateCcw,
-  Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye,
+  Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye, Radio,
 } from "lucide-react";
 
 interface TradingConfig {
@@ -81,6 +81,165 @@ const BALANCE_OPTIONS = [
   { amount: 10000, label: "Pro" },
   { amount: 25000, label: "Whale" },
 ];
+
+type LiveQuote = { price: number; change: number; changePercent: number };
+
+function AnimatedPrice({ value, prefix = "$", decimals = 2, className = "" }: {
+  value: number; prefix?: string; decimals?: number; className?: string;
+}) {
+  const [display, setDisplay] = useState(value);
+  const [direction, setDirection] = useState<"up" | "down" | null>(null);
+  const prevRef = useRef(value);
+  const animRef = useRef<number>(0);
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    if (prev === value) return;
+    setDirection(value > prev ? "up" : "down");
+    const start = prev;
+    const diff = value - prev;
+    const duration = 600;
+    const startTime = performance.now();
+
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(start + diff * eased);
+      if (t < 1) animRef.current = requestAnimationFrame(animate);
+    };
+    cancelAnimationFrame(animRef.current);
+    animRef.current = requestAnimationFrame(animate);
+    prevRef.current = value;
+
+    const timeout = setTimeout(() => setDirection(null), 1000);
+    return () => { cancelAnimationFrame(animRef.current); clearTimeout(timeout); };
+  }, [value]);
+
+  return (
+    <span className={`price-transition tabular-nums ${
+      direction === "up" ? "price-glow-green" : direction === "down" ? "price-glow-red" : ""
+    } ${className}`}>
+      {prefix}{Math.abs(display).toFixed(decimals)}
+    </span>
+  );
+}
+
+function LivePositionCard({ trade, quote }: { trade: AutoTrade; quote?: LiveQuote }) {
+  const [flashKey, setFlashKey] = useState(0);
+  const prevPriceRef = useRef(quote?.price);
+  const flashDir = useRef<"up" | "down" | null>(null);
+
+  useEffect(() => {
+    if (!quote || prevPriceRef.current === quote.price) return;
+    flashDir.current = quote.price > (prevPriceRef.current || 0) ? "up" : "down";
+    prevPriceRef.current = quote.price;
+    setFlashKey((k) => k + 1);
+  }, [quote]);
+
+  const currentPrice = quote?.price || trade.entryPrice || 0;
+  const entryPrice = trade.entryPrice || 0;
+  const unrealizedPnl = (currentPrice - entryPrice) * trade.qty;
+  const unrealizedPct = entryPrice ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
+  const isUp = unrealizedPnl >= 0;
+
+  const sl = trade.stopLoss || 0;
+  const tp = trade.takeProfit || 0;
+  let progressPct = 50;
+  if (sl && tp && tp !== sl) {
+    progressPct = Math.max(0, Math.min(100, ((currentPrice - sl) / (tp - sl)) * 100));
+  }
+
+  return (
+    <div
+      key={flashKey}
+      className={`glass-card p-4 sm:p-5 transition-all duration-300 ${
+        flashDir.current === "up" ? "tick-flash-green" : flashDir.current === "down" ? "tick-flash-red" : ""
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative">
+            <StockLogo ticker={trade.ticker} size={40} />
+            {quote && <span className="live-dot absolute -top-0.5 -right-0.5" />}
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-white/90 font-bold text-sm">{trade.ticker}</span>
+              <span className="text-white/20 text-xs">{trade.qty} shr</span>
+              {trade.strategy && <Badge variant="gray">{trade.strategy}</Badge>}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-white/25 text-xs">Entry ${entryPrice.toFixed(2)}</span>
+              {quote && (
+                <>
+                  <span className="text-white/10">&rarr;</span>
+                  <AnimatedPrice
+                    value={currentPrice}
+                    decimals={2}
+                    className={`text-xs font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-right shrink-0 space-y-1">
+          {quote ? (
+            <>
+              <div className="flex items-center justify-end gap-1.5">
+                {isUp ? (
+                  <TrendingUp size={12} className="text-emerald-400/70" />
+                ) : (
+                  <TrendingDown size={12} className="text-red-400/70" />
+                )}
+                <AnimatedPrice
+                  value={unrealizedPnl}
+                  prefix={unrealizedPnl >= 0 ? "+$" : "-$"}
+                  decimals={2}
+                  className={`text-sm font-bold ${isUp ? "text-emerald-400" : "text-red-400"}`}
+                />
+              </div>
+              <p className={`text-[10px] font-medium ${isUp ? "text-emerald-400/50" : "text-red-400/50"}`}>
+                {unrealizedPct >= 0 ? "+" : ""}{unrealizedPct.toFixed(2)}%
+              </p>
+            </>
+          ) : (
+            <>
+              {trade.aiConfidence && <p className="text-xs text-amber-400/50 font-medium">{trade.aiConfidence.toFixed(0)}% AI</p>}
+              <p className="text-[10px] text-white/15">{trade.entryAt ? new Date(trade.entryAt).toLocaleDateString() : "\u2014"}</p>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* SL/TP progress bar */}
+      {sl > 0 && tp > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="flex justify-between text-[10px]">
+            <span className="text-red-400/40">SL ${sl.toFixed(2)}</span>
+            <span className="text-emerald-400/40">TP ${tp.toFixed(2)}</span>
+          </div>
+          <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden relative">
+            <div
+              className={`pnl-bar h-full rounded-full ${
+                progressPct > 60 ? "bg-gradient-to-r from-amber-500/50 to-emerald-500/50"
+                  : progressPct < 40 ? "bg-gradient-to-r from-red-500/50 to-amber-500/50"
+                    : "bg-amber-500/40"
+              }`}
+              style={{ width: `${progressPct}%` }}
+            />
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.3)] transition-all duration-600"
+              style={{ left: `calc(${progressPct}% - 4px)` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) => void }) {
   const [step, setStep] = useState(0);
@@ -442,6 +601,32 @@ export default function AutoTradingPage() {
   const [resetting, setResetting] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showModeSwitchConfirm, setShowModeSwitchConfirm] = useState(false);
+  const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuote>>({});
+
+  const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
+
+  const fetchLiveQuotes = useCallback(async () => {
+    if (openTickers.length === 0) return;
+    try {
+      const res = await fetch(`/api/trading/quotes?tickers=${openTickers.join(",")}`);
+      if (res.ok) setLiveQuotes(await res.json());
+    } catch {}
+  }, [openTickers]);
+
+  useEffect(() => {
+    if (openTickers.length === 0) return;
+    fetchLiveQuotes();
+    const interval = setInterval(fetchLiveQuotes, 15000);
+    return () => clearInterval(interval);
+  }, [openTickers, fetchLiveQuotes]);
+
+  const totalUnrealizedPnl = useMemo(() => {
+    return openTrades.reduce((sum, trade) => {
+      const q = liveQuotes[trade.ticker];
+      if (!q || !trade.entryPrice) return sum;
+      return sum + (q.price - trade.entryPrice) * trade.qty;
+    }, 0);
+  }, [openTrades, liveQuotes]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -847,34 +1032,31 @@ export default function AutoTradingPage() {
         )}
       </div>
 
-      {/* ─── Open Positions ─── */}
+      {/* ─── Open Positions (Live) ─── */}
       {openTrades.length > 0 && (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
-            <TrendingUp size={14} className="text-amber-400/70" />
-            Open Positions ({openTrades.length})
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
+              <TrendingUp size={14} className="text-amber-400/70" />
+              Open Positions ({openTrades.length})
+            </h2>
+            <div className="flex items-center gap-3">
+              {Object.keys(liveQuotes).length > 0 && totalUnrealizedPnl !== 0 && (
+                <span className={`text-xs font-bold ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  {totalUnrealizedPnl >= 0 ? "+" : ""}${totalUnrealizedPnl.toFixed(2)} total
+                </span>
+              )}
+              {Object.keys(liveQuotes).length > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Radio size={10} className="text-emerald-400/60" />
+                  <span className="text-[10px] text-white/20">Live</span>
+                </div>
+              )}
+            </div>
+          </div>
           <div className="space-y-2">
             {openTrades.map((trade) => (
-              <div key={trade.id} className="glass-card p-4 flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3 min-w-0">
-                  <StockLogo ticker={trade.ticker} size={36} />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white/90 font-bold text-sm">{trade.ticker}</span>
-                      <span className="text-white/25 text-xs">{trade.qty} shares</span>
-                      {trade.strategy && <Badge variant="gray">{trade.strategy}</Badge>}
-                    </div>
-                    <p className="text-xs text-white/20 mt-0.5">
-                      ${trade.entryPrice?.toFixed(2) || "\u2014"} &middot; SL ${trade.stopLoss?.toFixed(2) || "\u2014"} &middot; TP ${trade.takeProfit?.toFixed(2) || "\u2014"}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  {trade.aiConfidence && <p className="text-xs text-amber-400/50 font-medium">{trade.aiConfidence.toFixed(0)}% AI</p>}
-                  <p className="text-[10px] text-white/15">{trade.entryAt ? new Date(trade.entryAt).toLocaleDateString() : "\u2014"}</p>
-                </div>
-              </div>
+              <LivePositionCard key={trade.id} trade={trade} quote={liveQuotes[trade.ticker]} />
             ))}
           </div>
         </div>

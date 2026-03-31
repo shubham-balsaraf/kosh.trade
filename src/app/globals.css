@@ -427,6 +427,66 @@ body {
   background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.2), transparent);
 }
 
+/* ─── Live Price Tick Effects ─── */
+
+@keyframes tickFlashGreen {
+  0% { background-color: rgba(16, 185, 129, 0.15); }
+  100% { background-color: transparent; }
+}
+
+@keyframes tickFlashRed {
+  0% { background-color: rgba(239, 68, 68, 0.15); }
+  100% { background-color: transparent; }
+}
+
+@keyframes priceGlowGreen {
+  0% { text-shadow: 0 0 12px rgba(16, 185, 129, 0.5); }
+  100% { text-shadow: none; }
+}
+
+@keyframes priceGlowRed {
+  0% { text-shadow: 0 0 12px rgba(239, 68, 68, 0.5); }
+  100% { text-shadow: none; }
+}
+
+@keyframes liveBarPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.tick-flash-green {
+  animation: tickFlashGreen 0.8s ease-out;
+}
+
+.tick-flash-red {
+  animation: tickFlashRed 0.8s ease-out;
+}
+
+.price-glow-green {
+  animation: priceGlowGreen 1s ease-out;
+}
+
+.price-glow-red {
+  animation: priceGlowRed 1s ease-out;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+  animation: liveBarPulse 2s ease-in-out infinite;
+}
+
+.price-transition {
+  transition: color 0.4s ease, text-shadow 0.4s ease;
+}
+
+.pnl-bar {
+  transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* ─── Select Styling ─── */
 
 select {
