@@ -7,6 +7,7 @@ import Badge from "@/components/ui/Badge";
 import { Search, TrendingUp, Briefcase, BarChart3, Crown, Zap, Activity, Brain, ArrowRight, Navigation } from "lucide-react";
 import FearGreedGauge from "@/components/market/FearGreedGauge";
 import StockLogo from "@/components/ui/StockLogo";
+import CongressTrades from "@/components/congress/CongressTrades";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -121,6 +122,9 @@ export default async function DashboardPage() {
           </Card>
         </div>
       </div>
+
+      {/* Congressional Trades Feed */}
+      <CongressTrades />
 
       {isPro ? (
         <div>
