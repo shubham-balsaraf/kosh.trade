@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowUpRight, ArrowDownRight, Landmark, ChevronRight } from "lucide-react";
 import StockLogo from "@/components/ui/StockLogo";
 
@@ -141,6 +142,7 @@ function TradeShowcaseCard({ trade }: { trade: ShowcaseTrade }) {
 }
 
 export default function CongressShowcase() {
+  const { data: session } = useSession();
   const [scrollPos, setScrollPos] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
 
@@ -199,10 +201,10 @@ export default function CongressShowcase() {
 
       <div className="text-center mt-8">
         <a
-          href="/register"
+          href={session ? "/dashboard" : "/register"}
           className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/[0.06] border border-white/[0.1] text-sm font-medium text-white hover:bg-white/[0.1] hover:border-white/[0.15] transition-all duration-300"
         >
-          Track all congressional trades
+          {session ? "View live trades on dashboard" : "Track all congressional trades"}
           <ChevronRight size={14} className="text-white/50" />
         </a>
       </div>
