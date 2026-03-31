@@ -778,9 +778,67 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
   );
 }
 
+function PilotSplash({ onDone }: { onDone: () => void }) {
+  useEffect(() => {
+    const timer = setTimeout(onDone, 3200);
+    return () => clearTimeout(timer);
+  }, [onDone]);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black pilot-screen overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        {Array.from({ length: 20 }).map((_, i) => (
+          <div
+            key={i}
+            className="pilot-particle"
+            style={{
+              left: `${5 + (i * 31) % 90}%`,
+              animationDelay: `${(i * 0.5) % 6}s`,
+              animationDuration: `${7 + (i % 5) * 2}s`,
+              width: `${1.5 + (i % 3)}px`,
+              height: `${1.5 + (i % 3)}px`,
+            }}
+          />
+        ))}
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="pilot-glow-orb w-[280px] h-[280px] sm:w-[420px] sm:h-[420px] rounded-full" />
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="pilot-ring pilot-ring-1" />
+        <div className="pilot-ring pilot-ring-2" />
+      </div>
+      <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
+        <div className="pilot-icon-reveal mb-4">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center relative">
+            <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-amber-400/12 to-amber-600/4 border border-amber-500/20" />
+            <div className="absolute inset-0 rounded-2xl koshpilot-glow" />
+            <Navigation size={24} className="text-amber-400 relative z-10 sm:w-7 sm:h-7" />
+          </div>
+        </div>
+        <h1 className="pilot-title-reveal text-4xl sm:text-6xl font-bold tracking-tighter gold-gradient-text select-none">
+          KoshPilot
+        </h1>
+        <div className="pilot-line-expand h-px w-24 sm:w-32 my-4 bg-gradient-to-r from-transparent via-amber-400/30 to-transparent" />
+        <div className="pilot-features-reveal flex items-center gap-3 text-[10px] sm:text-[11px] text-white/15 tracking-widest uppercase">
+          <span>Scan</span>
+          <span className="w-0.5 h-0.5 rounded-full bg-amber-500/30" />
+          <span>Analyze</span>
+          <span className="w-0.5 h-0.5 rounded-full bg-amber-500/30" />
+          <span>Execute</span>
+        </div>
+      </div>
+      <button onClick={onDone} className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 text-[10px] text-white/10 hover:text-white/30 transition-colors tracking-widest uppercase pilot-cta-reveal">
+        Skip
+      </button>
+    </div>
+  );
+}
+
 export default function AutoTradingPage() {
   const [config, setConfig] = useState<TradingConfig | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [stats, setStats] = useState<Stats | null>(null);
   const [trades, setTrades] = useState<AutoTrade[]>([]);
   const [openTrades, setOpenTrades] = useState<AutoTrade[]>([]);
@@ -888,6 +946,10 @@ export default function AutoTradingPage() {
     } catch {}
     setResetting(false);
   };
+
+  const dismissSplash = useCallback(() => setShowSplash(false), []);
+
+  if (showSplash && !needsSetup) return <PilotSplash onDone={dismissSplash} />;
 
   if (loading) {
     return (

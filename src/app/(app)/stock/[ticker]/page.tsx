@@ -16,6 +16,7 @@ import AnalysisHistory from "@/components/stock/AnalysisHistory";
 import Link from "next/link";
 import { Crown, Lock, TrendingUp, TrendingDown, Minus, Newspaper, ExternalLink, Zap } from "lucide-react";
 import StockLogo from "@/components/ui/StockLogo";
+import InsiderFlashcards from "@/components/stock/InsiderFlashcards";
 
 type Tab = "ai" | "overview" | "charts" | "valuation" | "growth" | "health" | "returns" | "fcf" | "earnings";
 
@@ -355,6 +356,9 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               </div>
             </Card>
           </div>
+
+          {/* Insider Activity Flashcards */}
+          <InsiderFlashcards ticker={ticker} />
 
           {/* News & Sentiment */}
           <Card>
