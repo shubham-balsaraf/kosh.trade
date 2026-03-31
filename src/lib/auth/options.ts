@@ -4,6 +4,7 @@ import GoogleProvider from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/db";
 import argon2 from "argon2";
+import { sendWelcomeEmail } from "@/lib/email";
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
@@ -48,6 +49,13 @@ export const authOptions: NextAuthOptions = {
         ]
       : []),
   ],
+  events: {
+    async createUser({ user }) {
+      if (user.email) {
+        sendWelcomeEmail(user.email, user.name || "").catch(() => {});
+      }
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {

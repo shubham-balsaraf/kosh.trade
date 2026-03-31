@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import argon2 from "argon2";
 import { prisma } from "@/lib/db";
+import { sendWelcomeEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {
   try {
@@ -35,10 +36,13 @@ export async function POST(req: NextRequest) {
       parallelism: 1,
     });
 
+    const userName = name || email.split("@")[0];
     const user = await prisma.user.create({
-      data: { email, passwordHash, name: name || email.split("@")[0] },
+      data: { email, passwordHash, name: userName },
       select: { id: true, email: true, name: true },
     });
+
+    sendWelcomeEmail(email, userName).catch(() => {});
 
     return NextResponse.json(user, { status: 201 });
   } catch {

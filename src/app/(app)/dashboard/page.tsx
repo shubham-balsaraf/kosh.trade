@@ -14,14 +14,24 @@ export default async function DashboardPage() {
   const userId = user?.id;
   const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
 
-  const recentSearches = userId
-    ? await prisma.searchHistory.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        distinct: ["ticker"],
-        take: 20,
-      })
-    : [];
+  const [recentSearches, dbUser] = await Promise.all([
+    userId
+      ? prisma.searchHistory.findMany({
+          where: { userId },
+          orderBy: { createdAt: "desc" },
+          distinct: ["ticker"],
+          take: 20,
+        })
+      : [],
+    userId
+      ? prisma.user.findUnique({ where: { id: userId }, select: { createdAt: true } })
+      : null,
+  ]);
+
+  const isNewUser = dbUser
+    ? Date.now() - new Date(dbUser.createdAt).getTime() < 5 * 60 * 1000
+    : false;
+  const greeting = isNewUser ? "Welcome" : "Welcome back";
 
   return (
     <div className="space-y-6">
@@ -34,7 +44,7 @@ export default async function DashboardPage() {
               <span className="text-xs font-semibold text-amber-400 tracking-wide uppercase">Pro Member</span>
             </div>
             <h1 className="text-2xl font-bold text-white">
-              Welcome back, {session?.user?.name?.split(" ")[0] || "Investor"}
+              {greeting}, {session?.user?.name?.split(" ")[0] || "Investor"}
             </h1>
             <p className="text-amber-200/50 text-sm mt-1">
               All premium features are unlocked
@@ -44,7 +54,7 @@ export default async function DashboardPage() {
       ) : (
         <div>
           <h1 className="text-2xl font-bold text-white">
-            Welcome back, {session?.user?.name?.split(" ")[0] || "Investor"}
+            {greeting}, {session?.user?.name?.split(" ")[0] || "Investor"}
           </h1>
           <p className="text-gray-500 text-sm mt-1">
             Your fundamental analysis feed
