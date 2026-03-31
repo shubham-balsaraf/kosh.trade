@@ -55,6 +55,8 @@ model User {
   watchlistItems  WatchlistItem[]
   accounts        Account[]
   sessions        Session[]
+  autoTrades      AutoTrade[]
+  tradingConfig   TradingConfig?
 }
 
 model Account {
@@ -166,4 +168,54 @@ model WatchlistItem {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, ticker])
+}
+
+enum AutoTradeStatus {
+  PENDING
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+model AutoTrade {
+  id            String          @id @default(cuid())
+  userId        String
+  ticker        String
+  side          String
+  qty           Float
+  entryPrice    Float?
+  exitPrice     Float?
+  stopLoss      Float?
+  takeProfit    Float?
+  pnl           Float?
+  strategy      String?
+  aiConfidence  Float?
+  signalScore   Float?
+  alpacaOrderId String?
+  status        AutoTradeStatus @default(PENDING)
+  exitReason    String?
+  entryAt       DateTime?
+  exitAt        DateTime?
+  createdAt     DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+model TradingConfig {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  enabled           Boolean  @default(false)
+  mode              TradeMode @default(PAPER)
+  maxPositionPct    Float    @default(5)
+  maxDailyLossPct   Float    @default(3)
+  maxOpenPositions  Int      @default(5)
+  watchlist         String[] @default(["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM"])
+  strategies        String[] @default(["MOMENTUM", "MEAN_REVERSION", "SWING"])
+  updatedAt         DateTime @updatedAt
+  createdAt         DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

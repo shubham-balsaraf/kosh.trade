@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import Link from "next/link";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
-import { Search, TrendingUp, Briefcase, BarChart3, Crown, Zap, Activity, Brain, ArrowRight } from "lucide-react";
+import { Search, TrendingUp, Briefcase, BarChart3, Crown, Zap, Activity, Brain, ArrowRight, Bot } from "lucide-react";
 import FearGreedGauge from "@/components/market/FearGreedGauge";
 import StockLogo from "@/components/ui/StockLogo";
 
@@ -66,7 +66,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           { href: "/search", icon: Search, label: "Analyse Stock", color: "text-indigo-400" },
-          { href: "/portfolio", icon: Briefcase, label: "Portfolio", color: "text-emerald-400" },
+          { href: "/trading/auto", icon: Bot, label: "AutoTrader", color: "text-emerald-400" },
           { href: "/signals", icon: BarChart3, label: "Signals", color: "text-amber-400" },
           { href: "/dip-finder", icon: TrendingUp, label: "Dip Finder", color: "text-blue-400" },
         ].map(({ href, icon: Icon, label, color }) => (
