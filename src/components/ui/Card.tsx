@@ -8,22 +8,22 @@ interface CardProps extends HTMLAttributes<HTMLDivElement> {
 }
 
 const accentStyles = {
-  indigo: "hover:border-indigo-500/30 hover:shadow-indigo-500/5",
-  emerald: "hover:border-emerald-500/30 hover:shadow-emerald-500/5",
-  blue: "hover:border-blue-500/30 hover:shadow-blue-500/5",
-  purple: "hover:border-purple-500/30 hover:shadow-purple-500/5",
-  amber: "hover:border-amber-500/30 hover:shadow-amber-500/5",
-  cyan: "hover:border-cyan-500/30 hover:shadow-cyan-500/5",
-  rose: "hover:border-rose-500/30 hover:shadow-rose-500/5",
+  indigo: "hover:border-indigo-500/20 hover:shadow-[0_0_30px_rgba(99,102,241,0.06)]",
+  emerald: "hover:border-emerald-500/20 hover:shadow-[0_0_30px_rgba(16,185,129,0.06)]",
+  blue: "hover:border-blue-500/20 hover:shadow-[0_0_30px_rgba(59,130,246,0.06)]",
+  purple: "hover:border-purple-500/20 hover:shadow-[0_0_30px_rgba(168,85,247,0.06)]",
+  amber: "hover:border-amber-500/20 hover:shadow-[0_0_30px_rgba(245,158,11,0.06)]",
+  cyan: "hover:border-cyan-500/20 hover:shadow-[0_0_30px_rgba(6,182,212,0.06)]",
+  rose: "hover:border-rose-500/20 hover:shadow-[0_0_30px_rgba(244,63,94,0.06)]",
 };
 
 export default function Card({ className, hover = false, glow = false, accent, children, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        "bg-gray-900/80 backdrop-blur-sm border border-gray-800 rounded-2xl p-4",
-        hover && "hover:bg-gray-900 transition-all duration-300 cursor-pointer shadow-lg shadow-transparent",
-        hover && accent ? accentStyles[accent] : hover && "hover:border-gray-600",
+        "bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl p-4 transition-all duration-300",
+        hover && "cursor-pointer hover:bg-white/[0.05] hover:border-white/[0.1]",
+        hover && accent && accentStyles[accent],
         glow && "shadow-lg shadow-indigo-500/5",
         className
       )}

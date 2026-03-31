@@ -35,8 +35,8 @@ export default function BottomNav() {
     <>
       {showMore && (
         <div className="fixed inset-0 z-40 md:hidden" onClick={() => setShowMore(false)}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="absolute bottom-20 left-4 right-4 bg-gray-900 border border-gray-800 rounded-2xl p-2 z-50 safe-area-pb" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
+          <div className="absolute bottom-20 left-4 right-4 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl p-2 z-50 safe-area-pb" onClick={(e) => e.stopPropagation()}>
             {moreItems.map(({ href, icon: Icon, label }) => {
               const active = pathname === href || pathname.startsWith(href + "/");
               return (
@@ -45,8 +45,8 @@ export default function BottomNav() {
                   href={href}
                   onClick={() => setShowMore(false)}
                   className={cn(
-                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-colors",
-                    active && isPro ? "bg-amber-500/10 text-amber-300" : active ? "bg-indigo-500/10 text-white" : "text-gray-400 hover:text-white hover:bg-gray-800"
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300",
+                    active && isPro ? "bg-amber-500/8 text-amber-300/90" : active ? "bg-white/[0.05] text-white" : "text-white/35 hover:text-white/60 hover:bg-white/[0.04]"
                   )}
                 >
                   <Icon size={20} />
@@ -59,10 +59,10 @@ export default function BottomNav() {
       )}
 
       <nav className={cn(
-        "fixed bottom-0 left-0 right-0 z-40 backdrop-blur-xl border-t md:hidden safe-area-pb",
-        isPro ? "bg-black/95 border-amber-900/30" : "bg-black/90 border-gray-800"
+        "fixed bottom-0 left-0 right-0 z-40 backdrop-blur-2xl border-t md:hidden safe-area-pb",
+        isPro ? "bg-[#050507]/95 border-amber-500/8" : "bg-[#050507]/95 border-white/[0.04]"
       )}>
-        <div className="flex justify-around items-center h-16">
+        <div className="flex justify-around items-center h-14">
           {mainItems.map(({ href, icon: Icon, label }) => {
             const active = pathname === href || pathname.startsWith(href + "/");
             return (
@@ -70,24 +70,24 @@ export default function BottomNav() {
                 key={href}
                 href={href}
                 className={cn(
-                  "flex flex-col items-center gap-1 py-1 px-3 min-w-[48px] min-h-[44px] justify-center transition-colors",
-                  active && isPro ? "text-amber-300" : active ? "text-white" : "text-gray-500"
+                  "flex flex-col items-center gap-0.5 py-1 px-3 min-w-[48px] min-h-[44px] justify-center transition-all duration-300",
+                  active && isPro ? "text-amber-300/90" : active ? "text-white" : "text-white/25"
                 )}
               >
-                <Icon size={22} strokeWidth={active ? 2.5 : 1.5} />
-                <span className="text-[10px]">{label}</span>
+                <Icon size={20} strokeWidth={active ? 2.5 : 1.5} />
+                <span className="text-[10px] font-medium">{label}</span>
               </Link>
             );
           })}
           <button
             onClick={() => setShowMore(!showMore)}
             className={cn(
-              "flex flex-col items-center gap-1 py-1 px-3 min-w-[48px] min-h-[44px] justify-center transition-colors",
-              showMore ? "text-white" : moreActive && isPro ? "text-amber-300" : moreActive ? "text-white" : "text-gray-500"
+              "flex flex-col items-center gap-0.5 py-1 px-3 min-w-[48px] min-h-[44px] justify-center transition-all duration-300",
+              showMore ? "text-white" : moreActive && isPro ? "text-amber-300/90" : moreActive ? "text-white" : "text-white/25"
             )}
           >
-            {showMore ? <X size={22} strokeWidth={2} /> : <MoreHorizontal size={22} strokeWidth={moreActive ? 2.5 : 1.5} />}
-            <span className="text-[10px]">More</span>
+            {showMore ? <X size={20} strokeWidth={2} /> : <MoreHorizontal size={20} strokeWidth={moreActive ? 2.5 : 1.5} />}
+            <span className="text-[10px] font-medium">More</span>
           </button>
         </div>
       </nav>

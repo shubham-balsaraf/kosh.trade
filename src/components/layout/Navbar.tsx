@@ -60,8 +60,8 @@ export default function Navbar() {
   };
 
   return (
-    <nav className={`sticky top-0 z-40 backdrop-blur-xl border-b ${isPro ? "bg-black/85 border-amber-900/30" : "bg-black/80 border-gray-800"}`}>
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center gap-4">
+    <nav className={`sticky top-0 z-40 backdrop-blur-2xl border-b ${isPro ? "bg-[#050507]/90 border-amber-500/8" : "bg-[#050507]/90 border-white/[0.04]"}`}>
+      <div className="max-w-7xl mx-auto px-4 h-14 flex items-center gap-4">
         <Link href="/" className="flex items-center gap-2 shrink-0">
           <Logo size="md" showDomain isPro={isPro} />
           {isPro && (
@@ -80,20 +80,20 @@ export default function Navbar() {
               value={query}
               onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
               onFocus={() => setShowSuggestions(true)}
-              className={`w-full bg-gray-900 border rounded-xl pl-10 pr-4 py-2 text-base sm:text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-1 ${isPro ? "border-amber-900/20 focus:ring-amber-500/50 focus:border-amber-500/50" : "border-gray-800 focus:ring-indigo-500 focus:border-indigo-500"}`}
+              className={`w-full bg-white/[0.03] border rounded-xl pl-10 pr-4 py-2 text-base sm:text-sm text-gray-200 placeholder:text-white/20 focus:outline-none focus:ring-1 transition-all duration-300 ${isPro ? "border-amber-500/10 focus:ring-amber-500/30 focus:border-amber-500/20" : "border-white/[0.06] focus:ring-white/10 focus:border-white/10"}`}
             />
           </form>
           {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl overflow-hidden z-50">
+            <div className="absolute top-full left-0 right-0 mt-2 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden z-50">
               {suggestions.map((s: any) => (
                 <button
                   key={s.symbol}
                   onClick={() => goToStock(s.symbol)}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800 transition-colors text-left"
+                  className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
                 >
-                  <span className="text-white font-bold text-xs bg-gray-800 px-2 py-0.5 rounded">{s.symbol}</span>
-                  <span className="text-gray-400 text-sm truncate">{s.name}</span>
-                  <span className="text-gray-600 text-xs ml-auto shrink-0">{s.exchangeShortName}</span>
+                  <span className="text-white font-bold text-xs bg-white/[0.06] px-2 py-0.5 rounded">{s.symbol}</span>
+                  <span className="text-white/50 text-sm truncate">{s.name}</span>
+                  <span className="text-white/20 text-xs ml-auto shrink-0">{s.exchangeShortName}</span>
                 </button>
               ))}
             </div>
@@ -121,25 +121,25 @@ export default function Navbar() {
             </button>
 
             {showMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-xl py-2 z-50">
-                <div className="px-4 py-2 border-b border-gray-800">
+              <div className="absolute right-0 mt-2 w-52 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl py-2 z-50">
+                <div className="px-4 py-2.5 border-b border-white/[0.04]">
                   <p className="text-sm font-medium text-white truncate">{user?.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                  <p className="text-xs text-white/30 truncate">{user?.email}</p>
                   {isPro && (
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-amber-300">
                       <Crown size={9} /> {isAdmin ? "Admin" : "Pro"} Member
                     </span>
                   )}
                 </div>
-                <Link href="/settings" className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-800" onClick={() => setShowMenu(false)}>Settings</Link>
+                <Link href="/settings" className="block px-4 py-2 text-sm text-white/50 hover:bg-white/[0.04] hover:text-white/80 transition-colors" onClick={() => setShowMenu(false)}>Settings</Link>
                 {isPro ? (
-                  <Link href="/pricing" className="block px-4 py-2 text-sm text-amber-300 hover:bg-gray-800" onClick={() => setShowMenu(false)}>My Plan</Link>
+                  <Link href="/pricing" className="block px-4 py-2 text-sm text-amber-300/80 hover:bg-white/[0.04] transition-colors" onClick={() => setShowMenu(false)}>My Plan</Link>
                 ) : (
-                  <Link href="/pricing" className="block px-4 py-2 text-sm text-amber-400 hover:bg-gray-800 flex items-center gap-1.5" onClick={() => setShowMenu(false)}>
+                  <Link href="/pricing" className="block px-4 py-2 text-sm text-amber-400/80 hover:bg-white/[0.04] flex items-center gap-1.5 transition-colors" onClick={() => setShowMenu(false)}>
                     <Crown size={12} /> Upgrade to Pro
                   </Link>
                 )}
-                <button onClick={() => signOut({ callbackUrl: "/login" })} className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-800 flex items-center gap-2">
+                <button onClick={() => signOut({ callbackUrl: "/login" })} className="w-full text-left px-4 py-2 text-sm text-red-400/70 hover:bg-white/[0.04] flex items-center gap-2 transition-colors">
                   <LogOut size={14} /> Sign Out
                 </button>
               </div>

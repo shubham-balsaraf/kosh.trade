@@ -11,12 +11,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant = "primary", size = "md", loading, children, disabled, ...props }, ref) => {
-    const base = "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-black disabled:opacity-50 disabled:cursor-not-allowed";
+    const base = "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-300 focus:outline-none focus:ring-1 focus:ring-amber-500/30 disabled:opacity-40 disabled:cursor-not-allowed";
     const variants = {
-      primary: "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25",
-      secondary: "bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700",
-      ghost: "hover:bg-gray-800/50 text-gray-400 hover:text-gray-200",
-      danger: "bg-red-600 hover:bg-red-500 text-white",
+      primary: "bg-gradient-to-b from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white shadow-lg shadow-indigo-500/20",
+      secondary: "bg-white/[0.04] hover:bg-white/[0.08] text-white/60 hover:text-white/80 border border-white/[0.08] hover:border-white/[0.12]",
+      ghost: "hover:bg-white/[0.04] text-white/40 hover:text-white/60",
+      danger: "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/15",
     };
     const sizes = {
       sm: "text-xs px-3 py-2 gap-1.5 min-h-[36px]",

@@ -27,14 +27,14 @@ export default function Sidebar() {
 
   return (
     <aside className={cn(
-      "hidden md:flex flex-col w-56 shrink-0 border-r bg-black min-h-[calc(100vh-4rem)] p-4 gap-1",
-      isPro ? "border-amber-900/20" : "border-gray-800"
+      "hidden md:flex flex-col w-56 shrink-0 border-r bg-[#050507] min-h-[calc(100vh-3.5rem)] p-3 gap-0.5",
+      isPro ? "border-amber-500/8" : "border-white/[0.04]"
     )}>
       {isPro && (
-        <div className="mb-3 px-3 py-2.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-500/20">
-          <div className="flex items-center gap-2 text-amber-300 text-xs font-semibold">
-            <Zap size={14} />
-            Pro Features Active
+        <div className="mb-3 px-3 py-2.5 rounded-xl bg-amber-500/[0.04] border border-amber-500/10">
+          <div className="flex items-center gap-2 text-amber-300/80 text-xs font-semibold">
+            <Zap size={13} />
+            Pro Active
           </div>
         </div>
       )}
@@ -46,12 +46,12 @@ export default function Sidebar() {
             key={href}
             href={href}
             className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+              "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300",
               active && isPro
-                ? "bg-amber-500/10 text-amber-300 border border-amber-500/20"
+                ? "bg-amber-500/8 text-amber-300/90 border border-amber-500/12"
                 : active
-                  ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                  ? "bg-white/[0.05] text-white border border-white/[0.06]"
+                  : "text-white/35 hover:text-white/60 hover:bg-white/[0.03]"
             )}
           >
             <Icon size={18} />
@@ -64,18 +64,18 @@ export default function Sidebar() {
         );
       })}
 
-      <div className="mt-auto pt-4 border-t border-gray-800/50">
+      <div className="mt-auto pt-3 border-t border-white/[0.04]">
         <Link
           href="/pricing"
           className={cn(
-            "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300",
             pathname === "/pricing"
               ? isPro
-                ? "bg-amber-500/10 text-amber-300 border border-amber-500/20"
-                : "bg-indigo-500/10 text-indigo-400 border border-indigo-500/20"
+                ? "bg-amber-500/8 text-amber-300/90 border border-amber-500/12"
+                : "bg-white/[0.05] text-white border border-white/[0.06]"
               : isPro
-                ? "text-amber-400/60 hover:text-amber-300 hover:bg-amber-500/5"
-                : "text-gray-400 hover:text-gray-200 hover:bg-gray-900"
+                ? "text-amber-400/40 hover:text-amber-300/80 hover:bg-amber-500/[0.04]"
+                : "text-white/35 hover:text-white/60 hover:bg-white/[0.03]"
           )}
         >
           {isPro ? <Crown size={18} /> : <CreditCard size={18} />}
