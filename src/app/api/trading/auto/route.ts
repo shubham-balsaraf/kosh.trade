@@ -88,11 +88,11 @@ export async function GET(req: NextRequest) {
   }
 
   if (action === "stats") {
-    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true } });
+    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true, paperBalance: true, weeklyTargetPct: true } });
     const mode = config?.mode || "PAPER";
     const allTrades = await prisma.autoTrade.findMany({
       where: { userId, status: "CLOSED", mode },
-      select: { pnl: true, entryPrice: true, exitPrice: true, strategy: true },
+      select: { pnl: true, entryPrice: true, exitPrice: true, strategy: true, exitAt: true },
     });
 
     const totalTrades = allTrades.length;
@@ -105,6 +105,18 @@ export async function GET(req: NextRequest) {
       where: { userId, status: "OPEN", mode },
     });
 
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    weekStart.setHours(0, 0, 0, 0);
+    const weeklyPnl = allTrades
+      .filter((t) => t.exitAt && new Date(t.exitAt) >= weekStart)
+      .reduce((s, t) => s + (t.pnl || 0), 0);
+
+    const paperBalance = config?.paperBalance || 10000;
+    const weeklyTargetPct = config?.weeklyTargetPct || 10;
+    const weeklyTargetDollars = paperBalance * (weeklyTargetPct / 100);
+    const weeklyProgressPct = weeklyTargetDollars > 0 ? (weeklyPnl / weeklyTargetDollars) * 100 : 0;
+
     return NextResponse.json({
       totalTrades,
       winners,
@@ -113,6 +125,9 @@ export async function GET(req: NextRequest) {
       totalPnl: Math.round(totalPnl * 100) / 100,
       avgPnl: Math.round(avgPnl * 100) / 100,
       openPositions: openTrades,
+      weeklyPnl: Math.round(weeklyPnl * 100) / 100,
+      weeklyTargetDollars: Math.round(weeklyTargetDollars * 100) / 100,
+      weeklyProgressPct: Math.round(weeklyProgressPct * 10) / 10,
     });
   }
 
@@ -135,6 +150,8 @@ export async function PATCH(req: NextRequest) {
   if (body.maxPositionPct !== undefined) updates.maxPositionPct = body.maxPositionPct;
   if (body.maxDailyLossPct !== undefined) updates.maxDailyLossPct = body.maxDailyLossPct;
   if (body.maxOpenPositions !== undefined) updates.maxOpenPositions = body.maxOpenPositions;
+  if (body.riskProfile !== undefined) updates.riskProfile = body.riskProfile;
+  if (body.weeklyTargetPct !== undefined) updates.weeklyTargetPct = body.weeklyTargetPct;
   if (body.watchlist !== undefined) updates.watchlist = body.watchlist;
   if (body.strategies !== undefined) updates.strategies = body.strategies;
 

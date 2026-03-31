@@ -21,6 +21,8 @@ interface TradingConfig {
   maxPositionPct: number;
   maxDailyLossPct: number;
   maxOpenPositions: number;
+  riskProfile: string;
+  weeklyTargetPct: number;
   watchlist: string[];
   strategies: string[];
 }
@@ -33,6 +35,9 @@ interface Stats {
   totalPnl: number;
   avgPnl: number;
   openPositions: number;
+  weeklyPnl: number;
+  weeklyTargetDollars: number;
+  weeklyProgressPct: number;
 }
 
 interface AutoTrade {
@@ -127,6 +132,7 @@ function AnimatedPrice({ value, prefix = "$", decimals = 2, className = "" }: {
 
 function LivePositionCard({ trade, quote }: { trade: AutoTrade; quote?: LiveQuote }) {
   const [flashKey, setFlashKey] = useState(0);
+  const [expanded, setExpanded] = useState(false);
   const prevPriceRef = useRef(quote?.price);
   const flashDir = useRef<"up" | "down" | null>(null);
 
@@ -142,6 +148,7 @@ function LivePositionCard({ trade, quote }: { trade: AutoTrade; quote?: LiveQuot
   const unrealizedPnl = (currentPrice - entryPrice) * trade.qty;
   const unrealizedPct = entryPrice ? ((currentPrice - entryPrice) / entryPrice) * 100 : 0;
   const isUp = unrealizedPnl >= 0;
+  const positionValue = currentPrice * trade.qty;
 
   const sl = trade.stopLoss || 0;
   const tp = trade.takeProfit || 0;
@@ -150,101 +157,171 @@ function LivePositionCard({ trade, quote }: { trade: AutoTrade; quote?: LiveQuot
     progressPct = Math.max(0, Math.min(100, ((currentPrice - sl) / (tp - sl)) * 100));
   }
 
+  const riskDollars = sl > 0 ? (entryPrice - sl) * trade.qty : 0;
+  const rewardDollars = tp > 0 ? (tp - entryPrice) * trade.qty : 0;
+  const holdingDays = trade.entryAt ? Math.floor((Date.now() - new Date(trade.entryAt).getTime()) / 86400000) : 0;
+
   return (
     <div
       key={flashKey}
-      className={`glass-card p-4 sm:p-5 transition-all duration-300 ${
+      className={`glass-card overflow-hidden transition-all duration-300 cursor-pointer ${
         flashDir.current === "up" ? "tick-flash-green" : flashDir.current === "down" ? "tick-flash-red" : ""
-      }`}
+      } ${expanded ? "border-white/[0.1]" : ""}`}
+      onClick={() => setExpanded(!expanded)}
     >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="relative">
-            <StockLogo ticker={trade.ticker} size={40} />
-            {quote && <span className="live-dot absolute -top-0.5 -right-0.5" />}
+      <div className="p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative">
+              <StockLogo ticker={trade.ticker} size={40} />
+              {quote && <span className="live-dot absolute -top-0.5 -right-0.5" />}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-white/90 font-bold text-sm">{trade.ticker}</span>
+                <span className="text-white/20 text-xs">{trade.qty} shr</span>
+                {trade.strategy && <Badge variant="gray">{trade.strategy}</Badge>}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-white/25 text-xs">${entryPrice.toFixed(2)}</span>
+                {quote && (
+                  <>
+                    <span className="text-white/10">&rarr;</span>
+                    <AnimatedPrice
+                      value={currentPrice}
+                      decimals={2}
+                      className={`text-xs font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}
+                    />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-white/90 font-bold text-sm">{trade.ticker}</span>
-              <span className="text-white/20 text-xs">{trade.qty} shr</span>
-              {trade.strategy && <Badge variant="gray">{trade.strategy}</Badge>}
-            </div>
-            <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-white/25 text-xs">Entry ${entryPrice.toFixed(2)}</span>
-              {quote && (
-                <>
-                  <span className="text-white/10">&rarr;</span>
+
+          <div className="text-right shrink-0 space-y-0.5">
+            {quote ? (
+              <>
+                <div className="flex items-center justify-end gap-1.5">
+                  {isUp ? <TrendingUp size={12} className="text-emerald-400/70" /> : <TrendingDown size={12} className="text-red-400/70" />}
                   <AnimatedPrice
-                    value={currentPrice}
+                    value={unrealizedPnl}
+                    prefix={unrealizedPnl >= 0 ? "+$" : "-$"}
                     decimals={2}
-                    className={`text-xs font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}
+                    className={`text-sm font-bold ${isUp ? "text-emerald-400" : "text-red-400"}`}
                   />
-                </>
-              )}
-            </div>
+                </div>
+                <p className={`text-[10px] font-medium ${isUp ? "text-emerald-400/50" : "text-red-400/50"}`}>
+                  {unrealizedPct >= 0 ? "+" : ""}{unrealizedPct.toFixed(2)}%
+                </p>
+              </>
+            ) : (
+              <>
+                {trade.aiConfidence && <p className="text-xs text-amber-400/50 font-medium">{trade.aiConfidence.toFixed(0)}% AI</p>}
+                <p className="text-[10px] text-white/15">{trade.entryAt ? new Date(trade.entryAt).toLocaleDateString() : "\u2014"}</p>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="text-right shrink-0 space-y-1">
-          {quote ? (
-            <>
-              <div className="flex items-center justify-end gap-1.5">
-                {isUp ? (
-                  <TrendingUp size={12} className="text-emerald-400/70" />
-                ) : (
-                  <TrendingDown size={12} className="text-red-400/70" />
-                )}
-                <AnimatedPrice
-                  value={unrealizedPnl}
-                  prefix={unrealizedPnl >= 0 ? "+$" : "-$"}
-                  decimals={2}
-                  className={`text-sm font-bold ${isUp ? "text-emerald-400" : "text-red-400"}`}
-                />
-              </div>
-              <p className={`text-[10px] font-medium ${isUp ? "text-emerald-400/50" : "text-red-400/50"}`}>
-                {unrealizedPct >= 0 ? "+" : ""}{unrealizedPct.toFixed(2)}%
-              </p>
-            </>
-          ) : (
-            <>
-              {trade.aiConfidence && <p className="text-xs text-amber-400/50 font-medium">{trade.aiConfidence.toFixed(0)}% AI</p>}
-              <p className="text-[10px] text-white/15">{trade.entryAt ? new Date(trade.entryAt).toLocaleDateString() : "\u2014"}</p>
-            </>
-          )}
-        </div>
+        {sl > 0 && tp > 0 && (
+          <div className="mt-3 space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-red-400/40">SL ${sl.toFixed(2)}</span>
+              <span className="text-white/15">${currentPrice.toFixed(2)}</span>
+              <span className="text-emerald-400/40">TP ${tp.toFixed(2)}</span>
+            </div>
+            <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden relative">
+              <div
+                className={`pnl-bar h-full rounded-full ${
+                  progressPct > 60 ? "bg-gradient-to-r from-amber-500/60 to-emerald-500/60"
+                    : progressPct < 40 ? "bg-gradient-to-r from-red-500/60 to-amber-500/60"
+                      : "bg-amber-500/50"
+                }`}
+                style={{ width: `${progressPct}%` }}
+              />
+              <div
+                className="absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.4)] transition-all duration-600"
+                style={{ left: `calc(${progressPct}% - 5px)` }}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* SL/TP progress bar */}
-      {sl > 0 && tp > 0 && (
-        <div className="mt-3 space-y-1">
-          <div className="flex justify-between text-[10px]">
-            <span className="text-red-400/40">SL ${sl.toFixed(2)}</span>
-            <span className="text-emerald-400/40">TP ${tp.toFixed(2)}</span>
+      {expanded && (
+        <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-0 border-t border-white/[0.04] mt-0 animate-fade-slide-up">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
+            <div>
+              <p className="text-[10px] text-white/20 uppercase tracking-wider">Value</p>
+              <p className="text-xs font-semibold text-white/70 mt-0.5">${positionValue.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-white/20 uppercase tracking-wider">Risk</p>
+              <p className="text-xs font-semibold text-red-400/70 mt-0.5">-${riskDollars.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-white/20 uppercase tracking-wider">Reward</p>
+              <p className="text-xs font-semibold text-emerald-400/70 mt-0.5">+${rewardDollars.toFixed(2)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-white/20 uppercase tracking-wider">Holding</p>
+              <p className="text-xs font-semibold text-white/70 mt-0.5">{holdingDays}d</p>
+            </div>
           </div>
-          <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden relative">
-            <div
-              className={`pnl-bar h-full rounded-full ${
-                progressPct > 60 ? "bg-gradient-to-r from-amber-500/50 to-emerald-500/50"
-                  : progressPct < 40 ? "bg-gradient-to-r from-red-500/50 to-amber-500/50"
-                    : "bg-amber-500/40"
-              }`}
-              style={{ width: `${progressPct}%` }}
-            />
-            <div
-              className="absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.3)] transition-all duration-600"
-              style={{ left: `calc(${progressPct}% - 4px)` }}
-            />
-          </div>
+          {trade.aiConfidence != null && (
+            <div className="mt-3 flex items-center gap-3">
+              <div className="flex-1">
+                <div className="flex justify-between text-[10px] mb-1">
+                  <span className="text-white/20">AI Confidence</span>
+                  <span className="text-amber-400/60">{trade.aiConfidence.toFixed(0)}%</span>
+                </div>
+                <div className="h-1 bg-white/[0.04] rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-amber-500/40 to-amber-400/60 rounded-full pnl-bar" style={{ width: `${trade.aiConfidence}%` }} />
+                </div>
+              </div>
+              {trade.signalScore != null && (
+                <div className="text-right">
+                  <p className="text-[10px] text-white/20">Score</p>
+                  <p className="text-xs font-bold text-amber-400/70">{trade.signalScore.toFixed(1)}</p>
+                </div>
+              )}
+            </div>
+          )}
+          {quote && (
+            <div className="mt-3 flex items-center gap-2 text-[10px] text-white/15">
+              <Radio size={8} className="text-emerald-400/50" />
+              Day change: <span className={quote.changePercent >= 0 ? "text-emerald-400/60" : "text-red-400/60"}>
+                {quote.changePercent >= 0 ? "+" : ""}{quote.changePercent.toFixed(2)}%
+              </span>
+              ({quote.change >= 0 ? "+" : ""}${quote.change.toFixed(2)})
+            </div>
+          )}
         </div>
       )}
     </div>
   );
 }
 
+const RISK_PROFILES = [
+  { id: "CONSERVATIVE", label: "Conservative", icon: ShieldCheck, desc: "Fewer trades, higher conviction signals only. Wider stop-losses, longer holds.", color: "emerald" },
+  { id: "MODERATE", label: "Moderate", icon: Target, desc: "Balanced approach. Standard thresholds and position sizing.", color: "amber" },
+  { id: "AGGRESSIVE", label: "Aggressive", icon: Zap, desc: "More trades, lower thresholds. Tighter stops, bigger positions.", color: "red" },
+];
+
+const TARGET_OPTIONS = [
+  { pct: 5, label: "5%" },
+  { pct: 10, label: "10%" },
+  { pct: 15, label: "15%" },
+  { pct: 20, label: "20%" },
+  { pct: 25, label: "25%" },
+];
+
 function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) => void }) {
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState<"PAPER" | "LIVE">("PAPER");
   const [paperBalance, setPaperBalance] = useState(10000);
+  const [riskProfile, setRiskProfile] = useState("MODERATE");
+  const [weeklyTargetPct, setWeeklyTargetPct] = useState(10);
   const [watchlist, setWatchlist] = useState<string[]>([...DEFAULT_WATCHLIST]);
   const [tickerInput, setTickerInput] = useState("");
   const [maxPositionPct, setMaxPositionPct] = useState(5);
@@ -266,7 +343,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
       const res = await fetch("/api/trading/auto", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: true, mode, paperBalance, watchlist, maxPositionPct, maxDailyLossPct, maxOpenPositions }),
+        body: JSON.stringify({ enabled: true, mode, paperBalance, riskProfile, weeklyTargetPct, watchlist, maxPositionPct, maxDailyLossPct, maxOpenPositions }),
       });
       const config = await res.json();
       onComplete(config);
@@ -279,7 +356,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
     <div className="max-w-2xl mx-auto">
       {/* Step indicator */}
       <div className="flex items-center gap-3 justify-center mb-10 animate-fade-slide-up">
-        {[0, 1, 2].map((s) => (
+        {[0, 1, 2, 3].map((s) => (
           <div key={s} className="flex items-center gap-3">
             <button
               onClick={() => { if (s < step) setStep(s); }}
@@ -293,8 +370,8 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
             >
               {s < step ? "\u2713" : s + 1}
             </button>
-            {s < 2 && (
-              <div className={`w-16 h-px transition-all duration-500 ${s < step ? "bg-amber-500/30" : "bg-white/[0.06]"}`} />
+            {s < 3 && (
+              <div className={`w-12 h-px transition-all duration-500 ${s < step ? "bg-amber-500/30" : "bg-white/[0.06]"}`} />
             )}
           </div>
         ))}
@@ -484,8 +561,92 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
         </div>
       )}
 
-      {/* Step 2: Configure */}
+      {/* Step 2: Risk Profile & Target */}
       {step === 2 && (
+        <div className="space-y-6">
+          <div className="text-center animate-fade-slide-up">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Risk & Target</h2>
+            <p className="text-white/30 text-sm mt-1">How aggressive should KoshPilot trade?</p>
+          </div>
+
+          <div className="space-y-3 animate-fade-slide-up-1">
+            {RISK_PROFILES.map((rp) => {
+              const isSelected = riskProfile === rp.id;
+              const Icon = rp.icon;
+              const borderColor = rp.color === "emerald" ? "border-emerald-500/30" : rp.color === "amber" ? "border-amber-500/30" : "border-red-500/30";
+              const bgColor = rp.color === "emerald" ? "bg-emerald-500/[0.04]" : rp.color === "amber" ? "bg-amber-500/[0.04]" : "bg-red-500/[0.04]";
+              const iconBg = rp.color === "emerald" ? "bg-emerald-500/10 border-emerald-500/20" : rp.color === "amber" ? "bg-amber-500/10 border-amber-500/20" : "bg-red-500/10 border-red-500/20";
+              const iconColor = rp.color === "emerald" ? "text-emerald-400" : rp.color === "amber" ? "text-amber-400" : "text-red-400";
+
+              return (
+                <button
+                  key={rp.id}
+                  onClick={() => setRiskProfile(rp.id)}
+                  className={`w-full text-left p-4 sm:p-5 rounded-2xl border transition-all duration-300 ${
+                    isSelected ? `${borderColor} ${bgColor}` : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]"
+                  }`}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${isSelected ? `${iconBg} border` : "bg-white/[0.04]"}`}>
+                      <Icon size={20} className={isSelected ? iconColor : "text-white/30"} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-white font-bold text-sm">{rp.label}</h3>
+                        {isSelected && rp.id === "MODERATE" && <Badge variant="gold">Default</Badge>}
+                      </div>
+                      <p className="text-white/30 text-xs mt-0.5 leading-relaxed">{rp.desc}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-300 ${
+                      isSelected ? `${borderColor.replace("30", "50")}` : "border-white/10"
+                    }`}>
+                      {isSelected && <div className={`w-2.5 h-2.5 rounded-full ${
+                        rp.color === "emerald" ? "bg-emerald-400" : rp.color === "amber" ? "bg-amber-400" : "bg-red-400"
+                      }`} />}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="glass-card p-5 space-y-4 animate-fade-slide-up-2">
+            <div>
+              <h3 className="text-sm font-semibold text-white/60">Weekly Profit Target</h3>
+              <p className="text-xs text-white/25 mt-0.5">What return should KoshPilot aim for each week?</p>
+            </div>
+            <div className="grid grid-cols-5 gap-2">
+              {TARGET_OPTIONS.map(({ pct, label }) => (
+                <button
+                  key={pct}
+                  onClick={() => setWeeklyTargetPct(pct)}
+                  className={`py-3 rounded-xl text-sm font-medium transition-all duration-300 flex flex-col items-center gap-0.5 ${
+                    weeklyTargetPct === pct
+                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/25 shadow-[0_0_20px_rgba(245,158,11,0.08)]"
+                      : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.05]"
+                  }`}
+                >
+                  <span className="font-bold">{label}</span>
+                  <span className="text-[10px] opacity-50">${((paperBalance * pct) / 100).toFixed(0)}/wk</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-white/15 text-center">AI performance varies. This sets a goal, not a guarantee.</p>
+          </div>
+
+          <div className="flex gap-3">
+            <Button variant="secondary" className="flex-1" onClick={() => setStep(1)}>
+              <ArrowLeft size={16} /> Back
+            </Button>
+            <button className="flex-1 py-3.5 rounded-2xl font-semibold flex items-center justify-center gap-2 transition-all duration-300 text-sm koshpilot-btn text-black" onClick={() => setStep(3)}>
+              Continue <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Configure */}
+      {step === 3 && (
         <div className="space-y-6">
           <div className="text-center animate-fade-slide-up">
             <h2 className="text-2xl font-bold text-white tracking-tight">Configure</h2>
@@ -562,6 +723,8 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
               <div className="text-xs text-white/35 space-y-0.5">
                 <p><span className="text-amber-300/80 font-medium">Mode:</span> Simulation</p>
                 <p><span className="text-amber-300/80 font-medium">Capital:</span> ${paperBalance.toLocaleString()}</p>
+                <p><span className="text-amber-300/80 font-medium">Profile:</span> {riskProfile.charAt(0) + riskProfile.slice(1).toLowerCase()}</p>
+                <p><span className="text-amber-300/80 font-medium">Target:</span> {weeklyTargetPct}% weekly (${((paperBalance * weeklyTargetPct) / 100).toFixed(0)}/wk)</p>
                 <p><span className="text-amber-300/80 font-medium">Watching:</span> {watchlist.length} stocks</p>
                 <p><span className="text-amber-300/80 font-medium">Risk:</span> {maxPositionPct}% max, {maxDailyLossPct}% daily cap, {maxOpenPositions} positions</p>
               </div>
@@ -569,7 +732,7 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
           </div>
 
           <div className="flex gap-3">
-            <Button variant="secondary" className="flex-1" onClick={() => setStep(1)}>
+            <Button variant="secondary" className="flex-1" onClick={() => setStep(2)}>
               <ArrowLeft size={16} /> Back
             </Button>
             <button
@@ -842,6 +1005,54 @@ export default function AutoTradingPage() {
         </div>
       </div>
 
+      {/* ─── Weekly Target Tracker ─── */}
+      {stats && config && (
+        <div className="glass-card p-5 animate-fade-slide-up-2">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Target size={14} className="text-amber-400/70" />
+              <h3 className="text-sm font-semibold text-white/60">Weekly Target</h3>
+              <Badge variant={
+                config.riskProfile === "CONSERVATIVE" ? "green" : config.riskProfile === "AGGRESSIVE" ? "red" : "gold"
+              }>
+                {config.riskProfile?.charAt(0) + (config.riskProfile?.slice(1).toLowerCase() || "")}
+              </Badge>
+            </div>
+            <div className="text-right">
+              <span className={`text-sm font-bold ${(stats.weeklyPnl || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {(stats.weeklyPnl || 0) >= 0 ? "+" : ""}${Math.abs(stats.weeklyPnl || 0).toFixed(0)}
+              </span>
+              <span className="text-white/15 text-xs"> / ${(stats.weeklyTargetDollars || 0).toFixed(0)}</span>
+            </div>
+          </div>
+          <div className="h-2.5 bg-white/[0.04] rounded-full overflow-hidden relative">
+            <div
+              className={`h-full rounded-full pnl-bar transition-all duration-1000 ${
+                (stats.weeklyProgressPct || 0) >= 100 ? "bg-gradient-to-r from-emerald-500/70 to-emerald-400/90"
+                : (stats.weeklyProgressPct || 0) >= 50 ? "bg-gradient-to-r from-amber-500/60 to-amber-400/80"
+                : (stats.weeklyProgressPct || 0) > 0 ? "bg-gradient-to-r from-amber-500/40 to-amber-400/50"
+                : "bg-red-500/30"
+              }`}
+              style={{ width: `${Math.min(100, Math.max(0, stats.weeklyProgressPct || 0))}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-[10px]">
+            <span className="text-white/15">0%</span>
+            <span className={`font-medium ${
+              (stats.weeklyProgressPct || 0) >= 100 ? "text-emerald-400/60" : "text-amber-400/40"
+            }`}>
+              {(stats.weeklyProgressPct || 0).toFixed(0)}% of {config.weeklyTargetPct || 10}% goal
+            </span>
+            <span className="text-white/15">100%</span>
+          </div>
+          {(stats.weeklyProgressPct || 0) >= 100 && (
+            <p className="text-[10px] text-emerald-400/50 text-center mt-2 flex items-center justify-center gap-1">
+              <Sparkles size={10} /> Weekly target achieved
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ─── Mission Report ─── */}
       {runResult && (
         <div className={`glass-card p-5 animate-scale-in ${
@@ -981,6 +1192,53 @@ export default function AutoTradingPage() {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="text-xs text-white/25 block mb-2">Risk Profile</label>
+            <div className="grid grid-cols-3 gap-2">
+              {RISK_PROFILES.map((rp) => {
+                const isSelected = config.riskProfile === rp.id;
+                const Icon = rp.icon;
+                return (
+                  <button
+                    key={rp.id}
+                    onClick={() => updateConfig({ riskProfile: rp.id })}
+                    className={`p-3 rounded-xl border text-center transition-all duration-300 ${
+                      isSelected
+                        ? rp.color === "emerald" ? "border-emerald-500/30 bg-emerald-500/[0.05]"
+                          : rp.color === "red" ? "border-red-500/30 bg-red-500/[0.05]"
+                          : "border-amber-500/30 bg-amber-500/[0.05]"
+                        : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]"
+                    }`}
+                  >
+                    <Icon size={16} className={`mx-auto mb-1 ${
+                      isSelected
+                        ? rp.color === "emerald" ? "text-emerald-400" : rp.color === "red" ? "text-red-400" : "text-amber-400"
+                        : "text-white/25"
+                    }`} />
+                    <p className={`text-xs font-medium ${isSelected ? "text-white/80" : "text-white/30"}`}>{rp.label}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-white/25 block mb-2">Weekly Target</label>
+            <div className="flex flex-wrap gap-2">
+              {TARGET_OPTIONS.map(({ pct, label }) => (
+                <button key={pct} onClick={() => updateConfig({ weeklyTargetPct: pct })}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                    (config.weeklyTargetPct || 10) === pct
+                      ? "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                      : "bg-white/[0.03] text-white/30 border border-white/[0.06] hover:border-white/[0.1]"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[

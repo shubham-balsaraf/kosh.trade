@@ -130,7 +130,8 @@ export function shouldExitPosition(
   entryPrice: number,
   stopLoss: number,
   takeProfit: number,
-  holdingDays: number
+  holdingDays: number,
+  maxHoldDays: number = 10
 ): { exit: boolean; reason: string } {
   if (currentPrice <= stopLoss) {
     return { exit: true, reason: `Stop loss hit at $${stopLoss}` };
@@ -139,7 +140,6 @@ export function shouldExitPosition(
     return { exit: true, reason: `Take profit hit at $${takeProfit}` };
   }
 
-  // Trailing stop: if up more than 5%, move stop to breakeven + 1%
   const gainPct = ((currentPrice - entryPrice) / entryPrice) * 100;
   if (gainPct > 5) {
     const trailingStop = entryPrice * 1.01;
@@ -148,8 +148,7 @@ export function shouldExitPosition(
     }
   }
 
-  // Max hold for swing trades: 10 days
-  if (holdingDays >= 10) {
+  if (holdingDays >= maxHoldDays) {
     return { exit: true, reason: `Max holding period (${holdingDays} days)` };
   }
 

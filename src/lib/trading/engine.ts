@@ -16,6 +16,47 @@ interface EngineResult {
   details: any[];
 }
 
+export interface RiskProfileParams {
+  minScore: number;
+  minConfidence: number;
+  positionMultiplier: number;
+  riskRewardRatio: number;
+  atrMultiplier: number;
+  maxHoldDays: number;
+}
+
+export function getRiskProfile(profile: string): RiskProfileParams {
+  switch (profile) {
+    case "CONSERVATIVE":
+      return {
+        minScore: 30,
+        minConfidence: 60,
+        positionMultiplier: 0.6,
+        riskRewardRatio: 3,
+        atrMultiplier: 1.2,
+        maxHoldDays: 15,
+      };
+    case "AGGRESSIVE":
+      return {
+        minScore: 8,
+        minConfidence: 30,
+        positionMultiplier: 1.4,
+        riskRewardRatio: 1.5,
+        atrMultiplier: 2,
+        maxHoldDays: 7,
+      };
+    default: // MODERATE
+      return {
+        minScore: 15,
+        minConfidence: 45,
+        positionMultiplier: 1,
+        riskRewardRatio: 2,
+        atrMultiplier: 1.5,
+        maxHoldDays: 10,
+      };
+  }
+}
+
 function getAlpacaConfig(user: any) {
   return {
     apiKey: user.alpacaApiKey || process.env.ALPACA_API_KEY || "",
@@ -24,11 +65,24 @@ function getAlpacaConfig(user: any) {
   };
 }
 
+async function getFullWatchlist(userId: string, configWatchlist: string[]): Promise<string[]> {
+  const userWatchlist = await prisma.watchlistItem.findMany({
+    where: { userId },
+    select: { ticker: true },
+  });
+  const combined = new Set([...configWatchlist, ...userWatchlist.map((w) => w.ticker)]);
+  return [...combined];
+}
+
 async function runPaperTradingCycle(userId: string, config: any, email: string | null): Promise<EngineResult> {
   try {
+    const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
+
     const openTrades = await prisma.autoTrade.findMany({
       where: { userId, status: "OPEN" },
     });
+
+    const openTickers = new Set(openTrades.map((t) => t.ticker));
 
     const exits: any[] = [];
     for (const trade of openTrades) {
@@ -45,7 +99,8 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           trade.entryPrice || 0,
           trade.stopLoss || 0,
           trade.takeProfit || 0,
-          holdingDays
+          holdingDays,
+          riskProfile.maxHoldDays
         );
 
         if (exitCheck.exit) {
@@ -60,6 +115,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
               pnl: Math.round(pnl * 100) / 100,
             },
           });
+          openTickers.delete(trade.ticker);
           exits.push({
             ticker: trade.ticker,
             action: "SELL",
@@ -71,7 +127,8 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       } catch {}
     }
 
-    const scanResults = await scanMarket(config.watchlist);
+    const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
+    const scanResults = await scanMarket(fullWatchlist);
     const rankedSignals = rankSignals(scanResults);
 
     const currentOpen = await prisma.autoTrade.count({ where: { userId, status: "OPEN" } });
@@ -95,9 +152,29 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     const maxNewTrades = Math.max(0, config.maxOpenPositions - currentOpen);
 
     for (const signal of rankedSignals.slice(0, maxNewTrades)) {
+      if (openTickers.has(signal.ticker)) {
+        details.push({
+          ticker: signal.ticker,
+          action: "SKIP",
+          reason: `Already holding ${signal.ticker}`,
+          score: signal.score,
+        });
+        continue;
+      }
+
+      if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
+        details.push({
+          ticker: signal.ticker,
+          action: "SKIP",
+          reason: `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`,
+          score: signal.score,
+        });
+        continue;
+      }
+
       const position = calculatePosition(signal, {
         portfolioValue: currentEquity,
-        maxPositionPct: config.maxPositionPct,
+        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
         maxOpenPositions: config.maxOpenPositions,
         currentOpenPositions: currentOpen + tradesExecuted,
@@ -134,6 +211,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         },
       });
 
+      openTickers.add(signal.ticker);
       tradesExecuted++;
       details.push({
         ticker: signal.ticker,
@@ -205,6 +283,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
   }
 
   const alpacaConfig = getAlpacaConfig(user);
+  const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
   try {
     const exits = await checkExits(alpacaConfig, userId);
@@ -224,8 +303,15 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       };
     }
 
-    const scanResults = await scanMarket(config.watchlist);
+    const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
+    const scanResults = await scanMarket(fullWatchlist);
     const rankedSignals = rankSignals(scanResults);
+
+    const openTrades = await prisma.autoTrade.findMany({
+      where: { userId, status: "OPEN" },
+      select: { ticker: true },
+    });
+    const openTickers = new Set(openTrades.map((t) => t.ticker));
 
     const aiConvictions = rankedSignals.length > 0
       ? await getAIConvictions(rankedSignals)
@@ -238,6 +324,16 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     const maxNewTrades = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
 
     for (const signal of rankedSignals.slice(0, maxNewTrades)) {
+      if (openTickers.has(signal.ticker)) {
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: `Already holding ${signal.ticker}` });
+        continue;
+      }
+
+      if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: `Below ${config.riskProfile || "MODERATE"} threshold` });
+        continue;
+      }
+
       const aiVerdict = aiConvictions.get(signal.ticker);
       const aiConfidence = aiVerdict?.conviction ? aiVerdict.conviction * 10 : 50;
 
@@ -252,7 +348,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
 
       const position = calculatePosition(signal, {
         portfolioValue: portfolio.equity,
-        maxPositionPct: config.maxPositionPct,
+        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
         maxOpenPositions: config.maxOpenPositions,
         currentOpenPositions: portfolio.openPositions + tradesExecuted,
@@ -272,6 +368,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
 
       details.push(result);
       if (result.action === "BUY") {
+        openTickers.add(signal.ticker);
         tradesExecuted++;
         sendTradeNotification(user.email, result).catch(() => {});
       }
@@ -309,7 +406,8 @@ export async function runDailyBriefing(userId: string): Promise<string> {
   if (!user || !user.tradingConfig?.enabled) return "Not enabled";
 
   const config = user.tradingConfig;
-  const scanResults = await scanMarket(config.watchlist);
+  const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
+  const scanResults = await scanMarket(fullWatchlist);
   const signals = rankSignals(scanResults);
 
   let equity = config.paperBalance || 10000;

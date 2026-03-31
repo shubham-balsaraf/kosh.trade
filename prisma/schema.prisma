@@ -215,6 +215,8 @@ model TradingConfig {
   maxPositionPct    Float    @default(5)
   maxDailyLossPct   Float    @default(3)
   maxOpenPositions  Int      @default(5)
+  riskProfile       String   @default("MODERATE")
+  weeklyTargetPct   Float    @default(10)
   watchlist         String[] @default(["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM"])
   strategies        String[] @default(["MOMENTUM", "MEAN_REVERSION", "SWING"])
   updatedAt         DateTime @updatedAt
