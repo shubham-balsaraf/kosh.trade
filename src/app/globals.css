@@ -487,119 +487,133 @@ body {
   transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ─── Apple-style Hero Animations ─── */
+/* ─── KoshPilot Cinematic Intro ─── */
 
-@keyframes heroTextReveal {
-  from { opacity: 0; transform: translateY(40px) scale(0.95); filter: blur(10px); }
-  to { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
+@keyframes pilotScreenIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-@keyframes heroSubReveal {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes pilotGlowOrb {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+  40%  { opacity: 1; }
+  100% { opacity: 0.6; transform: translate(-50%, -50%) scale(1); }
 }
 
-@keyframes heroLineGrow {
-  from { transform: scaleX(0); }
-  to { transform: scaleX(1); }
+@keyframes pilotGlowPulse {
+  0%, 100% { opacity: 0.25; transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(1.15); }
 }
 
-@keyframes heroBadgeFloat {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+@keyframes pilotRingExpand {
+  0%   { opacity: 0; transform: scale(0.5); }
+  50%  { opacity: 0.35; }
+  100% { opacity: 0; transform: scale(1.4); }
 }
 
-@keyframes heroGradientShift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+@keyframes pilotIconReveal {
+  from { opacity: 0; transform: scale(0.6); filter: blur(12px); }
+  to   { opacity: 1; transform: scale(1);   filter: blur(0); }
 }
 
-@keyframes heroRingPulse {
-  0%, 100% { transform: scale(1); opacity: 0.3; }
-  50% { transform: scale(1.15); opacity: 0.1; }
+@keyframes pilotTitleReveal {
+  from { opacity: 0; transform: translateY(30px) scale(0.96); filter: blur(16px); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);    filter: blur(0); }
 }
 
-@keyframes heroCountUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+@keyframes pilotLineExpand {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
 }
 
-.hero-text-reveal {
-  animation: heroTextReveal 1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+@keyframes pilotFadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pilotCtaReveal {
+  from { opacity: 0; transform: translateY(24px) scale(0.95); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes pilotParticleFloat {
+  0%   { opacity: 0;   transform: translateY(100vh) scale(0); }
+  10%  { opacity: 0.6; transform: translateY(80vh)  scale(1); }
+  90%  { opacity: 0.3; }
+  100% { opacity: 0;   transform: translateY(-10vh) scale(0.5); }
+}
+
+.pilot-screen {
+  animation: pilotScreenIn 0.6s ease-out forwards;
+}
+
+.pilot-glow-orb {
+  position: absolute;
+  top: 50%; left: 50%;
+  background: radial-gradient(circle, rgba(251,191,36,0.08) 0%, rgba(245,158,11,0.03) 40%, transparent 70%);
+  animation:
+    pilotGlowOrb 1.5s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards,
+    pilotGlowPulse 6s ease-in-out 2s infinite;
   opacity: 0;
 }
 
-.hero-text-reveal-1 {
-  animation: heroTextReveal 1s cubic-bezier(0.16, 1, 0.3, 1) 0.15s forwards;
-  opacity: 0;
-}
-
-.hero-text-reveal-2 {
-  animation: heroTextReveal 1s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal-1 {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal-2 {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.7s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal-3 {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.85s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal-4 {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.0s forwards;
-  opacity: 0;
-}
-
-.hero-sub-reveal-5 {
-  animation: heroSubReveal 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1.15s forwards;
-  opacity: 0;
-}
-
-.hero-line-grow {
-  animation: heroLineGrow 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.8s forwards;
-  transform: scaleX(0);
-  transform-origin: center;
-}
-
-.hero-badge-float {
-  animation: heroBadgeFloat 3s ease-in-out 1.5s infinite;
-}
-
-.hero-gradient-bg {
-  background: linear-gradient(135deg, #050507 0%, #0a0908 30%, #0d0b06 60%, #050507 100%);
-  background-size: 400% 400%;
-  animation: heroGradientShift 15s ease-in-out infinite;
-}
-
-.hero-ring {
-  border: 1px solid rgba(251, 191, 36, 0.15);
+.pilot-ring {
+  border: 1px solid rgba(251, 191, 36, 0.08);
   border-radius: 50%;
   position: absolute;
-  animation: heroRingPulse 4s ease-in-out infinite;
 }
 
-.hero-ring-1 { width: 300px; height: 300px; animation-delay: 0s; }
-.hero-ring-2 { width: 500px; height: 500px; animation-delay: 1s; }
-.hero-ring-3 { width: 700px; height: 700px; animation-delay: 2s; }
+.pilot-ring-1 {
+  width: 250px; height: 250px;
+  animation: pilotRingExpand 4s ease-out 1s infinite;
+}
+.pilot-ring-2 {
+  width: 450px; height: 450px;
+  animation: pilotRingExpand 4s ease-out 2s infinite;
+}
+.pilot-ring-3 {
+  width: 650px; height: 650px;
+  animation: pilotRingExpand 4s ease-out 3s infinite;
+}
 
-.hero-stat {
-  animation: heroCountUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.pilot-icon-reveal {
   opacity: 0;
+  animation: pilotIconReveal 1s cubic-bezier(0.16, 1, 0.3, 1) 0.6s forwards;
+}
+
+.pilot-title-reveal {
+  opacity: 0;
+  animation: pilotTitleReveal 1.2s cubic-bezier(0.16, 1, 0.3, 1) 1s forwards;
+}
+
+.pilot-line-expand {
+  transform: scaleX(0);
+  transform-origin: center;
+  animation: pilotLineExpand 1s cubic-bezier(0.16, 1, 0.3, 1) 1.6s forwards;
+}
+
+.pilot-tagline-reveal {
+  opacity: 0;
+  animation: pilotFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 2s forwards;
+}
+
+.pilot-features-reveal {
+  opacity: 0;
+  animation: pilotFadeUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 2.3s forwards;
+}
+
+.pilot-cta-reveal {
+  opacity: 0;
+  animation: pilotCtaReveal 1s cubic-bezier(0.16, 1, 0.3, 1) 2.8s forwards;
+}
+
+.pilot-particle {
+  position: absolute;
+  bottom: -10px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(251,191,36,0.6), rgba(245,158,11,0.1));
+  animation: pilotParticleFloat linear infinite;
+  pointer-events: none;
 }
 
 /* ─── Select Styling ─── */
