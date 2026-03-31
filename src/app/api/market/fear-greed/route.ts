@@ -17,7 +17,7 @@ export async function GET() {
   try {
     const [spy, vixData] = await Promise.all([
       getChart("SPY", "1y", "1d"),
-      getChart("%5EVIX", "6mo", "1d"),
+      getChart("^VIX", "6mo", "1d"),
     ]);
 
     const signals: { name: string; score: number; signal: string; weight: number }[] = [];
