@@ -4,16 +4,89 @@ function apiKey(): string {
   return process.env.FMP_API_KEY || "";
 }
 
+/* ── In-memory TTL cache ─────────────────────────────── */
+
+interface CacheEntry<T> {
+  data: T;
+  expiresAt: number;
+}
+
+const cache = new Map<string, CacheEntry<any>>();
+
+const TTL_QUOTE = 5 * 60 * 1000;         // 5 min  — prices move
+const TTL_FUNDAMENTALS = 60 * 60 * 1000;  // 1 hour — financials are quarterly
+const TTL_PROFILE = 24 * 60 * 60 * 1000;  // 24 hr  — company profile rarely changes
+const TTL_SEARCH = 30 * 60 * 1000;        // 30 min
+
+const ENDPOINT_TTL: Record<string, number> = {
+  "/quote": TTL_QUOTE,
+  "/profile": TTL_PROFILE,
+  "/income-statement": TTL_FUNDAMENTALS,
+  "/balance-sheet-statement": TTL_FUNDAMENTALS,
+  "/cash-flow-statement": TTL_FUNDAMENTALS,
+  "/key-metrics": TTL_FUNDAMENTALS,
+  "/ratios": TTL_FUNDAMENTALS,
+  "/earnings": TTL_FUNDAMENTALS,
+  "/earnings-surprises": TTL_FUNDAMENTALS,
+  "/historical-price-eod/full": TTL_QUOTE,
+  "/search-name": TTL_SEARCH,
+  "/stock-screener": TTL_SEARCH,
+  "/earning-calendar": TTL_FUNDAMENTALS,
+  "/insider-trading": TTL_FUNDAMENTALS,
+  "/stock-news": TTL_QUOTE,
+};
+
+function getCacheTTL(endpoint: string): number {
+  return ENDPOINT_TTL[endpoint] ?? TTL_FUNDAMENTALS;
+}
+
+function buildCacheKey(endpoint: string, params: Record<string, string>): string {
+  const sorted = Object.entries(params)
+    .filter(([k]) => k !== "apikey")
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join("&");
+  return `fmp:${endpoint}?${sorted}`;
+}
+
+function getFromCache<T>(key: string): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCache<T>(key: string, data: T, ttl: number): void {
+  cache.set(key, { data, expiresAt: Date.now() + ttl });
+
+  if (cache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (now > v.expiresAt) cache.delete(k);
+    }
+  }
+}
+
+/* ── Core fetch with cache ───────────────────────────── */
+
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
   if (!key) throw new Error("FMP_API_KEY is not configured");
+
+  const cacheKey = buildCacheKey(endpoint, params);
+  const cached = getFromCache<T>(cacheKey);
+  if (cached !== null) return cached;
+
   const url = new URL(`${FMP_BASE}${endpoint}`);
   url.searchParams.set("apikey", key);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
 
-  const res = await fetch(url.toString(), { next: { revalidate: 120 } });
+  const res = await fetch(url.toString(), { cache: "no-store" });
 
   if (res.status === 429) {
     console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 1s`);
@@ -24,6 +97,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
     if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {
       throw new Error(retryJson["Error Message"]);
     }
+    setCache(cacheKey, retryJson, getCacheTTL(endpoint));
     return retryJson;
   }
 
@@ -37,8 +111,12 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
     console.error(`[FMP] ${endpoint}: ${json["Error Message"]}`);
     throw new Error(json["Error Message"]);
   }
+
+  setCache(cacheKey, json, getCacheTTL(endpoint));
   return json;
 }
+
+/* ── Exported API methods ────────────────────────────── */
 
 export async function getQuote(ticker: string) {
   const data = await fmpFetch<any[]>("/quote", { symbol: ticker.toUpperCase() });

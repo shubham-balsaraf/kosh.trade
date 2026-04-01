@@ -96,7 +96,7 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
     [ticker, onVerdictChange]
   );
 
-  async function runAnalysis() {
+  async function runAnalysis(refresh = false) {
     setLoading(true);
     setError("");
     setAnalysis(null);
@@ -105,11 +105,12 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
       const res = await fetch(`/api/stocks/${ticker}/analysis`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ horizon }),
+        body: JSON.stringify({ horizon, refresh }),
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       handleAnalysisResult(json.analysis, horizon);
+      setFromCache(!!json.cached);
       setTab("verdict");
     } catch (e: any) {
       setError(e.message || "Analysis failed");
@@ -123,6 +124,7 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
     setFromCache(false);
     setError("");
     onVerdictChange?.(null);
+    runAnalysis(true);
   }
 
   if (!analysis && !loading) {
@@ -147,7 +149,7 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
             </button>
           ))}
         </div>
-        <Button onClick={runAnalysis} className="!px-8">
+        <Button onClick={() => runAnalysis()} className="!px-8">
           Run Analysis for {ticker.toUpperCase()}
         </Button>
         {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -205,13 +207,15 @@ export default function AIAnalysis({ ticker, onVerdictChange }: AIAnalysisProps)
         </div>
         <div className="flex items-center gap-2 justify-end">
           {fromCache && (
-            <span className="text-[10px] text-gray-600 italic">cached</span>
+            <span className="text-[10px] text-emerald-500/60 bg-emerald-500/[0.06] px-2 py-0.5 rounded-md">
+              cached — no API call used
+            </span>
           )}
           <button
             onClick={clearAndRerun}
             className="px-3 py-1.5 rounded-lg text-xs text-gray-600 hover:text-gray-300 transition-all"
           >
-            Re-run
+            Re-run fresh
           </button>
         </div>
       </div>

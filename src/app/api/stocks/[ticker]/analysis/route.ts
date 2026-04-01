@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { prisma } from "@/lib/db";
 import { getQuote, getProfile, getIncomeStatement, getBalanceSheet, getCashFlow, getKeyMetrics, getRatios, getEarnings } from "@/lib/api/fmp";
 import { generateCompletion } from "@/lib/ai/claude";
+
+const ANALYSIS_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
 
 const SYSTEM_PROMPT = `You are a US Stock Fundamental Analyser for long-term investors.
 
@@ -122,15 +125,35 @@ export async function POST(
       }
     }
 
+    const body = await req.json().catch(() => ({}));
+    const horizon = body.horizon || "5 years";
+    const forceRefresh = body.refresh === true;
+
+    if (session?.user && !forceRefresh) {
+      const userId = (session.user as any).id;
+      const cached = await prisma.searchHistory.findFirst({
+        where: { userId, ticker: symbol },
+        orderBy: { createdAt: "desc" },
+        select: { analysisJson: true, createdAt: true },
+      });
+
+      if (cached?.analysisJson) {
+        const age = Date.now() - new Date(cached.createdAt).getTime();
+        if (age < ANALYSIS_CACHE_TTL) {
+          try {
+            const analysis = JSON.parse(cached.analysisJson);
+            return NextResponse.json({ analysis, ticker: symbol, horizon, cached: true });
+          } catch { /* corrupt JSON — fall through to fresh analysis */ }
+        }
+      }
+    }
+
     if (!process.env.ANTHROPIC_API_KEY) {
       return NextResponse.json({ error: "AI analysis requires ANTHROPIC_API_KEY" }, { status: 500 });
     }
     if (!process.env.FMP_API_KEY) {
       return NextResponse.json({ error: "FMP_API_KEY is not configured" }, { status: 500 });
     }
-
-    const body = await req.json().catch(() => ({}));
-    const horizon = body.horizon || "5 years";
 
     const [quote, profile, income, balance, cashflow, metrics, ratios, earnings] = await Promise.all([
       getQuote(symbol).catch(() => null),
