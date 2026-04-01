@@ -13,6 +13,7 @@ import {
   Zap, Shield, ArrowUpRight, ArrowDownRight, Flame, Mountain, Gem, Clock,
   CheckCircle2, Loader2, BarChart2, Gauge, Waves, LineChart,
   Newspaper, AlertTriangle, Sparkles, ExternalLink,
+  Building2, FileText, GitMerge, Landmark, Scale, Coins,
 } from "lucide-react";
 
 const STRATEGY_INFO: Record<string, { label: string; technical: string; simple: string; icon: typeof Zap; color: string }> = {
@@ -92,8 +93,10 @@ function ScanLoadingAnimation({ type }: { type: "market" | "picks" | "intelligen
   ];
 
   const picksSteps = [
-    { icon: Newspaper, text: "Scanning market news, insider trades, congressional activity..." },
-    { icon: Radar, text: "Identifying signal-driven stocks — not a fixed list..." },
+    { icon: Newspaper, text: "Scanning news, press releases, insider trades, analyst grades..." },
+    { icon: Landmark, text: "Pulling Senate/House trades, M&A deals, 8-K filings..." },
+    { icon: Building2, text: "Checking institutional 13F moves and sector performance..." },
+    { icon: Radar, text: "Identifying signal-driven stocks from 12+ sources..." },
     { icon: BarChart2, text: "Running 8 technical indicators on every discovered stock..." },
     { icon: Zap, text: "Classifying Sprint picks — momentum, oversold bounces, catalysts..." },
     { icon: TrendingUp, text: "Finding Marathon picks — golden crosses, steady uptrends..." },
@@ -102,12 +105,15 @@ function ScanLoadingAnimation({ type }: { type: "market" | "picks" | "intelligen
   ];
 
   const intelligenceSteps = [
-    { icon: Newspaper, text: "Reading live market news and breaking headlines..." },
+    { icon: Newspaper, text: "Reading live market news, press releases, and crypto headlines..." },
     { icon: Users, text: "Checking insider purchases and whale activity..." },
-    { icon: Globe, text: "Scanning congressional trades and policy signals..." },
-    { icon: BarChart2, text: "Analyzing screener movers — top gainers and heavy selloffs..." },
+    { icon: Landmark, text: "Scanning Senate & House trades — political money flow..." },
+    { icon: Scale, text: "Pulling analyst upgrades/downgrades and price targets..." },
+    { icon: BarChart2, text: "Analyzing top gainers, losers, and most active stocks..." },
+    { icon: Globe, text: "Reading sector performance and industry rotation..." },
+    { icon: GitMerge, text: "Checking M&A deals, 8-K filings, and institutional 13F moves..." },
     { icon: Clock, text: "Reviewing upcoming earnings and catalyst events..." },
-    { icon: Brain, text: "AI building narratives — connecting events to sector impact..." },
+    { icon: Brain, text: "AI cross-referencing 12+ signal sources for narratives..." },
     { icon: Sparkles, text: "Identifying affected stocks and running technical snapshots..." },
     { icon: Target, text: "Generating trade implications for each narrative..." },
   ];
@@ -968,10 +974,15 @@ export default function SignalsPage() {
                 {[
                   { icon: Newspaper, val: intelStats.signalCounts.news || 0, label: "news", cls: "text-blue-400/70" },
                   { icon: Users, val: intelStats.signalCounts.insider || 0, label: "insider", cls: "text-emerald-400/70" },
-                  { icon: Globe, val: intelStats.signalCounts.congress || 0, label: "congress", cls: "text-amber-400/70" },
+                  { icon: Landmark, val: intelStats.signalCounts.congress || 0, label: "congress", cls: "text-amber-400/70" },
+                  { icon: Scale, val: intelStats.signalCounts.grades || 0, label: "grades", cls: "text-cyan-400/70" },
                   { icon: BarChart2, val: intelStats.signalCounts.screener || 0, label: "movers", cls: "text-purple-400/70" },
+                  { icon: GitMerge, val: intelStats.signalCounts.mergers || 0, label: "M&A", cls: "text-orange-400/70" },
+                  { icon: Building2, val: intelStats.signalCounts.institutional || 0, label: "13F", cls: "text-indigo-400/70" },
+                  { icon: FileText, val: intelStats.signalCounts.press || 0, label: "press", cls: "text-teal-400/70" },
                   { icon: Clock, val: intelStats.signalCounts.earnings || 0, label: "earnings", cls: "text-pink-400/70" },
-                ].map(({ icon: Ic, val, label, cls }) => (
+                  { icon: Coins, val: intelStats.signalCounts.crypto || 0, label: "crypto", cls: "text-yellow-400/70" },
+                ].filter(({ val }) => val > 0).map(({ icon: Ic, val, label, cls }) => (
                   <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
                     <Ic size={12} className={cls} />
                     <span className="text-white/80 font-semibold">{val}</span>

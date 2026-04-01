@@ -18,6 +18,8 @@ const TTL_FUNDAMENTALS = 60 * 60 * 1000;  // 1 hour — financials are quarterly
 const TTL_PROFILE = 24 * 60 * 60 * 1000;  // 24 hr  — company profile rarely changes
 const TTL_SEARCH = 30 * 60 * 1000;        // 30 min
 
+const TTL_SIGNAL = 10 * 60 * 1000;      // 10 min — signal data refreshes often
+
 const ENDPOINT_TTL: Record<string, number> = {
   "/quote": TTL_QUOTE,
   "/profile": TTL_PROFILE,
@@ -34,6 +36,29 @@ const ENDPOINT_TTL: Record<string, number> = {
   "/earning-calendar": TTL_FUNDAMENTALS,
   "/insider-trading": TTL_FUNDAMENTALS,
   "/stock-news": TTL_QUOTE,
+  "/senate-latest": TTL_SIGNAL,
+  "/house-latest": TTL_SIGNAL,
+  "/senate-trades": TTL_SIGNAL,
+  "/house-trades": TTL_SIGNAL,
+  "/biggest-gainers": TTL_QUOTE,
+  "/biggest-losers": TTL_QUOTE,
+  "/most-actives": TTL_QUOTE,
+  "/grades": TTL_SIGNAL,
+  "/upgrades-downgrades-consensus-bulk": TTL_SIGNAL,
+  "/news/press-releases-latest": TTL_QUOTE,
+  "/news/stock-latest": TTL_QUOTE,
+  "/news/crypto-latest": TTL_QUOTE,
+  "/insider-trading/latest": TTL_SIGNAL,
+  "/insider-trading/statistics": TTL_SIGNAL,
+  "/sector-performance-snapshot": TTL_QUOTE,
+  "/industry-performance-snapshot": TTL_QUOTE,
+  "/mergers-acquisitions-latest": TTL_SIGNAL,
+  "/price-target-consensus": TTL_FUNDAMENTALS,
+  "/analyst-estimates": TTL_FUNDAMENTALS,
+  "/ratings-snapshot": TTL_FUNDAMENTALS,
+  "/institutional-ownership/latest": TTL_SIGNAL,
+  "/sec-filings-8k": TTL_SIGNAL,
+  "/stock-peers": TTL_PROFILE,
 };
 
 function getCacheTTL(endpoint: string): number {
@@ -72,7 +97,8 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 
 /* ── Core fetch with cache ───────────────────────────── */
 
-const FMP_FALLBACK = "https://financialmodelingprep.com/stable";
+const FMP_STABLE = "https://financialmodelingprep.com/stable";
+const FMP_FALLBACK = FMP_STABLE;
 
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
@@ -134,6 +160,46 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
 
   console.error(`[FMP] ${endpoint} failed on all bases: ${lastError}`);
   throw new Error(`FMP API error: ${lastError}`);
+}
+
+async function stableFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
+  const key = apiKey();
+  if (!key) throw new Error("FMP_API_KEY is not configured");
+
+  const cacheKey = buildCacheKey(`/stable${endpoint}`, params);
+  const cached = getFromCache<T>(cacheKey);
+  if (cached !== null) return cached;
+
+  const url = new URL(`${FMP_STABLE}${endpoint}`);
+  url.searchParams.set("apikey", key);
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, v);
+  }
+
+  const res = await fetch(url.toString(), { cache: "no-store" });
+
+  if (res.status === 429) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const retry = await fetch(url.toString(), { cache: "no-store" });
+    if (!retry.ok) throw new Error(`FMP stable API error: ${retry.status}`);
+    const json = await retry.json();
+    setCache(cacheKey, json, getCacheTTL(endpoint));
+    return json;
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error(`[FMP/stable] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
+    throw new Error(`FMP stable API error: ${res.status}`);
+  }
+
+  const json = await res.json();
+  if (json && typeof json === "object" && "Error Message" in json) {
+    throw new Error(`FMP stable API error: ${(json as any)["Error Message"]}`);
+  }
+
+  setCache(cacheKey, json, getCacheTTL(endpoint));
+  return json;
 }
 
 /* ── Exported API methods ────────────────────────────── */
@@ -235,4 +301,114 @@ export async function getTopGainersLosers() {
     }),
   ]);
   return { gainers: gainers || [], losers: losers || [] };
+}
+
+/* ── Congressional / Political trades ────────────────── */
+
+export async function getSenateTrades(limit = 50) {
+  return stableFetch<any[]>("/senate-latest", { limit: String(limit) });
+}
+
+export async function getHouseTrades(limit = 50) {
+  return stableFetch<any[]>("/house-latest", { limit: String(limit) });
+}
+
+export async function getSenateTradesByTicker(ticker: string) {
+  return stableFetch<any[]>("/senate-trades", { symbol: ticker.toUpperCase() });
+}
+
+export async function getHouseTradesByTicker(ticker: string) {
+  return stableFetch<any[]>("/house-trades", { symbol: ticker.toUpperCase() });
+}
+
+/* ── Market movers (direct endpoints) ────────────────── */
+
+export async function getBiggestGainers() {
+  return stableFetch<any[]>("/biggest-gainers", {});
+}
+
+export async function getBiggestLosers() {
+  return stableFetch<any[]>("/biggest-losers", {});
+}
+
+export async function getMostActive() {
+  return stableFetch<any[]>("/most-actives", {});
+}
+
+/* ── Analyst grades & ratings ────────────────────────── */
+
+export async function getAnalystGrades(ticker: string) {
+  return stableFetch<any[]>("/grades", { symbol: ticker.toUpperCase() });
+}
+
+export async function getBulkGradesConsensus() {
+  return stableFetch<any[]>("/upgrades-downgrades-consensus-bulk", {});
+}
+
+/* ── Press releases & enhanced news ──────────────────── */
+
+export async function getPressReleases(limit = 30) {
+  return stableFetch<any[]>("/news/press-releases-latest", { limit: String(limit) });
+}
+
+export async function getStockNewsLatest(limit = 40) {
+  return stableFetch<any[]>("/news/stock-latest", { limit: String(limit) });
+}
+
+export async function getCryptoNews(limit = 20) {
+  return stableFetch<any[]>("/news/crypto-latest", { limit: String(limit) });
+}
+
+/* ── Enhanced insider trading ────────────────────────── */
+
+export async function getInsiderTradingLatest(limit = 50) {
+  return stableFetch<any[]>("/insider-trading/latest", { limit: String(limit) });
+}
+
+export async function getInsiderStats(ticker: string) {
+  return stableFetch<any[]>("/insider-trading/statistics", { symbol: ticker.toUpperCase() });
+}
+
+/* ── Sector & industry performance ───────────────────── */
+
+export async function getSectorPerformance() {
+  return stableFetch<any[]>("/sector-performance-snapshot", {});
+}
+
+export async function getIndustryPerformance() {
+  return stableFetch<any[]>("/industry-performance-snapshot", {});
+}
+
+/* ── M&A, price targets, estimates ───────────────────── */
+
+export async function getLatestMergers(limit = 20) {
+  return stableFetch<any[]>("/mergers-acquisitions-latest", { limit: String(limit) });
+}
+
+export async function getPriceTargetConsensus(ticker: string) {
+  return stableFetch<any[]>("/price-target-consensus", { symbol: ticker.toUpperCase() });
+}
+
+export async function getAnalystEstimates(ticker: string) {
+  return stableFetch<any[]>("/analyst-estimates", { symbol: ticker.toUpperCase() });
+}
+
+export async function getRatingsSnapshot(ticker: string) {
+  return stableFetch<any[]>("/ratings-snapshot", { symbol: ticker.toUpperCase() });
+}
+
+/* ── Institutional & SEC filings ─────────────────────── */
+
+export async function getInstitutionalOwnershipLatest(limit = 30) {
+  return stableFetch<any[]>("/institutional-ownership/latest", { limit: String(limit) });
+}
+
+export async function getLatest8KFilings(limit = 30) {
+  return stableFetch<any[]>("/sec-filings-8k", { limit: String(limit) });
+}
+
+/* ── Stock peers ─────────────────────────────────────── */
+
+export async function getStockPeers(ticker: string) {
+  return stableFetch<any[]>("/stock-peers", { symbol: ticker.toUpperCase() });
 }

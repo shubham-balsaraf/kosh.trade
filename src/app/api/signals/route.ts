@@ -173,15 +173,21 @@ export async function GET(req: NextRequest) {
       let rawSignals: Awaited<ReturnType<typeof getRawSignals>>;
       try {
         rawSignals = await getRawSignals();
-        console.log(`[Signals] Raw signals: ${rawSignals.news.length} news, ${rawSignals.insiderBuys.length} insider, ${rawSignals.congressBuys.length} congress, ${rawSignals.screenerMoves.length} movers, ${rawSignals.earnings.length} earnings`);
+        console.log(`[Signals] Raw signals: ${rawSignals.news.length} news, ${rawSignals.insiderBuys.length} insider, ${rawSignals.congressBuys.length} congress, ${rawSignals.screenerMoves.length} movers, ${rawSignals.earnings.length} earnings, ${rawSignals.grades.length} grades, ${rawSignals.pressReleases.length} press, ${rawSignals.mergers.length} M&A, ${rawSignals.institutional.length} institutional, ${rawSignals.filings8k.length} 8K`);
       } catch (e) {
         console.error("[Signals] getRawSignals failed:", e);
-        rawSignals = { news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [] };
+        rawSignals = {
+          news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
+          grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
+          institutional: [], filings8k: [], cryptoNews: [],
+        };
       }
 
       // Step 2: If FMP data is thin, enrich with Yahoo Finance scans
       const hasSignalData = rawSignals.news.length + rawSignals.insiderBuys.length +
-        rawSignals.congressBuys.length + rawSignals.screenerMoves.length + rawSignals.earnings.length;
+        rawSignals.congressBuys.length + rawSignals.screenerMoves.length + rawSignals.earnings.length +
+        rawSignals.grades.length + rawSignals.pressReleases.length + rawSignals.mergers.length +
+        rawSignals.institutional.length + rawSignals.filings8k.length;
 
       let baselineScans: ScanResult[] = [];
       try {
@@ -191,10 +197,12 @@ export async function GET(req: NextRequest) {
         console.error("[Signals] Yahoo baseline scan failed:", e);
       }
 
-      // Enrich screenerMoves from Yahoo data if FMP gave us nothing
-      if (rawSignals.screenerMoves.length === 0 && baselineScans.length > 0) {
+      // Enrich screenerMoves from Yahoo data if FMP gave us very few
+      if (rawSignals.screenerMoves.length < 5 && baselineScans.length > 0) {
         const sorted = [...baselineScans].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+        const existingTickers = new Set(rawSignals.screenerMoves.map((s) => s.ticker));
         for (const s of sorted.slice(0, 16)) {
+          if (existingTickers.has(s.ticker)) continue;
           rawSignals.screenerMoves.push({
             ticker: s.ticker,
             changePct: s.changePercent,
@@ -202,7 +210,7 @@ export async function GET(req: NextRequest) {
             direction: s.changePercent >= 0 ? "gainer" : "loser",
           });
         }
-        console.log(`[Signals] Enriched screener with ${rawSignals.screenerMoves.length} Yahoo movers`);
+        console.log(`[Signals] Enriched screener with Yahoo movers → total ${rawSignals.screenerMoves.length}`);
       }
 
       // Step 3: Generate narratives
@@ -265,6 +273,13 @@ export async function GET(req: NextRequest) {
         congress: rawSignals.congressBuys.length,
         screener: rawSignals.screenerMoves.length,
         earnings: rawSignals.earnings.length,
+        grades: rawSignals.grades.length,
+        press: rawSignals.pressReleases.length,
+        sectors: rawSignals.sectorPerformance.length,
+        mergers: rawSignals.mergers.length,
+        institutional: rawSignals.institutional.length,
+        filings: rawSignals.filings8k.length,
+        crypto: rawSignals.cryptoNews?.length || 0,
       };
 
       const totalTickers = new Set([
@@ -291,20 +306,28 @@ export async function GET(req: NextRequest) {
         discoverOpportunities().catch((e) => { console.error("[BestPicks] discoverOpportunities failed:", e); return []; }),
         getRawSignals().catch((e) => {
           console.error("[BestPicks] getRawSignals failed:", e);
-          return { news: [] as any[], insiderBuys: [] as any[], congressBuys: [] as any[], screenerMoves: [] as any[], earnings: [] as any[] };
+          return {
+            news: [] as any[], insiderBuys: [] as any[], congressBuys: [] as any[],
+            screenerMoves: [] as any[], earnings: [] as any[],
+            grades: [] as any[], pressReleases: [] as any[], sectorPerformance: [] as any[],
+            mergers: [] as any[], institutional: [] as any[], filings8k: [] as any[], cryptoNews: [] as any[],
+          };
         }),
       ]);
 
-      // Step 1: Derive tickers from signals
+      // Step 1: Derive tickers from ALL signal sources
       const signalDerived = new Set<string>();
       for (const d of discovered) signalDerived.add(d.ticker);
       for (const m of rawSignals.screenerMoves) signalDerived.add(m.ticker);
       for (const i of rawSignals.insiderBuys) signalDerived.add(i.ticker);
       for (const c of rawSignals.congressBuys) signalDerived.add(c.ticker);
       for (const e of rawSignals.earnings) signalDerived.add(e.ticker);
-      for (const n of rawSignals.news) {
-        if (n.ticker) signalDerived.add(n.ticker);
-      }
+      for (const n of rawSignals.news) { if (n.ticker) signalDerived.add(n.ticker); }
+      for (const g of (rawSignals.grades || [])) signalDerived.add(g.ticker);
+      for (const pr of (rawSignals.pressReleases || [])) signalDerived.add(pr.ticker);
+      for (const m of (rawSignals.mergers || [])) signalDerived.add(m.ticker);
+      for (const f of (rawSignals.institutional || [])) signalDerived.add(f.ticker);
+      for (const f of (rawSignals.filings8k || [])) signalDerived.add(f.ticker);
 
       // Step 2: Add core baseline for coverage
       for (const t of CORE_BASELINE) signalDerived.add(t);
