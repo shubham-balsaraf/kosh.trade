@@ -375,9 +375,9 @@ export default function SettingsPage() {
           ))}
         </div>
         {!isPro && usage && (
-          <div className="pt-2">
-            <div className="flex items-center justify-between text-xs mb-1.5">
-              <span className="text-gray-500">Stock analyses used</span>
+          <div className="pt-2 space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-gray-500">Analyses this week</span>
               <span className="text-gray-400">{usage.used}/{usage.limit}</span>
             </div>
             <div className="h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
@@ -386,6 +386,11 @@ export default function SettingsPage() {
                 style={{ width: `${Math.min(100, (usage.used / usage.limit) * 100)}%` }}
               />
             </div>
+            {usage.resetsAt && (
+              <p className="text-[10px] text-gray-600">
+                Resets {new Date(usage.resetsAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              </p>
+            )}
           </div>
         )}
       </Card>

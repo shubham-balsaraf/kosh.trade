@@ -94,6 +94,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [limitReached, setLimitReached] = useState(false);
+  const [resetsAt, setResetsAt] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [verdict, setVerdict] = useState<VerdictTheme>(null);
   const [newsData, setNewsData] = useState<any>(null);
@@ -119,8 +120,7 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
 
         if (!isAllowed) {
           setLimitReached(true);
-          setLoading(false);
-          return;
+          setResetsAt(usage.resetsAt || null);
         }
 
         const res = await fetch(`/api/stocks/${ticker}`);
@@ -128,8 +128,8 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
         const json = await res.json();
         setData(json);
         
-        if (json.profile) {
-          const saveRes = await fetch(`/api/stocks/${ticker}/save`, {
+        if (json.profile && isAllowed) {
+          fetch(`/api/stocks/${ticker}/save`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -137,9 +137,6 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
               sector: json.profile.sector,
             }),
           }).catch(() => null);
-          if (saveRes && saveRes.status === 403) {
-            // already saved but limit check happened server-side too
-          }
         }
       } catch (e: any) {
         setError(e.message);
@@ -168,38 +165,6 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
           {[1,2,3,4].map(i => <div key={i} className="skeleton h-24" />)}
         </div>
         <div className="skeleton h-64 w-full" />
-      </div>
-    );
-  }
-
-  if (limitReached) {
-    return (
-      <div className="flex flex-col lg:flex-row gap-6">
-        <div className="flex-1">
-          <Card className="text-center py-16">
-            <Lock size={48} className="mx-auto text-gray-600 mb-4" />
-            <h2 className="text-xl font-bold text-white mb-2">Free Analysis Limit Reached</h2>
-            <p className="text-gray-400 text-sm max-w-md mx-auto mb-6">
-              You&apos;ve used all 15 free stock analyses. Upgrade to Pro for unlimited analyses,
-              AI portfolio management, and advanced signals.
-            </p>
-            <Link
-              href="/pricing"
-              className="inline-flex items-center gap-2 px-8 py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold rounded-xl shadow-lg shadow-amber-500/25 transition-all hover:scale-105"
-            >
-              <Crown size={18} />
-              Upgrade to Pro
-            </Link>
-            <p className="text-gray-600 text-xs mt-4">
-              You can still access your previously analyzed stocks from the sidebar.
-            </p>
-          </Card>
-        </div>
-        <div className="w-full lg:w-64 shrink-0">
-          <Card className="!p-3">
-            <AnalysisHistory currentTicker={ticker} />
-          </Card>
-        </div>
       </div>
     );
   }
@@ -291,26 +256,75 @@ export default function StockPage({ params }: { params: Promise<{ ticker: string
         ))}
       </div>
 
+      {/* Free tier warning banner */}
+      {limitReached && (
+        <div className="flex items-start sm:items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/15">
+          <Crown size={16} className="text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm text-amber-200/80">
+              You&apos;ve used all <span className="font-bold text-amber-300">15</span> free analyses this week.
+              {resetsAt && (
+                <span className="text-amber-400/50 ml-1">
+                  Resets {new Date(resetsAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}.
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-amber-400/40 mt-0.5">
+              Overview, charts &amp; fundamentals still available. AI Analysis requires Pro or a reset.
+            </p>
+          </div>
+          <Link
+            href="/pricing"
+            className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/25 text-amber-300 text-xs font-semibold hover:bg-amber-500/30 transition-all"
+          >
+            Upgrade
+          </Link>
+        </div>
+      )}
+
       {/* Tab bar */}
       <div className={`flex gap-1 overflow-x-auto pb-1 px-1 py-1 rounded-xl transition-all duration-500 ${verdict ? `${t.stripBg} border ${t.stripBorder}` : ""}`}>
-        {tabs.map(({ key, label, icon }) => (
-          <button
-            key={key}
-            onClick={() => setActiveTab(key)}
-            className={`px-3 sm:px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 sm:gap-2 min-h-[40px] ${
-              activeTab === key
-                ? icon === "ai" ? "bg-gradient-to-r from-amber-600 to-amber-500 text-black shadow-md shadow-amber-500/20" : `${t.tabActive} text-white shadow-md`
-                : icon === "ai" ? "text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/15" : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
-            }`}
-          >
-            {activeTab === key && !icon && <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />}
-            {label}
-          </button>
-        ))}
+        {tabs.map(({ key, label, icon }) => {
+          const isAiLocked = icon === "ai" && limitReached;
+          return (
+            <button
+              key={key}
+              onClick={() => !isAiLocked && setActiveTab(key)}
+              disabled={isAiLocked}
+              className={`px-3 sm:px-4 py-2.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 sm:gap-2 min-h-[40px] ${
+                isAiLocked
+                  ? "text-gray-600 cursor-not-allowed opacity-50"
+                  : activeTab === key
+                    ? icon === "ai" ? "bg-gradient-to-r from-amber-600 to-amber-500 text-black shadow-md shadow-amber-500/20" : `${t.tabActive} text-white shadow-md`
+                    : icon === "ai" ? "text-amber-400/70 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/15" : "text-gray-400 hover:text-gray-200 hover:bg-gray-900/50"
+              }`}
+            >
+              {activeTab === key && !icon && <span className={`w-1.5 h-1.5 rounded-full ${t.dot} animate-pulse`} />}
+              {isAiLocked && <Lock size={12} />}
+              {label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Tab content */}
-      {activeTab === "ai" && <AIAnalysis ticker={ticker} onVerdictChange={handleVerdictChange} />}
+      {activeTab === "ai" && !limitReached && <AIAnalysis ticker={ticker} onVerdictChange={handleVerdictChange} />}
+      {activeTab === "ai" && limitReached && (
+        <Card className="text-center py-12">
+          <Lock size={36} className="mx-auto text-gray-600 mb-3" />
+          <h3 className="text-lg font-bold text-white mb-2">AI Analysis Locked</h3>
+          <p className="text-gray-400 text-sm max-w-sm mx-auto mb-4">
+            Your weekly free analysis limit has been reached. Upgrade to Pro for unlimited AI-powered analysis, or wait for it to reset{resetsAt ? ` on ${new Date(resetsAt).toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}` : ""}.
+          </p>
+          <Link
+            href="/pricing"
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-black font-bold rounded-xl shadow-lg shadow-amber-500/25 transition-all hover:scale-105"
+          >
+            <Crown size={16} />
+            Upgrade to Pro
+          </Link>
+        </Card>
+      )}
 
       {activeTab === "overview" && (
         <div className="space-y-4">

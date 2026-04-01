@@ -5,6 +5,16 @@ import { prisma } from "@/lib/db";
 
 const FREE_STOCK_LIMIT = 15;
 
+function getWeekStart(): Date {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const diff = day === 0 ? 6 : day - 1;
+  const start = new Date(now);
+  start.setUTCDate(now.getUTCDate() - diff);
+  start.setUTCHours(0, 0, 0, 0);
+  return start;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ ticker: string }> }
@@ -52,13 +62,15 @@ export async function POST(
     }
 
     if (!isPro) {
-      const uniqueCount = await prisma.searchHistory.groupBy({
-        by: ["ticker"],
-        where: { userId },
+      const weekStart = getWeekStart();
+      const uniqueThisWeek = await prisma.searchHistory.findMany({
+        where: { userId, createdAt: { gte: weekStart } },
+        select: { ticker: true },
+        distinct: ["ticker"],
       });
-      if (uniqueCount.length >= FREE_STOCK_LIMIT) {
+      if (uniqueThisWeek.length >= FREE_STOCK_LIMIT) {
         return NextResponse.json(
-          { error: "limit_reached", message: `Free plan allows ${FREE_STOCK_LIMIT} stock analyses. Upgrade to Pro for unlimited.` },
+          { error: "limit_reached", message: `Free plan allows ${FREE_STOCK_LIMIT} stock analyses per week. Resets every Monday.` },
           { status: 403 }
         );
       }
