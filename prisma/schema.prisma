@@ -224,6 +224,11 @@ model TradingConfig {
   weeklyTargetPct   Float    @default(10)
   watchlist         String[] @default(["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM", "BTC-USD", "ETH-USD", "SOL-USD"])
   strategies        String[] @default(["MOMENTUM", "MEAN_REVERSION", "SWING"])
+  lastCronAt        DateTime?
+  lastCronResult    String?
+  lastCronTrades    Int      @default(0)
+  lastCronSignals   Int      @default(0)
+  cronRunCount      Int      @default(0)
   updatedAt         DateTime @updatedAt
   createdAt         DateTime @default(now())
 

@@ -103,6 +103,18 @@ interface RunResult {
   error?: string;
 }
 
+interface CronStatus {
+  configured: boolean;
+  enabled: boolean;
+  status: "active" | "stale" | "inactive";
+  lastRunAt: string | null;
+  lastResult: string | null;
+  lastTrades: number;
+  lastSignals: number;
+  totalRuns: number;
+  minutesAgo: number | null;
+}
+
 const DEFAULT_WATCHLIST = [
   "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM",
   "BTC-USD", "ETH-USD", "SOL-USD",
@@ -1277,6 +1289,99 @@ function DiscoveriesSection({ discoveries }: { discoveries: DiscoveredTicker[] }
 
 interface EquityPoint { date: string; equity: number; }
 
+function CronStatusBar({ cronStatus, onRefresh }: { cronStatus: CronStatus | null; onRefresh: () => void }) {
+  if (!cronStatus || !cronStatus.configured) return null;
+
+  const statusConfig = {
+    active: { color: "emerald", icon: "●", label: "Active", glow: "shadow-emerald-500/20 shadow-sm" },
+    stale: { color: "amber", icon: "◌", label: "Delayed", glow: "shadow-amber-500/10" },
+    inactive: { color: "red", icon: "○", label: "Not Running", glow: "" },
+  };
+  const s = statusConfig[cronStatus.status];
+
+  const formatAgo = (mins: number | null) => {
+    if (mins == null) return "Never";
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ${mins % 60}m ago`;
+    return `${Math.floor(hrs / 24)}d ago`;
+  };
+
+  const nextRun = () => {
+    if (cronStatus.status === "inactive") return "Not scheduled";
+    if (cronStatus.minutesAgo == null) return "Pending first run";
+    const remainMins = 15 - (cronStatus.minutesAgo % 15);
+    return `~${remainMins}m`;
+  };
+
+  const dotColor = s.color === "emerald" ? "bg-emerald-400" : s.color === "amber" ? "bg-amber-400" : "bg-red-400";
+  const dotPing = s.color === "emerald" ? "bg-emerald-400" : s.color === "amber" ? "bg-amber-400" : "bg-red-400";
+  const labelColor = s.color === "emerald" ? "text-emerald-400" : s.color === "amber" ? "text-amber-400" : "text-red-400";
+  const borderColor = s.color === "emerald" ? "border-emerald-500/15" : s.color === "amber" ? "border-amber-500/15" : "border-red-500/15";
+
+  return (
+    <div className={`glass-card p-4 ${s.glow} ${borderColor} border animate-fade-slide-up`}>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              {cronStatus.status === "active" && (
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${dotPing} opacity-50`} />
+              )}
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
+            </span>
+            <span className={`text-xs font-semibold ${labelColor}`}>Autopilot {s.label}</span>
+          </div>
+          <span className="text-white/10 text-[10px]">|</span>
+          <div className="flex items-center gap-1.5">
+            <Clock size={10} className="text-white/20" />
+            <span className="text-[10px] text-white/35">
+              Last: <span className="text-white/55 font-medium">{formatAgo(cronStatus.minutesAgo)}</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Radio size={10} className="text-white/20" />
+            <span className="text-[10px] text-white/35">
+              Next: <span className="text-white/55 font-medium">{nextRun()}</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {cronStatus.totalRuns > 0 && (
+            <div className="flex items-center gap-3 text-[10px] text-white/25">
+              <span>
+                <span className="text-white/45 font-medium">{cronStatus.totalRuns}</span> runs
+              </span>
+              <span className="text-white/10">|</span>
+              <span>
+                Last scan: <span className="text-white/45 font-medium">{cronStatus.lastSignals}</span> signals
+                {cronStatus.lastTrades > 0 && (
+                  <>, <span className="text-amber-400/70 font-medium">{cronStatus.lastTrades}</span> trades</>
+                )}
+              </span>
+            </div>
+          )}
+          <button
+            onClick={onRefresh}
+            className="p-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] text-white/25 hover:text-white/50 transition-all"
+            title="Refresh cron status"
+          >
+            <RefreshCw size={10} />
+          </button>
+        </div>
+      </div>
+      {cronStatus.lastResult && cronStatus.lastResult.startsWith("ERROR") && (
+        <div className="mt-2 flex items-center gap-2 text-[10px] text-red-400/60">
+          <AlertTriangle size={10} />
+          <span className="truncate">{cronStatus.lastResult}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquityChart({ points, paperBalance, liveEquity }: { points: EquityPoint[]; paperBalance: number; liveEquity?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -1505,6 +1610,7 @@ export default function AutoTradingPage() {
   const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuote>>({});
   const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
   const [discoveries, setDiscoveries] = useState<DiscoveredTicker[]>([]);
+  const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -1531,6 +1637,13 @@ export default function AutoTradingPage() {
     }, 0);
   }, [openTrades, liveQuotes]);
 
+  const fetchCronStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/trading/auto?action=cron-status");
+      if (res.ok) setCronStatus(await res.json());
+    } catch {}
+  }, []);
+
   const fetchData = useCallback(async () => {
     try {
       const configRes = await fetch("/api/trading/auto?action=config");
@@ -1554,7 +1667,12 @@ export default function AutoTradingPage() {
     } catch {} finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchData(); fetchCronStatus(); }, [fetchData, fetchCronStatus]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchCronStatus, 60000);
+    return () => clearInterval(interval);
+  }, [fetchCronStatus]);
 
   const handleOnboardingComplete = (newConfig: TradingConfig) => { setConfig(newConfig); setNeedsSetup(false); fetchData(); };
 
@@ -1721,6 +1839,9 @@ export default function AutoTradingPage() {
           ))}
         </div>
       )}
+
+      {/* ─── Cron / Autopilot Status ─── */}
+      <CronStatusBar cronStatus={cronStatus} onRefresh={fetchCronStatus} />
 
       {/* ─── Portfolio Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-slide-up-1">

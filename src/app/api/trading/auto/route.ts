@@ -15,7 +15,6 @@ export async function POST(req: NextRequest) {
     userId = body.userId || null;
 
     if (!userId) {
-      // Run for all enabled users
       const configs = await prisma.tradingConfig.findMany({
         where: { enabled: true },
         select: { userId: true },
@@ -23,11 +22,36 @@ export async function POST(req: NextRequest) {
 
       const results = [];
       for (const c of configs) {
-        const result = await runTradingCycle(c.userId);
-        results.push({ userId: c.userId, ...result });
+        const startTime = Date.now();
+        try {
+          const result = await runTradingCycle(c.userId);
+          const tradesExecuted = (result as any).executed?.length || 0;
+          const signalsFound = (result as any).allSignals?.length || 0;
+          await prisma.tradingConfig.update({
+            where: { userId: c.userId },
+            data: {
+              lastCronAt: new Date(),
+              lastCronResult: `OK in ${((Date.now() - startTime) / 1000).toFixed(1)}s`,
+              lastCronTrades: tradesExecuted,
+              lastCronSignals: signalsFound,
+              cronRunCount: { increment: 1 },
+            },
+          });
+          results.push({ userId: c.userId, ...result });
+        } catch (err: any) {
+          await prisma.tradingConfig.update({
+            where: { userId: c.userId },
+            data: {
+              lastCronAt: new Date(),
+              lastCronResult: `ERROR: ${err.message?.slice(0, 200)}`,
+              cronRunCount: { increment: 1 },
+            },
+          });
+          results.push({ userId: c.userId, error: err.message });
+        }
       }
 
-      return NextResponse.json({ results });
+      return NextResponse.json({ results, ranAt: new Date().toISOString() });
     }
   } else {
     const session = await getServerSession(authOptions);
@@ -137,6 +161,45 @@ export async function GET(req: NextRequest) {
       weeklyPnl: Math.round(weeklyPnl * 100) / 100,
       weeklyTargetDollars: Math.round(weeklyTargetDollars * 100) / 100,
       weeklyProgressPct: Math.round(weeklyProgressPct * 10) / 10,
+    });
+  }
+
+  if (action === "cron-status") {
+    const config = await prisma.tradingConfig.findUnique({
+      where: { userId },
+      select: {
+        lastCronAt: true,
+        lastCronResult: true,
+        lastCronTrades: true,
+        lastCronSignals: true,
+        cronRunCount: true,
+        enabled: true,
+      },
+    });
+    if (!config) {
+      return NextResponse.json({ configured: false });
+    }
+
+    const lastCronAt = config.lastCronAt ? new Date(config.lastCronAt) : null;
+    const minutesAgo = lastCronAt ? Math.round((Date.now() - lastCronAt.getTime()) / 60000) : null;
+    const isHealthy = lastCronAt != null && minutesAgo != null && minutesAgo < 20;
+    const isStale = lastCronAt != null && minutesAgo != null && minutesAgo >= 20 && minutesAgo < 60;
+    const isDead = lastCronAt == null || (minutesAgo != null && minutesAgo >= 60);
+
+    let status: "active" | "stale" | "inactive" = "inactive";
+    if (isHealthy) status = "active";
+    else if (isStale) status = "stale";
+
+    return NextResponse.json({
+      configured: true,
+      enabled: config.enabled,
+      status,
+      lastRunAt: config.lastCronAt?.toISOString() || null,
+      lastResult: config.lastCronResult || null,
+      lastTrades: config.lastCronTrades,
+      lastSignals: config.lastCronSignals,
+      totalRuns: config.cronRunCount,
+      minutesAgo,
     });
   }
 
