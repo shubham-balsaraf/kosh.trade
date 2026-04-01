@@ -71,7 +71,10 @@ interface RunResult {
   error?: string;
 }
 
-const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM"];
+const DEFAULT_WATCHLIST = [
+  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM",
+  "BTC-USD", "ETH-USD", "SOL-USD",
+];
 
 const HOW_IT_WORKS = [
   { icon: Search, title: "Scans Markets", desc: "Scans 10+ stocks for RSI, MACD, Bollinger, VWAP signals every hour" },
@@ -303,9 +306,9 @@ function LivePositionCard({ trade, quote }: { trade: AutoTrade; quote?: LiveQuot
 }
 
 const RISK_PROFILES = [
-  { id: "CONSERVATIVE", label: "Conservative", icon: ShieldCheck, desc: "Fewer trades, higher conviction signals only. Wider stop-losses, longer holds.", color: "emerald" },
-  { id: "MODERATE", label: "Moderate", icon: Target, desc: "Balanced approach. Standard thresholds and position sizing.", color: "amber" },
-  { id: "AGGRESSIVE", label: "Aggressive", icon: Zap, desc: "More trades, lower thresholds. Tighter stops, bigger positions.", color: "red" },
+  { id: "CONSERVATIVE", label: "Conservative", icon: ShieldCheck, desc: "Fewer trades, higher conviction. 3% position, 1% daily cap.", color: "emerald", maxPositionPct: 3, maxDailyLossPct: 1, maxOpenPositions: 3, weeklyTargetPct: 5 },
+  { id: "MODERATE", label: "Moderate", icon: Target, desc: "Balanced approach. 5% position, 3% daily cap.", color: "amber", maxPositionPct: 5, maxDailyLossPct: 3, maxOpenPositions: 5, weeklyTargetPct: 10 },
+  { id: "AGGRESSIVE", label: "Aggressive", icon: Zap, desc: "More trades, bigger positions. 10% position, 5% daily cap.", color: "red", maxPositionPct: 10, maxDailyLossPct: 5, maxOpenPositions: 10, weeklyTargetPct: 20 },
 ];
 
 const TARGET_OPTIONS = [
@@ -610,7 +613,13 @@ function OnboardingFlow({ onComplete }: { onComplete: (config: TradingConfig) =>
               return (
                 <button
                   key={rp.id}
-                  onClick={() => setRiskProfile(rp.id)}
+                  onClick={() => {
+                    setRiskProfile(rp.id);
+                    setMaxPositionPct(rp.maxPositionPct);
+                    setMaxDailyLossPct(rp.maxDailyLossPct);
+                    setMaxOpenPositions(rp.maxOpenPositions);
+                    setWeeklyTargetPct(rp.weeklyTargetPct);
+                  }}
                   className={`w-full text-left p-4 sm:p-5 rounded-2xl border transition-all duration-300 ${
                     isSelected ? `${borderColor} ${bgColor}` : "border-white/[0.06] bg-white/[0.02] hover:border-white/[0.1]"
                   }`}
@@ -835,6 +844,186 @@ function PilotSplash({ onDone }: { onDone: () => void }) {
   );
 }
 
+interface EquityPoint { date: string; equity: number; }
+
+function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBalance: number }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; value: number } | null>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || points.length < 2) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = container.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.scale(dpr, dpr);
+
+    const pad = { top: 20, right: 12, bottom: 28, left: 52 };
+    const cw = w - pad.left - pad.right;
+    const ch = h - pad.top - pad.bottom;
+
+    const vals = points.map((p) => p.equity);
+    const minVal = Math.min(...vals, paperBalance) * 0.998;
+    const maxVal = Math.max(...vals, paperBalance) * 1.002;
+    const range = maxVal - minVal || 1;
+
+    const xStep = cw / (points.length - 1);
+
+    const toX = (i: number) => pad.left + i * xStep;
+    const toY = (v: number) => pad.top + ch - ((v - minVal) / range) * ch;
+
+    ctx.clearRect(0, 0, w, h);
+
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.lineWidth = 1;
+    const gridLines = 4;
+    for (let i = 0; i <= gridLines; i++) {
+      const y = pad.top + (ch / gridLines) * i;
+      ctx.beginPath();
+      ctx.moveTo(pad.left, y);
+      ctx.lineTo(w - pad.right, y);
+      ctx.stroke();
+
+      const val = maxVal - (range / gridLines) * i;
+      ctx.fillStyle = "rgba(255,255,255,0.15)";
+      ctx.font = "10px system-ui";
+      ctx.textAlign = "right";
+      ctx.fillText(`$${val.toFixed(0)}`, pad.left - 6, y + 3);
+    }
+
+    const baseY = toY(paperBalance);
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.beginPath();
+    ctx.moveTo(pad.left, baseY);
+    ctx.lineTo(w - pad.right, baseY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const lastVal = vals[vals.length - 1];
+    const isUp = lastVal >= paperBalance;
+    const lineColor = isUp ? "#34d399" : "#f87171";
+    const gradTop = isUp ? "rgba(52,211,153,0.15)" : "rgba(248,113,113,0.15)";
+
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(vals[0]));
+    for (let i = 1; i < points.length; i++) {
+      const xm = (toX(i - 1) + toX(i)) / 2;
+      ctx.bezierCurveTo(xm, toY(vals[i - 1]), xm, toY(vals[i]), toX(i), toY(vals[i]));
+    }
+    ctx.strokeStyle = lineColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
+    grad.addColorStop(0, gradTop);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.lineTo(toX(points.length - 1), pad.top + ch);
+    ctx.lineTo(toX(0), pad.top + ch);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    const labelCount = Math.min(5, points.length);
+    const labelStep = Math.max(1, Math.floor((points.length - 1) / (labelCount - 1)));
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.font = "9px system-ui";
+    ctx.textAlign = "center";
+    for (let i = 0; i < points.length; i += labelStep) {
+      const d = new Date(points[i].date);
+      ctx.fillText(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), toX(i), h - 6);
+    }
+
+    const lastX = toX(points.length - 1);
+    const lastY = toY(lastVal);
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
+    ctx.fillStyle = lineColor;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(lastX, lastY, 7, 0, Math.PI * 2);
+    ctx.strokeStyle = lineColor;
+    ctx.globalAlpha = 0.3;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }, [points, paperBalance]);
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas || points.length < 2) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const pad = { left: 52, right: 12 };
+    const cw = rect.width - pad.left - pad.right;
+    const xStep = cw / (points.length - 1);
+    const idx = Math.round((x - pad.left) / xStep);
+    if (idx >= 0 && idx < points.length) {
+      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, date: points[idx].date, value: points[idx].equity });
+    }
+  };
+
+  if (points.length < 2) {
+    return (
+      <div className="glass-card p-6 text-center">
+        <BarChart3 size={20} className="mx-auto text-white/8 mb-2" />
+        <p className="text-white/20 text-xs">Equity curve appears after your first closed trade</p>
+      </div>
+    );
+  }
+
+  const first = points[0].equity;
+  const last = points[points.length - 1].equity;
+  const totalReturn = ((last - first) / first) * 100;
+
+  return (
+    <div className="glass-card p-4 sm:p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <BarChart3 size={14} className="text-amber-400/70" />
+          <h3 className="text-sm font-semibold text-white/60">Equity Curve</h3>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs font-bold ${totalReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {totalReturn >= 0 ? "+" : ""}{totalReturn.toFixed(2)}%
+          </span>
+          <span className="text-[10px] text-white/15">
+            ${first.toFixed(2)} → ${last.toFixed(2)}
+          </span>
+        </div>
+      </div>
+      <div ref={containerRef} className="relative h-48 sm:h-56">
+        <canvas
+          ref={canvasRef}
+          className="w-full h-full cursor-crosshair"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setTooltip(null)}
+        />
+        {tooltip && (
+          <div
+            className="absolute pointer-events-none bg-black/80 border border-white/10 rounded-lg px-2.5 py-1.5 text-[10px] z-10"
+            style={{ left: Math.min(tooltip.x, (containerRef.current?.clientWidth || 200) - 100), top: Math.max(0, tooltip.y - 40) }}
+          >
+            <p className="text-white/40">{new Date(tooltip.date).toLocaleDateString()}</p>
+            <p className="text-white font-bold">${tooltip.value.toFixed(2)}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AutoTradingPage() {
   const [config, setConfig] = useState<TradingConfig | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -852,6 +1041,7 @@ export default function AutoTradingPage() {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [showModeSwitchConfirm, setShowModeSwitchConfirm] = useState(false);
   const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuote>>({});
+  const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -885,15 +1075,19 @@ export default function AutoTradingPage() {
       if (configData.setup === false) { setNeedsSetup(true); setLoading(false); return; }
       setConfig(configData);
       setNeedsSetup(false);
-      const [statsRes, tradesRes, openRes] = await Promise.all([
+      const [statsRes, tradesRes, openRes, equityRes] = await Promise.all([
         fetch("/api/trading/auto?action=stats"),
         fetch("/api/trading/auto?action=trades&status=CLOSED"),
         fetch("/api/trading/auto?action=trades&status=OPEN"),
+        fetch("/api/trading/auto?action=equity-history"),
       ]);
-      const [statsData, tradesData, openData] = await Promise.all([statsRes.json(), tradesRes.json(), openRes.json()]);
+      const [statsData, tradesData, openData, equityData] = await Promise.all([
+        statsRes.json(), tradesRes.json(), openRes.json(), equityRes.json(),
+      ]);
       setStats(statsData);
       setTrades(tradesData.trades || []);
       setOpenTrades(openData.trades || []);
+      setEquityHistory(equityData.points || []);
     } catch {} finally { setLoading(false); }
   }, []);
 
@@ -1067,7 +1261,7 @@ export default function AutoTradingPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-slide-up-1">
         <div className="stat-card-gold p-5 text-center md:col-span-1">
           <Wallet size={16} className="mx-auto text-amber-400/70 mb-2" />
-          <AnimatedPrice value={equity} prefix="$" decimals={0} className="stat-value text-white" />
+          <AnimatedPrice value={equity} prefix="$" decimals={2} className="stat-value text-white" />
           <p className="stat-label mt-1">{config?.mode === "PAPER" ? "Simulation" : "Portfolio"}</p>
           {(realizedPnl !== 0 || totalUnrealizedPnl !== 0) && (
             <p className={`text-[10px] mt-1 font-medium ${pnlPct >= 0 ? "text-emerald-400/80" : "text-red-400/80"}`}>
@@ -1078,7 +1272,7 @@ export default function AutoTradingPage() {
         <div className="stat-card p-5 text-center">
           <DollarSign size={16} className="mx-auto text-white/20 mb-2" />
           <p className={`stat-value ${realizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(0)}
+            {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(2)}
           </p>
           <p className="stat-label mt-1">Realized</p>
         </div>
@@ -1108,6 +1302,9 @@ export default function AutoTradingPage() {
           <p className="stat-label mt-1">Open</p>
         </div>
       </div>
+
+      {/* ─── Equity Chart ─── */}
+      <EquityChart points={equityHistory} paperBalance={config?.paperBalance || 10000} />
 
       {/* ─── Weekly Target Tracker ─── */}
       {stats && config && (
@@ -1305,7 +1502,13 @@ export default function AutoTradingPage() {
                 return (
                   <button
                     key={rp.id}
-                    onClick={() => updateConfig({ riskProfile: rp.id })}
+                    onClick={() => updateConfig({
+                      riskProfile: rp.id,
+                      maxPositionPct: rp.maxPositionPct,
+                      maxDailyLossPct: rp.maxDailyLossPct,
+                      maxOpenPositions: rp.maxOpenPositions,
+                      weeklyTargetPct: rp.weeklyTargetPct,
+                    })}
                     className={`p-3 rounded-xl border text-center transition-all duration-300 ${
                       isSelected
                         ? rp.color === "emerald" ? "border-emerald-500/30 bg-emerald-500/[0.05]"

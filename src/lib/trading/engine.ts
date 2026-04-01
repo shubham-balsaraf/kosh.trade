@@ -23,36 +23,52 @@ export interface RiskProfileParams {
   riskRewardRatio: number;
   atrMultiplier: number;
   maxHoldDays: number;
+  maxPositionPct: number;
+  maxDailyLossPct: number;
+  maxOpenPositions: number;
+  weeklyTargetPct: number;
 }
 
 export function getRiskProfile(profile: string): RiskProfileParams {
   switch (profile) {
     case "CONSERVATIVE":
       return {
-        minScore: 30,
-        minConfidence: 60,
+        minScore: 25,
+        minConfidence: 55,
         positionMultiplier: 0.6,
         riskRewardRatio: 3,
         atrMultiplier: 1.2,
         maxHoldDays: 15,
+        maxPositionPct: 3,
+        maxDailyLossPct: 1,
+        maxOpenPositions: 3,
+        weeklyTargetPct: 5,
       };
     case "AGGRESSIVE":
       return {
         minScore: 8,
-        minConfidence: 30,
+        minConfidence: 25,
         positionMultiplier: 1.4,
         riskRewardRatio: 1.5,
         atrMultiplier: 2,
-        maxHoldDays: 7,
+        maxHoldDays: 5,
+        maxPositionPct: 10,
+        maxDailyLossPct: 5,
+        maxOpenPositions: 10,
+        weeklyTargetPct: 20,
       };
     default: // MODERATE
       return {
         minScore: 15,
-        minConfidence: 45,
+        minConfidence: 40,
         positionMultiplier: 1,
         riskRewardRatio: 2,
         atrMultiplier: 1.5,
         maxHoldDays: 10,
+        maxPositionPct: 5,
+        maxDailyLossPct: 3,
+        maxOpenPositions: 5,
+        weeklyTargetPct: 10,
       };
   }
 }

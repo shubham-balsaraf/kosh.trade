@@ -139,6 +139,48 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (action === "equity-history") {
+    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true, paperBalance: true, createdAt: true } });
+    const mode = config?.mode || "PAPER";
+    const paperBalance = config?.paperBalance || 10000;
+
+    const closedTrades = await prisma.autoTrade.findMany({
+      where: { userId, status: "CLOSED", mode },
+      select: { pnl: true, exitAt: true, entryAt: true },
+      orderBy: { exitAt: "asc" },
+    });
+
+    const openTrades = await prisma.autoTrade.findMany({
+      where: { userId, status: "OPEN", mode },
+      select: { entryPrice: true, qty: true, ticker: true, entryAt: true },
+    });
+
+    const startDate = config?.createdAt || new Date();
+    const points: { date: string; equity: number }[] = [];
+    points.push({ date: new Date(startDate).toISOString().slice(0, 10), equity: paperBalance });
+
+    let cumulativePnl = 0;
+    const dayMap = new Map<string, number>();
+    for (const t of closedTrades) {
+      if (!t.exitAt) continue;
+      const day = new Date(t.exitAt).toISOString().slice(0, 10);
+      cumulativePnl += t.pnl || 0;
+      dayMap.set(day, paperBalance + cumulativePnl);
+    }
+
+    for (const [day, eq] of dayMap.entries()) {
+      points.push({ date: day, equity: Math.round(eq * 100) / 100 });
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const lastEquity = points[points.length - 1]?.equity || paperBalance;
+    if (!dayMap.has(today)) {
+      points.push({ date: today, equity: Math.round(lastEquity * 100) / 100 });
+    }
+
+    return NextResponse.json({ points, openPositions: openTrades.length });
+  }
+
   return NextResponse.json({ error: "Missing action param" }, { status: 400 });
 }
 

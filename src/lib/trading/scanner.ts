@@ -18,6 +18,7 @@ export const DEFAULT_WATCHLIST = [
   "UNH", "JNJ", "PFE", "ABBV", "MRK",
   "XOM", "CVX", "LMT", "CAT", "DE",
   "SPY", "QQQ",
+  "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD",
 ];
 
 export interface ScanResult {

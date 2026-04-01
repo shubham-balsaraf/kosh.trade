@@ -164,10 +164,10 @@ export function generateSignals(scan: ScanResult): TradeSignal {
   const confidence = Math.min(100, Math.round((agreeing / signals.length) * 100 + Math.abs(compositeScore) * 0.3));
 
   let action: SignalAction;
-  if (compositeScore > 40) action = "STRONG_BUY";
-  else if (compositeScore > 15) action = "BUY";
-  else if (compositeScore < -40) action = "STRONG_SELL";
-  else if (compositeScore < -15) action = "SELL";
+  if (compositeScore > 35) action = "STRONG_BUY";
+  else if (compositeScore > 5) action = "BUY";
+  else if (compositeScore < -35) action = "STRONG_SELL";
+  else if (compositeScore < -10) action = "SELL";
   else action = "HOLD";
 
   const strategy = detectStrategy(signals, scan.rsi);
@@ -195,14 +195,28 @@ export function rankSignals(scanResults: ScanResult[]): TradeSignal[] {
 
   const bearishCount = allSignals.filter((s) => s.score < -10).length;
   const bearishRatio = scanResults.length > 0 ? bearishCount / scanResults.length : 0;
-  const marketRegimePenalty = bearishRatio > 0.6 ? 0.7 : bearishRatio > 0.4 ? 0.85 : 1;
+  const marketRegimePenalty = bearishRatio > 0.6 ? 0.8 : bearishRatio > 0.4 ? 0.9 : 1;
 
-  return allSignals
+  const candidates = allSignals
     .map((s) => ({
       ...s,
       score: s.score * marketRegimePenalty,
       confidence: Math.round(s.confidence * marketRegimePenalty),
     }))
-    .filter((s) => s.action === "BUY" || s.action === "STRONG_BUY")
+    .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score);
+
+  if (candidates.length <= 1) return candidates;
+
+  const diversified: TradeSignal[] = [];
+  const usedStrategies = new Map<string, number>();
+
+  for (const c of candidates) {
+    const stCount = usedStrategies.get(c.strategy) || 0;
+    const diversityBonus = stCount === 0 ? 5 : stCount === 1 ? 0 : -3;
+    diversified.push({ ...c, score: c.score + diversityBonus });
+    usedStrategies.set(c.strategy, stCount + 1);
+  }
+
+  return diversified.sort((a, b) => b.score - a.score);
 }
