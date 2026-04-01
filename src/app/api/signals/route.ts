@@ -160,9 +160,24 @@ export async function GET(req: NextRequest) {
     // Signal Intelligence — LLM-generated narratives from raw market signals
     if (mode === "signal-intelligence") {
       console.log("[Signals] Running signal intelligence pipeline...");
-      const rawSignals = await getRawSignals();
 
-      const narratives = await generateMarketNarratives(rawSignals);
+      let rawSignals: Awaited<ReturnType<typeof getRawSignals>>;
+      try {
+        rawSignals = await getRawSignals();
+        console.log(`[Signals] Raw signals: ${rawSignals.news.length} news, ${rawSignals.insiderBuys.length} insider, ${rawSignals.congressBuys.length} congress, ${rawSignals.screenerMoves.length} movers, ${rawSignals.earnings.length} earnings`);
+      } catch (e) {
+        console.error("[Signals] getRawSignals failed:", e);
+        rawSignals = { news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [] };
+      }
+
+      let narratives: Awaited<ReturnType<typeof generateMarketNarratives>>;
+      try {
+        narratives = await generateMarketNarratives(rawSignals);
+        console.log(`[Signals] Narratives generated: ${narratives.length}`);
+      } catch (e) {
+        console.error("[Signals] generateMarketNarratives failed:", e);
+        narratives = [];
+      }
 
       const allAffectedTickers = new Set<string>();
       for (const n of narratives) {
@@ -217,10 +232,11 @@ export async function GET(req: NextRequest) {
       console.log("[Signals] Running signal-first best picks pipeline...");
 
       const [discovered, rawSignals] = await Promise.all([
-        discoverOpportunities().catch(() => []),
-        getRawSignals().catch(() => ({
-          news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
-        })),
+        discoverOpportunities().catch((e) => { console.error("[BestPicks] discoverOpportunities failed:", e); return []; }),
+        getRawSignals().catch((e) => {
+          console.error("[BestPicks] getRawSignals failed:", e);
+          return { news: [] as any[], insiderBuys: [] as any[], congressBuys: [] as any[], screenerMoves: [] as any[], earnings: [] as any[] };
+        }),
       ]);
 
       // Step 1: Derive tickers from signals

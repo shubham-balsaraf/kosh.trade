@@ -42,24 +42,21 @@ function StrategyTooltip({ strategy, children }: { strategy: string; children: R
   if (!info) return <>{children}</>;
 
   const Icon = info.icon;
-  const colorCls = info.color === "blue"
-    ? "border-blue-500/20 bg-blue-500/5 text-blue-300/90"
-    : info.color === "purple"
-    ? "border-purple-500/20 bg-purple-500/5 text-purple-300/90"
-    : "border-amber-500/20 bg-amber-500/5 text-amber-300/90";
-  const iconCls = info.color === "blue" ? "text-blue-400/80" : info.color === "purple" ? "text-purple-400/80" : "text-amber-400/80";
+  const borderCls = info.color === "blue" ? "border-blue-500/30" : info.color === "purple" ? "border-purple-500/30" : "border-amber-500/30";
+  const iconCls = info.color === "blue" ? "text-blue-400" : info.color === "purple" ? "text-purple-400" : "text-amber-400";
+  const titleCls = info.color === "blue" ? "text-blue-300" : info.color === "purple" ? "text-purple-300" : "text-amber-300";
 
   return (
     <div className="relative inline-block" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
       {show && (
-        <div className={`absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 rounded-xl border backdrop-blur-xl shadow-2xl shadow-black/40 ${colorCls} animate-fade-slide-up`}>
-          <div className="flex items-center gap-2 mb-1.5">
+        <div className={`absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3.5 rounded-xl border bg-[#0d0f14] shadow-2xl shadow-black/60 ${borderCls} animate-fade-slide-up`}>
+          <div className="flex items-center gap-2 mb-2">
             <Icon size={14} className={iconCls} />
-            <span className="font-bold text-xs">{info.label} Strategy</span>
+            <span className={`font-bold text-xs ${titleCls}`}>{info.label} Strategy</span>
           </div>
-          <p className="text-[11px] leading-relaxed text-white/40">{info.description}</p>
-          <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r border-inherit bg-inherit -mt-1" />
+          <p className="text-[11px] leading-relaxed text-white/55">{info.description}</p>
+          <div className={`absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r bg-[#0d0f14] ${borderCls} -mt-1`} />
         </div>
       )}
     </div>
@@ -841,9 +838,15 @@ export default function SignalsPage() {
     try {
       const res = await fetch("/api/signals?mode=best-picks");
       const json = await res.json();
-      setBestPicks({ sprint: json.sprint || [], marathon: json.marathon || [], legacy: json.legacy || [] });
-      setBestPicksStats({ scanned: json.scanned || 0, totalBuySignals: json.totalBuySignals || 0, totalPicks: json.totalPicks || 0, signalDerived: json.signalDerived || 0 });
-    } catch {
+      if (json.error) {
+        console.error("[BestPicks] API error:", json.error);
+        setBestPicks(null);
+      } else {
+        setBestPicks({ sprint: json.sprint || [], marathon: json.marathon || [], legacy: json.legacy || [] });
+        setBestPicksStats({ scanned: json.scanned || 0, totalBuySignals: json.totalBuySignals || 0, totalPicks: json.totalPicks || 0, signalDerived: json.signalDerived || 0 });
+      }
+    } catch (e) {
+      console.error("[BestPicks] Fetch failed:", e);
       setBestPicks(null);
     }
     setBestPicksLoading(false);
@@ -854,14 +857,19 @@ export default function SignalsPage() {
     try {
       const res = await fetch("/api/signals?mode=signal-intelligence");
       const json = await res.json();
-      setNarratives(json.narratives || []);
-      setTickerTechnicals(json.tickerTechnicals || {});
-      setIntelStats({
-        totalSignals: json.totalSignals || 0,
-        totalTickers: json.totalTickers || 0,
-        signalCounts: json.signalCounts || {},
-      });
-    } catch {
+      if (json.error) {
+        console.error("[Intelligence] API error:", json.error);
+      } else {
+        setNarratives(json.narratives || []);
+        setTickerTechnicals(json.tickerTechnicals || {});
+        setIntelStats({
+          totalSignals: json.totalSignals || 0,
+          totalTickers: json.totalTickers || 0,
+          signalCounts: json.signalCounts || {},
+        });
+      }
+    } catch (e) {
+      console.error("[Intelligence] Fetch failed:", e);
       setNarratives([]);
     }
     setIntelLoading(false);

@@ -238,16 +238,27 @@ export interface RawSignalBundle {
 export async function getRawSignals(): Promise<RawSignalBundle> {
   const bundle: RawSignalBundle = { news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [] };
 
+  const fetchCongressWithTimeout = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await fetch(
+        `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/congress/trades`,
+        { cache: "no-store", signal: controller.signal }
+      );
+      clearTimeout(timeout);
+      return res.ok ? res.json() : [];
+    } catch {
+      clearTimeout(timeout);
+      console.warn("[RawSignals] Congress fetch timed out or failed — skipping");
+      return [];
+    }
+  };
+
   const results = await Promise.allSettled([
     getMarketNews(40),
     getBulkInsiderTrading(50),
-    (async () => {
-      const res = await fetch(
-        `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/congress/trades`,
-        { cache: "no-store" }
-      );
-      return res.ok ? res.json() : [];
-    })(),
+    fetchCongressWithTimeout(),
     getTopGainersLosers(),
     (async () => {
       const today = new Date();
@@ -257,6 +268,11 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
       return getEarningsCalendar(from, to);
     })(),
   ]);
+
+  const sourceNames = ["News", "Insider", "Congress", "Screener", "Earnings"];
+  for (let i = 0; i < results.length; i++) {
+    console.log(`[RawSignals] ${sourceNames[i]}: ${results[i].status}${results[i].status === "rejected" ? ` — ${(results[i] as PromiseRejectedResult).reason}` : ""}`);
+  }
 
   // News
   if (results[0].status === "fulfilled" && Array.isArray(results[0].value)) {
