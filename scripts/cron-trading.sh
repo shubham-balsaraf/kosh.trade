@@ -34,7 +34,7 @@
 
 set -e
 
-KOSH_URL="${KOSH_URL:-http://localhost:3000}"
+KOSH_URL="${KOSH_URL:-http://localhost:3001}"
 CRON_SECRET="${CRON_SECRET:-$(grep CRON_SECRET ~/kosh/.env 2>/dev/null | cut -d= -f2)}"
 ACTION="${1:-cycle}"
 LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
