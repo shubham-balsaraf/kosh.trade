@@ -92,9 +92,9 @@ async function getFullWatchlist(userId: string, configWatchlist: string[]): Prom
   return [...combined];
 }
 
-async function runPaperTradingCycle(userId: string, config: any, email: string | null, isPro: boolean): Promise<EngineResult> {
+async function runPaperTradingCycle(userId: string, config: any, email: string | null): Promise<EngineResult> {
   try {
-    console.log(`[Engine] Paper cycle for ${email || userId} | profile=${config.riskProfile || "MODERATE"} | isPro=${isPro} | watchlist=${config.watchlist?.length || 0} tickers`);
+    console.log(`[Engine] Paper cycle for ${email || userId} | profile=${config.riskProfile || "MODERATE"} | watchlist=${config.watchlist?.length || 0} tickers`);
     const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
     const openTrades = await prisma.autoTrade.findMany({
@@ -149,12 +149,10 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
 
     let discovered: DiscoveredTicker[] = [];
-    if (isPro) {
-      try {
-        discovered = await discoverOpportunities();
-      } catch (e) {
-        console.error("[Engine] Discovery failed (non-fatal):", e);
-      }
+    try {
+      discovered = await discoverOpportunities();
+    } catch (e) {
+      console.error("[Engine] Discovery failed (non-fatal):", e);
     }
     const discoveredTickers = discovered
       .map((d) => d.ticker)
@@ -313,10 +311,8 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     return { status: "SKIPPED", reason: "Auto-trading not enabled", scanned: 0, signalsFound: 0, tradesExecuted: 0, exitsExecuted: 0, details: [] };
   }
 
-  const isPro = user.role === "ADMIN";
-
   if (config.mode === "PAPER") {
-    return runPaperTradingCycle(userId, config, user.email, isPro);
+    return runPaperTradingCycle(userId, config, user.email);
   }
 
   if (!user.alpacaApiKey && !process.env.ALPACA_API_KEY) {
@@ -348,12 +344,10 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
 
     let discovered: DiscoveredTicker[] = [];
-    if (isPro) {
-      try {
-        discovered = await discoverOpportunities();
-      } catch (e) {
-        console.error("[Engine] Discovery failed (non-fatal):", e);
-      }
+    try {
+      discovered = await discoverOpportunities();
+    } catch (e) {
+      console.error("[Engine] Discovery failed (non-fatal):", e);
     }
     const discoveredTickers = discovered
       .map((d) => d.ticker)

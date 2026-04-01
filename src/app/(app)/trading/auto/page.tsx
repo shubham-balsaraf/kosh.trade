@@ -12,7 +12,7 @@ import {
   Search, Brain, ShieldCheck, ArrowRight, ArrowLeft, Sparkles,
   X, Plus, ChevronRight, AlertTriangle, RotateCcw,
   Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye, Radio,
-  Newspaper, Users, Landmark, CalendarDays, Radar, Crown,
+  Newspaper, Users, Landmark, CalendarDays, Radar,
 } from "lucide-react";
 
 interface TradingConfig {
@@ -861,34 +861,8 @@ const DISCOVERY_SOURCES = {
   earnings: { icon: CalendarDays, label: "Earnings", color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20" },
 } as const;
 
-function DiscoveriesSection({ discoveries, isPro }: { discoveries: DiscoveredTicker[]; isPro: boolean }) {
+function DiscoveriesSection({ discoveries }: { discoveries: DiscoveredTicker[] }) {
   const [expanded, setExpanded] = useState(false);
-
-  if (!isPro) {
-    return (
-      <div className="glass-card p-5 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/[0.03] to-transparent pointer-events-none" />
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center justify-center">
-              <Radar size={18} className="text-amber-400/60" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-white/60">Market Discovery</h3>
-                <Crown size={12} className="text-amber-400/70" />
-              </div>
-              <p className="text-xs text-white/20 mt-0.5">AI scans news, insider buys, congressional trades & market signals</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Lock size={14} className="text-amber-400/40" />
-            <span className="text-xs text-amber-400/60 font-medium">Pro</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (!discoveries || discoveries.length === 0) {
     return (
@@ -1186,7 +1160,6 @@ export default function AutoTradingPage() {
   const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuote>>({});
   const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
   const [discoveries, setDiscoveries] = useState<DiscoveredTicker[]>([]);
-  const [isPro, setIsPro] = useState(false);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -1220,7 +1193,6 @@ export default function AutoTradingPage() {
       if (configData.setup === false) { setNeedsSetup(true); setLoading(false); return; }
       setConfig(configData);
       setNeedsSetup(false);
-      if (configData.isPro) setIsPro(true);
       const [statsRes, tradesRes, openRes, equityRes] = await Promise.all([
         fetch("/api/trading/auto?action=stats"),
         fetch("/api/trading/auto?action=trades&status=CLOSED"),
@@ -1563,7 +1535,7 @@ export default function AutoTradingPage() {
       )}
 
       {/* ─── Discoveries ─── */}
-      <DiscoveriesSection discoveries={discoveries} isPro={isPro} />
+      <DiscoveriesSection discoveries={discoveries} />
 
       {/* ─── Standby Banner ─── */}
       {!config?.enabled && (
