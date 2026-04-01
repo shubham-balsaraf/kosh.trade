@@ -227,6 +227,124 @@ async function discoverFromEarnings(): Promise<DiscoveredTicker[]> {
   }
 }
 
+export interface RawSignalBundle {
+  news: Array<{ title: string; ticker: string | null; catalyst: string | null; urgency: number }>;
+  insiderBuys: Array<{ ticker: string; name: string; value: number }>;
+  congressBuys: Array<{ ticker: string; politician: string; party: string; size: string }>;
+  screenerMoves: Array<{ ticker: string; changePct: number; volume: number; direction: "gainer" | "loser" }>;
+  earnings: Array<{ ticker: string; date: string; epsEstimate: number | null }>;
+}
+
+export async function getRawSignals(): Promise<RawSignalBundle> {
+  const bundle: RawSignalBundle = { news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [] };
+
+  const results = await Promise.allSettled([
+    getMarketNews(40),
+    getBulkInsiderTrading(50),
+    (async () => {
+      const res = await fetch(
+        `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/congress/trades`,
+        { cache: "no-store" }
+      );
+      return res.ok ? res.json() : [];
+    })(),
+    getTopGainersLosers(),
+    (async () => {
+      const today = new Date();
+      const from = today.toISOString().slice(0, 10);
+      const futureDate = new Date(today.getTime() + 5 * 24 * 60 * 60 * 1000);
+      const to = futureDate.toISOString().slice(0, 10);
+      return getEarningsCalendar(from, to);
+    })(),
+  ]);
+
+  // News
+  if (results[0].status === "fulfilled" && Array.isArray(results[0].value)) {
+    for (const item of results[0].value.slice(0, 40)) {
+      const title = item.title || "";
+      const text = `${title} ${item.text || item.description || ""}`;
+      const catalyst = detectCatalyst(text);
+      const ticker = item.symbol || item.ticker || null;
+      bundle.news.push({
+        title: title.slice(0, 120),
+        ticker: ticker ? ticker.toUpperCase() : null,
+        catalyst: catalyst?.label || null,
+        urgency: catalyst?.urgency || 3,
+      });
+    }
+  }
+
+  // Insider buys
+  if (results[1].status === "fulfilled" && Array.isArray(results[1].value)) {
+    for (const f of results[1].value) {
+      const isPurchase =
+        (f.transactionType || "").toLowerCase().includes("purchase") ||
+        (f.acquistionOrDisposition || "").toUpperCase() === "A";
+      if (!isPurchase || !f.symbol) continue;
+      const value = (f.securitiesTransacted || 0) * (f.price || 0);
+      if (value < 50000) continue;
+      bundle.insiderBuys.push({
+        ticker: f.symbol.toUpperCase(),
+        name: f.reportingName || "Executive",
+        value,
+      });
+    }
+  }
+
+  // Congress
+  if (results[2].status === "fulfilled" && Array.isArray(results[2].value)) {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    for (const t of results[2].value) {
+      if (t.type !== "buy" || !t.ticker) continue;
+      const tradeDate = new Date(t.tradeDate || t.publishedDate).getTime();
+      if (tradeDate < sevenDaysAgo) continue;
+      bundle.congressBuys.push({
+        ticker: t.ticker,
+        politician: t.politicianName || "Unknown",
+        party: t.party || "?",
+        size: t.size || "unknown",
+      });
+    }
+  }
+
+  // Screener
+  if (results[3].status === "fulfilled") {
+    const { gainers, losers } = results[3].value as { gainers: any[]; losers: any[] };
+    for (const s of (gainers || []).slice(0, 10)) {
+      if (!s.symbol) continue;
+      bundle.screenerMoves.push({
+        ticker: s.symbol,
+        changePct: s.changesPercentage || 0,
+        volume: s.volume || 0,
+        direction: "gainer",
+      });
+    }
+    for (const s of (losers || []).slice(0, 10)) {
+      if (!s.symbol) continue;
+      bundle.screenerMoves.push({
+        ticker: s.symbol,
+        changePct: s.changesPercentage || 0,
+        volume: s.volume || 0,
+        direction: "loser",
+      });
+    }
+  }
+
+  // Earnings
+  if (results[4].status === "fulfilled" && Array.isArray(results[4].value)) {
+    for (const e of results[4].value.slice(0, 15)) {
+      if (!e.symbol) continue;
+      bundle.earnings.push({
+        ticker: e.symbol.toUpperCase(),
+        date: e.date || "upcoming",
+        epsEstimate: e.epsEstimated || null,
+      });
+    }
+  }
+
+  return bundle;
+}
+
 export async function discoverOpportunities(): Promise<DiscoveredTicker[]> {
   console.log("[Discovery] Starting market-wide scan across 5 sources...");
   const startTime = Date.now();

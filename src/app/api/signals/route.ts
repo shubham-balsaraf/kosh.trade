@@ -6,26 +6,15 @@ import { getRecommendations, getPriceTarget } from "@/lib/api/finnhub";
 import { getMacroSnapshot } from "@/lib/signals/macroRegime";
 import { scanStock, scanMarket, DEFAULT_WATCHLIST } from "@/lib/trading/scanner";
 import { generateSignals, rankSignals } from "@/lib/trading/signals";
-import { discoverOpportunities } from "@/lib/trading/discovery";
+import { discoverOpportunities, getRawSignals } from "@/lib/trading/discovery";
+import { generateMarketNarratives } from "@/lib/trading/ai-analyst";
 import type { ScanResult } from "@/lib/trading/scanner";
 import type { TradeSignal } from "@/lib/trading/signals";
 
-const BROAD_UNIVERSE = [
-  // Tech
-  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX",
-  "CRM", "AVGO", "ORCL", "ADBE", "INTC", "CSCO", "PLTR", "SHOP", "SQ", "SNOW",
-  // Finance
-  "JPM", "BAC", "GS", "V", "MA", "BRK-B", "AXP", "SCHW", "C",
-  // Healthcare
-  "UNH", "JNJ", "PFE", "ABBV", "MRK", "LLY", "TMO", "ABT",
-  // Energy & Industrial
-  "XOM", "CVX", "LMT", "CAT", "DE", "GE", "HON", "UPS",
-  // Consumer
-  "WMT", "COST", "HD", "MCD", "SBUX", "NKE", "DIS", "PG", "KO", "PEP",
-  // Crypto
-  "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD",
-  // ETFs
-  "SPY", "QQQ",
+const CORE_BASELINE = [
+  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
+  "JPM", "BRK-B", "UNH", "XOM", "SPY", "QQQ",
+  "BTC-USD", "ETH-USD",
 ];
 
 type Horizon = "sprint" | "marathon" | "legacy";
@@ -168,29 +157,98 @@ export async function GET(req: NextRequest) {
   const mode = req.nextUrl.searchParams.get("mode");
 
   try {
-    if (mode === "best-picks") {
-      const [scanResults, discovered] = await Promise.all([
-        scanMarket(BROAD_UNIVERSE),
-        discoverOpportunities().catch(() => []),
-      ]);
+    // Signal Intelligence — LLM-generated narratives from raw market signals
+    if (mode === "signal-intelligence") {
+      console.log("[Signals] Running signal intelligence pipeline...");
+      const rawSignals = await getRawSignals();
 
-      const discoveredTickers = discovered
-        .map((d) => d.ticker)
-        .filter((t) => !BROAD_UNIVERSE.includes(t))
-        .slice(0, 10);
-      let extraScans: ScanResult[] = [];
-      if (discoveredTickers.length > 0) {
-        extraScans = await scanMarket(discoveredTickers);
+      const narratives = await generateMarketNarratives(rawSignals);
+
+      const allAffectedTickers = new Set<string>();
+      for (const n of narratives) {
+        for (const t of n.affectedTickers) allAffectedTickers.add(t);
+        for (const t of n.triggerTickers) allAffectedTickers.add(t);
       }
 
-      const allScans = [...scanResults, ...extraScans];
-      const allSignals = allScans.map(generateSignals);
+      let tickerTechnicals: Record<string, any> = {};
+      const tickersToScan = [...allAffectedTickers].slice(0, 30);
+      if (tickersToScan.length > 0) {
+        try {
+          const scans = await scanMarket(tickersToScan);
+          for (const scan of scans) {
+            const sig = generateSignals(scan);
+            tickerTechnicals[scan.ticker] = {
+              price: sig.price,
+              action: sig.action,
+              score: sig.score,
+              confidence: sig.confidence,
+              strategy: sig.strategy,
+              rsi: scan.rsi,
+              changePercent: scan.changePercent,
+              volumeRatio: scan.volumeRatio,
+            };
+          }
+        } catch (e) {
+          console.error("[Signals] Technical scan for narratives failed:", e);
+        }
+      }
+
+      const signalCounts = {
+        news: rawSignals.news.filter((n) => n.urgency >= 5).length,
+        insider: rawSignals.insiderBuys.length,
+        congress: rawSignals.congressBuys.length,
+        screener: rawSignals.screenerMoves.length,
+        earnings: rawSignals.earnings.length,
+      };
+
+      console.log(`[Signals] Intelligence complete: ${narratives.length} narratives, ${allAffectedTickers.size} tickers identified`);
+
+      return NextResponse.json({
+        narratives,
+        tickerTechnicals,
+        signalCounts,
+        totalSignals: Object.values(signalCounts).reduce((a, b) => a + b, 0),
+        totalTickers: allAffectedTickers.size,
+      });
+    }
+
+    // Best Picks — SIGNAL-FIRST: discover stocks from signals, then analyze
+    if (mode === "best-picks") {
+      console.log("[Signals] Running signal-first best picks pipeline...");
+
+      const [discovered, rawSignals] = await Promise.all([
+        discoverOpportunities().catch(() => []),
+        getRawSignals().catch(() => ({
+          news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
+        })),
+      ]);
+
+      // Step 1: Derive tickers from signals
+      const signalDerived = new Set<string>();
+      for (const d of discovered) signalDerived.add(d.ticker);
+      for (const m of rawSignals.screenerMoves) signalDerived.add(m.ticker);
+      for (const i of rawSignals.insiderBuys) signalDerived.add(i.ticker);
+      for (const c of rawSignals.congressBuys) signalDerived.add(c.ticker);
+      for (const e of rawSignals.earnings) signalDerived.add(e.ticker);
+      for (const n of rawSignals.news) {
+        if (n.ticker) signalDerived.add(n.ticker);
+      }
+
+      // Step 2: Add core baseline for coverage
+      for (const t of CORE_BASELINE) signalDerived.add(t);
+
+      const tickersToScan = [...signalDerived].slice(0, 60);
+      console.log(`[Signals] Signal-derived: ${signalDerived.size} tickers (${tickersToScan.length} will be scanned)`);
+
+      // Step 3: Run technicals on signal-derived stocks
+      const scanResults = await scanMarket(tickersToScan);
+      const allSignals = scanResults.map(generateSignals);
       const buySignals = allSignals.filter(
         (s) => s.action === "BUY" || s.action === "STRONG_BUY"
       );
 
       const scanMap = new Map<string, ScanResult>();
-      for (const s of allScans) scanMap.set(s.ticker, s);
+      for (const s of scanResults) scanMap.set(s.ticker, s);
 
       const discoveryMap = new Map<string, { source: string; reason: string }>();
       for (const d of discovered) {
@@ -282,9 +340,10 @@ export async function GET(req: NextRequest) {
         sprint,
         marathon,
         legacy,
-        scanned: allScans.length,
+        scanned: scanResults.length,
         totalBuySignals: buySignals.length,
         totalPicks: picks.length,
+        signalDerived: signalDerived.size,
       });
     }
 

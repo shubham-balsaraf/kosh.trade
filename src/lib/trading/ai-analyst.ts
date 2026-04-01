@@ -1,5 +1,19 @@
 import { generateCompletion } from "@/lib/ai/claude";
 import type { TradeSignal } from "./signals";
+import type { RawSignalBundle } from "./discovery";
+
+export interface MarketNarrative {
+  id: string;
+  headline: string;
+  narrative: string;
+  sector: string;
+  sentiment: "bullish" | "bearish" | "mixed";
+  impact: number;
+  affectedTickers: string[];
+  triggerTickers: string[];
+  timeframe: "immediate" | "short-term" | "medium-term" | "structural";
+  tradeImplication: string;
+}
 
 interface AIVerdict {
   ticker: string;
@@ -108,5 +122,104 @@ Provide a 3-4 sentence market briefing and top 2 trade ideas with reasoning. Be 
     );
   } catch {
     return "Briefing unavailable — Claude API error.";
+  }
+}
+
+const NARRATIVE_SYSTEM = `You are a market intelligence analyst who identifies actionable trading narratives from raw market signals.
+
+Given news headlines, insider trades, congressional activity, screener moves, and upcoming earnings, you must:
+1. Identify 3-6 distinct NARRATIVES — each connecting real events to sector/stock impact
+2. For each narrative, identify which stocks are DIRECTLY affected and could be traded
+3. Think in terms of cause and effect: "X happened → Y sector/stocks will move because Z"
+4. Include non-obvious second-order effects (e.g., Google AI chip → memory stocks down, cloud infra up)
+5. Every narrative must name specific tradeable tickers
+
+Respond ONLY in valid JSON array. No markdown, no explanation outside JSON:
+[{
+  "headline": "Short punchy headline like a Bloomberg terminal alert",
+  "narrative": "2-3 sentence story explaining the cause, effect, and trading implication. Be specific about WHY stocks move.",
+  "sector": "Sector name",
+  "sentiment": "bullish" | "bearish" | "mixed",
+  "impact": 1-10,
+  "affectedTickers": ["TICK1","TICK2","TICK3"],
+  "triggerTickers": ["SOURCE_TICK"],
+  "timeframe": "immediate" | "short-term" | "medium-term" | "structural",
+  "tradeImplication": "One sentence: what a trader should do"
+}]`;
+
+export async function generateMarketNarratives(signals: RawSignalBundle): Promise<MarketNarrative[]> {
+  const sections: string[] = [];
+
+  if (signals.news.length > 0) {
+    const newsLines = signals.news
+      .filter((n) => n.urgency >= 5 || n.catalyst)
+      .slice(0, 20)
+      .map((n) => `- "${n.title}"${n.ticker ? ` (${n.ticker})` : ""}${n.catalyst ? ` [${n.catalyst}]` : ""}`);
+    if (newsLines.length > 0) sections.push(`NEWS HEADLINES:\n${newsLines.join("\n")}`);
+  }
+
+  if (signals.insiderBuys.length > 0) {
+    const insiderLines = signals.insiderBuys
+      .slice(0, 10)
+      .map((i) => `- ${i.name} bought $${(i.value / 1000).toFixed(0)}K of ${i.ticker}`);
+    sections.push(`INSIDER PURCHASES:\n${insiderLines.join("\n")}`);
+  }
+
+  if (signals.congressBuys.length > 0) {
+    const congressLines = signals.congressBuys
+      .slice(0, 10)
+      .map((c) => `- ${c.politician} (${c.party}) bought ${c.ticker} — size: ${c.size}`);
+    sections.push(`CONGRESSIONAL TRADES:\n${congressLines.join("\n")}`);
+  }
+
+  if (signals.screenerMoves.length > 0) {
+    const gainers = signals.screenerMoves
+      .filter((s) => s.direction === "gainer")
+      .slice(0, 8)
+      .map((s) => `${s.ticker} +${s.changePct.toFixed(1)}%`);
+    const losers = signals.screenerMoves
+      .filter((s) => s.direction === "loser")
+      .slice(0, 8)
+      .map((s) => `${s.ticker} ${s.changePct.toFixed(1)}%`);
+    sections.push(`MARKET MOVERS:\nGainers: ${gainers.join(", ")}\nLosers: ${losers.join(", ")}`);
+  }
+
+  if (signals.earnings.length > 0) {
+    const earningsLines = signals.earnings
+      .slice(0, 10)
+      .map((e) => `- ${e.ticker} reports ${e.date}${e.epsEstimate ? ` (est EPS $${e.epsEstimate})` : ""}`);
+    sections.push(`UPCOMING EARNINGS:\n${earningsLines.join("\n")}`);
+  }
+
+  if (sections.length === 0) return [];
+
+  const userMessage = `Analyze these live market signals and create trading narratives:\n\n${sections.join("\n\n")}`;
+
+  try {
+    const response = await generateCompletion(NARRATIVE_SYSTEM, userMessage, 2048);
+    const jsonMatch = response.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      console.error("[AI Narratives] Could not parse JSON from response");
+      return [];
+    }
+
+    const raw = JSON.parse(jsonMatch[0]) as any[];
+    return raw
+      .filter((n) => n.headline && n.narrative && Array.isArray(n.affectedTickers))
+      .map((n, i) => ({
+        id: `narrative-${i}`,
+        headline: n.headline,
+        narrative: n.narrative,
+        sector: n.sector || "Market",
+        sentiment: n.sentiment || "mixed",
+        impact: Math.min(10, Math.max(1, n.impact || 5)),
+        affectedTickers: (n.affectedTickers || []).slice(0, 8),
+        triggerTickers: (n.triggerTickers || []).slice(0, 3),
+        timeframe: n.timeframe || "short-term",
+        tradeImplication: n.tradeImplication || "",
+      }));
+  } catch (e) {
+    console.error("[AI Narratives] Failed:", e);
+    return [];
   }
 }
