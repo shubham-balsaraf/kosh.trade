@@ -914,6 +914,9 @@ export default function AutoTradingPage() {
   const runNow = async () => {
     setRunning(true); setRunResult(null);
     try {
+      if (!config?.enabled) {
+        await fetch("/api/trading/auto", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: true }) });
+      }
       const res = await fetch("/api/trading/auto", { method: "POST" });
       setRunResult(await res.json());
       await fetchData();
@@ -964,8 +967,10 @@ export default function AutoTradingPage() {
 
   if (needsSetup) return <OnboardingFlow onComplete={handleOnboardingComplete} />;
 
-  const equity = (config?.paperBalance || 10000) + (stats?.totalPnl || 0);
-  const pnlPct = config?.paperBalance ? ((stats?.totalPnl || 0) / config.paperBalance * 100) : 0;
+  const realizedPnl = stats?.totalPnl || 0;
+  const liveEquity = (config?.paperBalance || 10000) + realizedPnl + totalUnrealizedPnl;
+  const equity = liveEquity;
+  const pnlPct = config?.paperBalance ? ((realizedPnl + totalUnrealizedPnl) / config.paperBalance * 100) : 0;
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -1010,16 +1015,16 @@ export default function AutoTradingPage() {
               className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all duration-300 ${
                 config?.enabled
                   ? "bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-red-500/10 hover:border-red-500/20 hover:text-red-400"
-                  : "bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-emerald-500/10 hover:border-emerald-500/20 hover:text-emerald-400"
+                  : "koshpilot-btn text-black"
               }`}
             >
               {toggling ? <RefreshCw size={14} className="animate-spin" /> : config?.enabled ? <><PowerOff size={14} /> Disable</> : <><Power size={14} /> Enable</>}
             </button>
             <button
               onClick={runNow}
-              disabled={!config?.enabled || running}
+              disabled={running}
               className={`px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 transition-all duration-300 ${
-                !config?.enabled || running ? "bg-white/[0.03] text-white/15 cursor-not-allowed" : "koshpilot-btn text-black"
+                running ? "bg-white/[0.03] text-white/15 cursor-not-allowed" : "bg-white/[0.04] border border-white/[0.08] text-white/60 hover:bg-amber-500/10 hover:border-amber-500/20 hover:text-amber-400"
               }`}
             >
               <RefreshCw size={14} className={running ? "animate-spin" : ""} />
@@ -1062,11 +1067,9 @@ export default function AutoTradingPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-slide-up-1">
         <div className="stat-card-gold p-5 text-center md:col-span-1">
           <Wallet size={16} className="mx-auto text-amber-400/70 mb-2" />
-          <p className="stat-value text-white">
-            ${equity.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-          </p>
+          <AnimatedPrice value={equity} prefix="$" decimals={0} className="stat-value text-white" />
           <p className="stat-label mt-1">{config?.mode === "PAPER" ? "Simulation" : "Portfolio"}</p>
-          {config?.mode === "PAPER" && (stats?.totalPnl || 0) !== 0 && (
+          {(realizedPnl !== 0 || totalUnrealizedPnl !== 0) && (
             <p className={`text-[10px] mt-1 font-medium ${pnlPct >= 0 ? "text-emerald-400/80" : "text-red-400/80"}`}>
               {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%
             </p>
@@ -1074,24 +1077,34 @@ export default function AutoTradingPage() {
         </div>
         <div className="stat-card p-5 text-center">
           <DollarSign size={16} className="mx-auto text-white/20 mb-2" />
-          <p className={`stat-value ${(stats?.totalPnl || 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {(stats?.totalPnl || 0) >= 0 ? "+" : ""}${Math.abs(stats?.totalPnl || 0).toFixed(0)}
+          <p className={`stat-value ${realizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+            {realizedPnl >= 0 ? "+" : ""}${Math.abs(realizedPnl).toFixed(0)}
           </p>
-          <p className="stat-label mt-1">P&L</p>
+          <p className="stat-label mt-1">Realized</p>
+        </div>
+        <div className="stat-card p-5 text-center">
+          <TrendingUp size={16} className="mx-auto text-white/20 mb-2" />
+          {totalUnrealizedPnl !== 0 ? (
+            <AnimatedPrice
+              value={totalUnrealizedPnl}
+              prefix={totalUnrealizedPnl >= 0 ? "+$" : "-$"}
+              decimals={0}
+              className={`stat-value ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
+            />
+          ) : (
+            <p className="stat-value text-white/30">$0</p>
+          )}
+          <p className="stat-label mt-1">Unrealized</p>
         </div>
         <div className="stat-card p-5 text-center">
           <Target size={16} className="mx-auto text-white/20 mb-2" />
           <p className="stat-value text-white">{stats?.winRate || 0}%</p>
           <p className="stat-label mt-1">Hit Rate</p>
-        </div>
-        <div className="stat-card p-5 text-center">
-          <BarChart3 size={16} className="mx-auto text-white/20 mb-2" />
-          <p className="stat-value text-white">{stats?.totalTrades || 0}</p>
-          <p className="stat-label mt-1">Trades</p>
+          <p className="text-[10px] text-white/15 mt-0.5">{stats?.totalTrades || 0} trades</p>
         </div>
         <div className="stat-card p-5 text-center">
           <Activity size={16} className="mx-auto text-white/20 mb-2" />
-          <p className="stat-value text-amber-400">{stats?.openPositions || 0}</p>
+          <p className="stat-value text-amber-400">{openTrades.length}</p>
           <p className="stat-label mt-1">Open</p>
         </div>
       </div>
@@ -1204,20 +1217,19 @@ export default function AutoTradingPage() {
         </div>
       )}
 
-      {/* ─── Standby CTA ─── */}
+      {/* ─── Standby Banner ─── */}
       {!config?.enabled && (
-        <div className="relative mesh-bg rounded-3xl p-8 text-center overflow-hidden animate-fade-slide-up">
-          <div className="orb orb-gold-1 top-[-80px] left-[20%]" />
-          <div className="relative z-10 space-y-4">
-            <Navigation size={36} className="mx-auto text-amber-400/60 koshpilot-pulse" />
+        <div className="glass-card-gold p-4 flex items-center justify-between gap-4 animate-fade-slide-up">
+          <div className="flex items-center gap-3">
+            <Navigation size={18} className="text-amber-400/60 shrink-0" />
             <div>
-              <p className="text-white/80 font-semibold">KoshPilot is on standby</p>
-              <p className="text-white/25 text-sm mt-1">Enable to start scanning for opportunities during market hours.</p>
+              <p className="text-white/60 text-sm font-medium">KoshPilot is paused</p>
+              <p className="text-white/20 text-xs">Enable for automatic scanning, or tap Run Now to scan once.</p>
             </div>
-            <button onClick={toggleEnabled} className="px-8 py-3 rounded-2xl font-semibold koshpilot-btn text-black inline-flex items-center gap-2 text-sm">
-              {toggling ? <RefreshCw size={16} className="animate-spin" /> : <><Power size={16} /> Launch KoshPilot</>}
-            </button>
           </div>
+          <button onClick={toggleEnabled} className="px-4 py-2 rounded-xl font-semibold koshpilot-btn text-black text-xs shrink-0">
+            {toggling ? <RefreshCw size={14} className="animate-spin" /> : <><Power size={14} className="inline mr-1" />Enable</>}
+          </button>
         </div>
       )}
 
@@ -1382,34 +1394,57 @@ export default function AutoTradingPage() {
       </div>
 
       {/* ─── Open Positions (Live) ─── */}
-      {openTrades.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
-              <TrendingUp size={14} className="text-amber-400/70" />
-              Open Positions ({openTrades.length})
-            </h2>
-            <div className="flex items-center gap-3">
-              {Object.keys(liveQuotes).length > 0 && totalUnrealizedPnl !== 0 && (
-                <span className={`text-xs font-bold ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                  {totalUnrealizedPnl >= 0 ? "+" : ""}${totalUnrealizedPnl.toFixed(2)} total
-                </span>
-              )}
-              {Object.keys(liveQuotes).length > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <Radio size={10} className="text-emerald-400/60" />
-                  <span className="text-[10px] text-white/20">Live</span>
-                </div>
-              )}
-            </div>
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-white/40 uppercase tracking-wider flex items-center gap-2">
+            <TrendingUp size={14} className="text-amber-400/70" />
+            Holdings ({openTrades.length})
+          </h2>
+          <div className="flex items-center gap-3">
+            {Object.keys(liveQuotes).length > 0 && totalUnrealizedPnl !== 0 && (
+              <AnimatedPrice
+                value={totalUnrealizedPnl}
+                prefix={totalUnrealizedPnl >= 0 ? "+$" : "-$"}
+                decimals={2}
+                className={`text-xs font-bold ${totalUnrealizedPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}
+              />
+            )}
+            {Object.keys(liveQuotes).length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Radio size={10} className="text-emerald-400/60" />
+                <span className="text-[10px] text-white/20">Live</span>
+              </div>
+            )}
           </div>
+        </div>
+        {openTrades.length > 0 ? (
           <div className="space-y-2">
             {openTrades.map((trade) => (
               <LivePositionCard key={trade.id} trade={trade} quote={liveQuotes[trade.ticker]} />
             ))}
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="glass-card p-6 text-center">
+            <Wallet size={24} className="mx-auto text-white/8 mb-2" />
+            <p className="text-white/30 text-sm">No open positions</p>
+            <p className="text-white/15 text-xs mt-1">
+              {config?.enabled
+                ? "Waiting for high-conviction setups from your watchlist"
+                : "Tap Run Now to scan for opportunities"}
+            </p>
+            {!config?.enabled && (
+              <button
+                onClick={runNow}
+                disabled={running}
+                className="mt-3 px-5 py-2 rounded-xl text-xs font-semibold koshpilot-btn text-black inline-flex items-center gap-2"
+              >
+                <RefreshCw size={14} className={running ? "animate-spin" : ""} />
+                {running ? "Scanning..." : "Run Now"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ─── Trade History ─── */}
       <div className="space-y-3">
@@ -1418,11 +1453,11 @@ export default function AutoTradingPage() {
           History
         </h2>
         {trades.length === 0 ? (
-          <div className="glass-card p-8 text-center">
-            <BarChart3 size={28} className="mx-auto text-white/8 mb-3" />
+          <div className="glass-card p-6 text-center">
+            <BarChart3 size={24} className="mx-auto text-white/8 mb-2" />
             <p className="text-white/30 text-sm">No completed trades yet</p>
             <p className="text-white/15 text-xs mt-1">
-              {config?.enabled ? "Waiting for high-conviction setups" : "Enable KoshPilot to start"}
+              Closed positions will appear here with realized P&L
             </p>
           </div>
         ) : (

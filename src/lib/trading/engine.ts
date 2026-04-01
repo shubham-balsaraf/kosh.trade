@@ -291,10 +291,11 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       sendTradeNotification(user.email, exit).catch(() => {});
     }
 
-    if (!isMarketHours() && !alpacaConfig.paper) {
+    const marketOpen = isMarketHours();
+    if (!marketOpen && !alpacaConfig.paper) {
       return {
-        status: "SKIPPED",
-        reason: "Market closed",
+        status: "OK",
+        reason: "Market closed — checked exits only",
         scanned: 0,
         signalsFound: 0,
         tradesExecuted: 0,

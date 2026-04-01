@@ -53,6 +53,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ sent: true });
   }
 
+  const existingConfig = await prisma.tradingConfig.findUnique({ where: { userId } });
+  if (!existingConfig) {
+    return NextResponse.json({ status: "ERROR", reason: "Please complete KoshPilot setup first" });
+  }
+  if (!existingConfig.enabled) {
+    await prisma.tradingConfig.update({ where: { userId }, data: { enabled: true } });
+  }
+
   const result = await runTradingCycle(userId);
   return NextResponse.json(result);
 }
