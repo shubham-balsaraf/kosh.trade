@@ -86,6 +86,8 @@ interface ScannedSignal {
   indicators: SignalIndicator[];
   source: "watchlist" | "discovered";
   discoveryReason: string | null;
+  decision: "TRADED" | "SKIPPED" | "NOT_EVALUATED";
+  decisionReason: string | null;
 }
 
 interface RunResult {
@@ -878,11 +880,15 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isPositive = signal.score > 0;
   const isBuy = signal.action === "BUY" || signal.action === "STRONG_BUY";
+  const isTraded = signal.decision === "TRADED";
+  const isSkipped = signal.decision === "SKIPPED";
 
   return (
     <div
       className={`rounded-xl border transition-all duration-300 cursor-pointer ${
-        expanded ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08]"
+        isTraded
+          ? "border-emerald-500/20 bg-emerald-500/[0.03]"
+          : expanded ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08]"
       }`}
       onClick={() => setExpanded(!expanded)}
     >
@@ -894,6 +900,16 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
             <Badge variant={isBuy ? "green" : signal.action === "HOLD" ? "gold" : signal.action === "SELL" || signal.action === "STRONG_SELL" ? "red" : "gray"}>
               {signal.action}
             </Badge>
+            {isTraded && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/15 text-emerald-400/90 border border-emerald-500/25">
+                EXECUTED
+              </span>
+            )}
+            {isSkipped && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-amber-500/10 text-amber-400/70 border border-amber-500/15">
+                SKIPPED
+              </span>
+            )}
             <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
               signal.source === "discovered"
                 ? "bg-purple-500/10 text-purple-400/80 border border-purple-500/20"
@@ -908,6 +924,12 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
             <span>Conf: {signal.confidence}%</span>
             <span>{signal.strategy}</span>
           </div>
+          {isSkipped && signal.decisionReason && (
+            <p className="text-[10px] text-amber-400/50 mt-1 leading-snug">{signal.decisionReason}</p>
+          )}
+          {isTraded && signal.decisionReason && (
+            <p className="text-[10px] text-emerald-400/60 mt-1 leading-snug">{signal.decisionReason}</p>
+          )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
           <div className="flex items-center gap-0.5">
@@ -982,6 +1004,7 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
 function MissionReport({ result, onClose }: { result: RunResult; onClose: () => void }) {
   const [showAllSignals, setShowAllSignals] = useState(false);
   const [filterSource, setFilterSource] = useState<"all" | "watchlist" | "discovered">("all");
+  const [filterDecision, setFilterDecision] = useState<"all" | "traded" | "skipped">("all");
 
   if (result.status === "ERROR") {
     return (
@@ -1010,7 +1033,12 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
   const signals = result.allSignals || [];
   const watchlistSignals = signals.filter((s) => s.source === "watchlist");
   const discoveredSignals = signals.filter((s) => s.source === "discovered");
-  const filteredSignals = filterSource === "all" ? signals : filterSource === "watchlist" ? watchlistSignals : discoveredSignals;
+  const tradedSignals = signals.filter((s) => s.decision === "TRADED");
+  const skippedSignals = signals.filter((s) => s.decision === "SKIPPED");
+
+  let filteredSignals = filterSource === "all" ? signals : filterSource === "watchlist" ? watchlistSignals : discoveredSignals;
+  if (filterDecision === "traded") filteredSignals = filteredSignals.filter((s) => s.decision === "TRADED");
+  else if (filterDecision === "skipped") filteredSignals = filteredSignals.filter((s) => s.decision === "SKIPPED");
   const shownSignals = showAllSignals ? filteredSignals : filteredSignals.slice(0, 8);
 
   return (
@@ -1061,22 +1089,45 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
       {/* Signal breakdown */}
       {signals.length > 0 && (
         <div className="space-y-3 pt-2 border-t border-white/[0.04]">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-1">
-              All Signals Analyzed ({filteredSignals.length})
-            </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-1">
+                All Signals Analyzed ({filteredSignals.length})
+              </p>
+              <div className="flex items-center gap-1">
+                {([
+                  { id: "all", label: "All", count: signals.length },
+                  { id: "watchlist", label: "Watchlist", count: watchlistSignals.length },
+                  { id: "discovered", label: "Discovered", count: discoveredSignals.length },
+                ] as const).map(({ id, label, count }) => (
+                  <button
+                    key={id}
+                    onClick={(e) => { e.stopPropagation(); setFilterSource(id); }}
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+                      filterSource === id
+                        ? id === "discovered" ? "bg-purple-500/15 text-purple-400/80 border border-purple-500/20"
+                          : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
+                        : "bg-white/[0.03] text-white/25 border border-white/[0.04] hover:border-white/[0.08]"
+                    }`}
+                  >
+                    {label} ({count})
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="flex items-center gap-1">
               {([
-                { id: "all", label: "All", count: signals.length },
-                { id: "watchlist", label: "Watchlist", count: watchlistSignals.length },
-                { id: "discovered", label: "Discovered", count: discoveredSignals.length },
-              ] as const).map(({ id, label, count }) => (
+                { id: "all" as const, label: "All Decisions", count: signals.length },
+                { id: "traded" as const, label: "Executed", count: tradedSignals.length },
+                { id: "skipped" as const, label: "Skipped", count: skippedSignals.length },
+              ]).map(({ id, label, count }) => (
                 <button
                   key={id}
-                  onClick={(e) => { e.stopPropagation(); setFilterSource(id); }}
+                  onClick={(e) => { e.stopPropagation(); setFilterDecision(id); }}
                   className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
-                    filterSource === id
-                      ? id === "discovered" ? "bg-purple-500/15 text-purple-400/80 border border-purple-500/20"
+                    filterDecision === id
+                      ? id === "traded" ? "bg-emerald-500/10 text-emerald-400/80 border border-emerald-500/20"
+                        : id === "skipped" ? "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
                         : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
                       : "bg-white/[0.03] text-white/25 border border-white/[0.04] hover:border-white/[0.08]"
                   }`}

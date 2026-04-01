@@ -36,8 +36,8 @@ export function getRiskProfile(profile: string): RiskProfileParams {
   switch (profile) {
     case "CONSERVATIVE":
       return {
-        minScore: 25,
-        minConfidence: 55,
+        minScore: 15,
+        minConfidence: 45,
         positionMultiplier: 0.6,
         riskRewardRatio: 3,
         atrMultiplier: 1.2,
@@ -49,8 +49,8 @@ export function getRiskProfile(profile: string): RiskProfileParams {
       };
     case "AGGRESSIVE":
       return {
-        minScore: 8,
-        minConfidence: 25,
+        minScore: 4,
+        minConfidence: 15,
         positionMultiplier: 1.4,
         riskRewardRatio: 1.5,
         atrMultiplier: 2,
@@ -62,8 +62,8 @@ export function getRiskProfile(profile: string): RiskProfileParams {
       };
     default: // MODERATE
       return {
-        minScore: 15,
-        minConfidence: 40,
+        minScore: 8,
+        minConfidence: 30,
         positionMultiplier: 1,
         riskRewardRatio: 2,
         atrMultiplier: 1.5,
@@ -189,23 +189,28 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       discoveryMap.set(d.ticker, `${d.source}: ${d.reason}`);
     }
 
-    const allSignals = rankedSignals.map((s) => ({
-      ticker: s.ticker,
-      action: s.action,
-      score: s.score,
-      confidence: s.confidence,
-      strategy: s.strategy,
-      price: s.price,
-      stopLoss: s.stopLoss,
-      takeProfit: s.takeProfit,
-      indicators: s.signals.map((ind) => ({
-        name: ind.name,
-        score: ind.score,
-        reason: ind.reason,
-      })),
-      source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
-      discoveryReason: discoveryMap.get(s.ticker) || null,
-    }));
+    const signalMap = new Map<string, any>();
+    for (const s of rankedSignals) {
+      signalMap.set(s.ticker, {
+        ticker: s.ticker,
+        action: s.action,
+        score: s.score,
+        confidence: s.confidence,
+        strategy: s.strategy,
+        price: s.price,
+        stopLoss: s.stopLoss,
+        takeProfit: s.takeProfit,
+        indicators: s.signals.map((ind) => ({
+          name: ind.name,
+          score: ind.score,
+          reason: ind.reason,
+        })),
+        source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
+        discoveryReason: discoveryMap.get(s.ticker) || null,
+        decision: "NOT_EVALUATED" as string,
+        decisionReason: "Beyond max new trades limit" as string | null,
+      });
+    }
 
     const details: any[] = [...exits];
     let tradesExecuted = 0;
@@ -213,22 +218,18 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
 
     for (const signal of rankedSignals.slice(0, maxNewTrades)) {
       if (openTickers.has(signal.ticker)) {
-        details.push({
-          ticker: signal.ticker,
-          action: "SKIP",
-          reason: `Already holding ${signal.ticker}`,
-          score: signal.score,
-        });
+        const skipReason = `Already holding ${signal.ticker}`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+        const sm = signalMap.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
         continue;
       }
 
       if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
-        details.push({
-          ticker: signal.ticker,
-          action: "SKIP",
-          reason: `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`,
-          score: signal.score,
-        });
+        const skipReason = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+        const sm = signalMap.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
         continue;
       }
 
@@ -244,12 +245,10 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       }, signal.confidence);
 
       if (position.rejected) {
-        details.push({
-          ticker: signal.ticker,
-          action: "SKIP",
-          reason: position.rejectReason,
-          score: signal.score,
-        });
+        const skipReason = position.rejectReason;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+        const sm = signalMap.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason || "Position sizing rejected"; }
         continue;
       }
 
@@ -285,6 +284,9 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         score: signal.score,
       });
 
+      const smTraded = signalMap.get(signal.ticker);
+      if (smTraded) { smTraded.decision = "TRADED"; smTraded.decisionReason = `Bought ${position.qty} shares`; }
+
       if (email) {
         sendTradeNotification(email, {
           ticker: signal.ticker,
@@ -305,7 +307,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       exitsExecuted: exits.length,
       details,
       discovered: discovered.length > 0 ? discovered : undefined,
-      allSignals,
+      allSignals: [...signalMap.values()],
     };
   } catch (e: any) {
     console.error("[Engine] Paper trading cycle failed:", e);
@@ -389,8 +391,10 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     const openTickers = new Set(openTrades.map((t) => t.ticker));
 
     const discoveryContext = new Map<string, string>();
+    const discoveryMap = new Map<string, string>();
     for (const d of discovered) {
       discoveryContext.set(d.ticker, d.reason);
+      discoveryMap.set(d.ticker, d.reason);
     }
 
     const aiConvictions = rankedSignals.length > 0
@@ -399,18 +403,47 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
 
     const portfolio = await getPortfolioSummary(alpacaConfig, userId);
 
+    const signalMapLive = new Map<string, any>();
+    for (const s of rankedSignals) {
+      signalMapLive.set(s.ticker, {
+        ticker: s.ticker,
+        action: s.action,
+        score: s.score,
+        confidence: s.confidence,
+        strategy: s.strategy,
+        price: s.price,
+        stopLoss: s.stopLoss,
+        takeProfit: s.takeProfit,
+        indicators: s.signals.map((ind) => ({
+          name: ind.name,
+          score: ind.score,
+          reason: ind.reason,
+        })),
+        source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
+        discoveryReason: discoveryMap.get(s.ticker) || null,
+        decision: "NOT_EVALUATED" as string,
+        decisionReason: "Beyond max new trades limit" as string | null,
+      });
+    }
+
     const details: any[] = [...exits];
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
 
     for (const signal of rankedSignals.slice(0, maxNewTrades)) {
       if (openTickers.has(signal.ticker)) {
-        details.push({ ticker: signal.ticker, action: "SKIP", reason: `Already holding ${signal.ticker}` });
+        const skipR = `Already holding ${signal.ticker}`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+        const sm = signalMapLive.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
         continue;
       }
 
       if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
-        details.push({ ticker: signal.ticker, action: "SKIP", reason: `Below ${config.riskProfile || "MODERATE"} threshold` });
+        const skipR = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+        const sm = signalMapLive.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
         continue;
       }
 
@@ -418,11 +451,10 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       const aiConfidence = aiVerdict?.conviction ? aiVerdict.conviction * 10 : 50;
 
       if (aiVerdict && aiVerdict.conviction < 4) {
-        details.push({
-          ticker: signal.ticker,
-          action: "SKIP",
-          reason: `AI conviction too low (${aiVerdict.conviction}/10): ${aiVerdict.reasoning}`,
-        });
+        const skipR = `AI conviction too low (${aiVerdict.conviction}/10): ${aiVerdict.reasoning}`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+        const sm = signalMapLive.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
         continue;
       }
 
@@ -451,6 +483,8 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         openTickers.add(signal.ticker);
         tradesExecuted++;
         sendTradeNotification(user.email, result).catch(() => {});
+        const sm = signalMapLive.get(signal.ticker);
+        if (sm) { sm.decision = "TRADED"; sm.decisionReason = `Bought ${result.qty} shares`; }
       }
     }
 
@@ -463,6 +497,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       exitsExecuted: exits.length,
       details,
       discovered: discovered.length > 0 ? discovered : undefined,
+      allSignals: [...signalMapLive.values()],
     };
   } catch (e: any) {
     console.error("[Engine] Trading cycle failed:", e);
