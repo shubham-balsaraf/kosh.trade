@@ -3,36 +3,23 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { prisma } from "@/lib/db";
 
-const FREE_STOCK_LIMIT = 15;
+const FREE_LIMIT = 15;
+const PRO_LIMIT = 999;
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const userId = (session.user as any).id;
-  const tier = (session.user as any).tier;
-  const role = (session.user as any).role;
-  const isPro = role === "ADMIN" || tier === "PRO";
+  const user = session.user as any;
+  const isPro = user.role === "ADMIN" || user.tier === "PRO";
 
-  if (isPro) {
-    return NextResponse.json({ isPro: true, limit: null, used: 0, remaining: null });
-  }
-
-  const uniqueStocks = await prisma.searchHistory.findMany({
-    where: { userId },
-    select: { ticker: true },
-    distinct: ["ticker"],
+  const count = await prisma.searchHistory.count({
+    where: { userId: user.id },
   });
 
-  const used = uniqueStocks.length;
-
   return NextResponse.json({
-    isPro: false,
-    limit: FREE_STOCK_LIMIT,
-    used,
-    remaining: Math.max(0, FREE_STOCK_LIMIT - used),
-    tickers: uniqueStocks.map((s) => s.ticker),
+    used: count,
+    limit: isPro ? PRO_LIMIT : FREE_LIMIT,
+    isPro,
   });
 }

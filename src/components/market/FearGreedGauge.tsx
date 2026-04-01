@@ -168,15 +168,15 @@ export default function FearGreedGauge() {
 
   return (
     <div
-      className={`bg-gray-900/50 border ${config.border} rounded-2xl p-5 shadow-lg ${config.glow} transition-all cursor-pointer`}
+      className={`bg-gray-900/50 border ${config.border} rounded-2xl p-4 sm:p-5 shadow-lg ${config.glow} transition-all cursor-pointer`}
       onClick={() => setExpanded(!expanded)}
     >
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Activity size={16} className={config.color} />
           <span className="text-sm font-semibold text-gray-300">Market Sentiment</span>
         </div>
-        <div className="text-right space-y-0.5">
+        <div className="flex items-center gap-3">
           {data.spyPrice != null && (
             <div>
               <span className="text-[10px] text-gray-500">SPY</span>
@@ -196,25 +196,34 @@ export default function FearGreedGauge() {
         </div>
       </div>
 
-      <GaugeSVG score={data.score} />
-
-      <div className="text-center mt-1">
-        <div className="text-3xl font-black text-white">{data.score}</div>
-        <div className={`text-sm font-bold ${config.color} mt-0.5`}>{data.rating}</div>
+      <div className="flex items-center gap-4 sm:gap-6">
+        <div className="shrink-0 w-[140px] sm:w-[180px]">
+          <GaugeSVG score={data.score} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-3xl sm:text-4xl font-black text-white">{data.score}</div>
+          <div className={`text-sm font-bold ${config.color} mt-0.5`}>{data.rating}</div>
+          {!expanded && data.signals.length > 0 && (
+            <div className="mt-2 space-y-1.5 hidden sm:block">
+              {data.signals.slice(0, 3).map((sig) => (
+                <SignalBar key={sig.name} signal={sig} />
+              ))}
+            </div>
+          )}
+          <p className="text-[10px] text-gray-600 mt-2">
+            {expanded ? "Tap to collapse" : "Tap for full breakdown"}
+          </p>
+        </div>
       </div>
 
       {expanded && data.signals.length > 0 && (
         <div className="mt-4 pt-4 border-t border-gray-800 space-y-2.5">
-          <p className="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-2">Indicators</p>
+          <p className="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-2">All Indicators</p>
           {data.signals.map((sig) => (
             <SignalBar key={sig.name} signal={sig} />
           ))}
         </div>
       )}
-
-      <p className="text-[10px] text-gray-700 text-center mt-3">
-        {expanded ? "Click to collapse" : "Click for breakdown"}
-      </p>
     </div>
   );
 }

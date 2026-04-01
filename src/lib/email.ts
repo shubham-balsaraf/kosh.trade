@@ -161,6 +161,60 @@ async function notifyNewSignup(userEmail: string, name: string) {
   }
 }
 
+export async function sendPasswordResetEmail(to: string, name: string, token: string) {
+  const from = `"Kosh.trade" <${process.env.SMTP_USER || "hello@kosh.trade"}>`;
+  const baseUrl = process.env.NEXTAUTH_URL || "https://kosh.trade";
+  const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+  const firstName = name?.split(" ")[0] || "there";
+
+  try {
+    const transporter = getTransporter();
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject: "Reset your Kosh.trade password",
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="text-align:center;margin-bottom:32px;">
+      <h1 style="color:#ffffff;font-size:28px;margin:0;">
+        <span style="color:#818cf8;">K</span>osh<span style="color:#6366f1;">.trade</span>
+      </h1>
+    </div>
+    <div style="background:#111118;border:1px solid #1f2937;border-radius:16px;padding:32px 24px;">
+      <h2 style="color:#ffffff;font-size:20px;margin:0 0 8px;">Password Reset</h2>
+      <p style="color:#9ca3af;font-size:14px;line-height:1.6;margin:0 0 24px;">
+        Hey ${firstName}, we received a request to reset your password. Click the button below to set a new password. This link expires in 1 hour.
+      </p>
+      <div style="text-align:center;margin:28px 0 16px;">
+        <a href="${resetUrl}" style="display:inline-block;background:#6366f1;color:#ffffff;font-size:15px;font-weight:600;padding:12px 32px;border-radius:12px;text-decoration:none;">
+          Reset Password
+        </a>
+      </div>
+      <p style="color:#4b5563;font-size:12px;text-align:center;margin:16px 0 0;">
+        If you didn't request this, you can safely ignore this email. Your password will remain unchanged.
+      </p>
+    </div>
+    <div style="text-align:center;margin-top:32px;">
+      <p style="color:#1f2937;font-size:10px;margin:0;">
+        &copy; ${new Date().getFullYear()} Kosh.trade
+      </p>
+    </div>
+  </div>
+</body>
+</html>`,
+    });
+    console.log(`[EMAIL] Password reset email sent to ${to}, messageId: ${info.messageId}`);
+    return true;
+  } catch (err: any) {
+    console.error("[EMAIL] Failed to send password reset email:", err?.message || err);
+    return false;
+  }
+}
+
 export async function sendRateLimitAlert(userEmail: string, reason: string) {
   try {
     const transporter = getTransporter();
