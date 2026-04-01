@@ -11,7 +11,178 @@ import {
   BarChart3, TrendingUp, TrendingDown, Globe, Users, Target,
   ChevronDown, ChevronUp, Radar, Search, Brain, Activity,
   Zap, Shield, ArrowUpRight, ArrowDownRight, Flame, Mountain, Gem, Clock,
+  CheckCircle2, Loader2, BarChart2, Gauge, Waves, LineChart,
 } from "lucide-react";
+
+const STRATEGY_INFO: Record<string, { label: string; description: string; icon: typeof Zap; color: string }> = {
+  MOMENTUM: {
+    label: "Momentum",
+    description: "Rides strong uptrends. Buys when price is above all moving averages with a golden cross (SMA20 > SMA50). Best in trending markets — follows the principle that stocks in motion tend to stay in motion.",
+    icon: TrendingUp,
+    color: "blue",
+  },
+  MEAN_REVERSION: {
+    label: "Mean Reversion",
+    description: "Catches oversold bounces. Buys when RSI drops below 35, signaling the stock has been sold off too aggressively. Expects price to snap back toward its average — a contrarian play on temporary mispricing.",
+    icon: Waves,
+    color: "purple",
+  },
+  SWING: {
+    label: "Swing",
+    description: "Captures multi-day price swings between support and resistance. Uses a blend of indicators when neither momentum nor mean reversion is dominant. Flexible strategy that adapts to mixed-signal environments.",
+    icon: LineChart,
+    color: "amber",
+  },
+};
+
+function StrategyTooltip({ strategy, children }: { strategy: string; children: React.ReactNode }) {
+  const [show, setShow] = useState(false);
+  const info = STRATEGY_INFO[strategy];
+  if (!info) return <>{children}</>;
+
+  const Icon = info.icon;
+  const colorCls = info.color === "blue"
+    ? "border-blue-500/20 bg-blue-500/5 text-blue-300/90"
+    : info.color === "purple"
+    ? "border-purple-500/20 bg-purple-500/5 text-purple-300/90"
+    : "border-amber-500/20 bg-amber-500/5 text-amber-300/90";
+  const iconCls = info.color === "blue" ? "text-blue-400/80" : info.color === "purple" ? "text-purple-400/80" : "text-amber-400/80";
+
+  return (
+    <div className="relative inline-block" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
+      {children}
+      {show && (
+        <div className={`absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 rounded-xl border backdrop-blur-xl shadow-2xl shadow-black/40 ${colorCls} animate-fade-slide-up`}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <Icon size={14} className={iconCls} />
+            <span className="font-bold text-xs">{info.label} Strategy</span>
+          </div>
+          <p className="text-[11px] leading-relaxed text-white/40">{info.description}</p>
+          <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r border-inherit bg-inherit -mt-1" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ScanStep {
+  icon: typeof Zap;
+  text: string;
+  done: boolean;
+  active: boolean;
+}
+
+function ScanLoadingAnimation({ type }: { type: "market" | "picks" }) {
+  const [steps, setSteps] = useState<ScanStep[]>([]);
+  const [currentStep, setCurrentStep] = useState(0);
+
+  const marketSteps = [
+    { icon: Search, text: "Scanning 20 stocks across Tech, Finance, Healthcare, Energy..." },
+    { icon: BarChart2, text: "Computing RSI, MACD, and Bollinger Bands for each..." },
+    { icon: TrendingUp, text: "Analyzing trend alignment — SMA 20, SMA 50, EMA 9..." },
+    { icon: Activity, text: "Measuring volume spikes and VWAP deviation..." },
+    { icon: Gauge, text: "Scoring momentum and support/resistance levels..." },
+    { icon: Radar, text: "Discovering opportunities from news, congress, insiders..." },
+    { icon: Brain, text: "Ranking and filtering the strongest signals..." },
+  ];
+
+  const picksSteps = [
+    { icon: Globe, text: "Loading 50+ stocks — AAPL, NVDA, JPM, LLY, XOM, WMT, BTC..." },
+    { icon: BarChart2, text: "Running 8 technical indicators on every stock..." },
+    { icon: Zap, text: "Identifying Sprint picks — momentum, oversold bounces, catalysts..." },
+    { icon: TrendingUp, text: "Finding Marathon picks — golden crosses, steady uptrends..." },
+    { icon: Gem, text: "Spotting Legacy picks — deep value, accumulation zones..." },
+    { icon: Radar, text: "Cross-referencing with news, insider, and congressional signals..." },
+    { icon: Brain, text: "Sorting and ranking the best buys by conviction..." },
+  ];
+
+  const allSteps = type === "market" ? marketSteps : picksSteps;
+
+  useEffect(() => {
+    setSteps(allSteps.map((s) => ({ ...s, done: false, active: false })));
+    setCurrentStep(0);
+
+    const interval = setInterval(() => {
+      setCurrentStep((prev) => {
+        const next = prev + 1;
+        if (next > allSteps.length) {
+          clearInterval(interval);
+          return prev;
+        }
+        return next;
+      });
+    }, 600);
+
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type]);
+
+  useEffect(() => {
+    setSteps(allSteps.map((s, i) => ({
+      ...s,
+      done: i < currentStep,
+      active: i === currentStep,
+    })));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep]);
+
+  const accentColor = type === "market" ? "purple" : "orange";
+  const pulseClass = type === "market" ? "text-purple-400" : "text-orange-400";
+
+  return (
+    <div className="py-6 px-4">
+      <div className="flex items-center justify-center gap-3 mb-6">
+        <Loader2 size={18} className={`${pulseClass} animate-spin`} />
+        <span className={`text-sm font-semibold ${pulseClass}`}>
+          {type === "market" ? "Scanning Market" : "Finding Best Picks"}
+        </span>
+      </div>
+
+      <div className="space-y-2 max-w-md mx-auto">
+        {steps.map((step, i) => {
+          const Icon = step.icon;
+          return (
+            <div
+              key={i}
+              className={`flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all duration-500 ${
+                step.done
+                  ? "opacity-100 bg-white/[0.02]"
+                  : step.active
+                  ? "opacity-100 bg-white/[0.04] border border-white/[0.06]"
+                  : "opacity-0 translate-y-2"
+              }`}
+              style={{ transitionDelay: `${i * 50}ms` }}
+            >
+              {step.done ? (
+                <CheckCircle2 size={15} className="text-emerald-400/70 shrink-0" />
+              ) : step.active ? (
+                <Icon size={15} className={`${pulseClass} shrink-0 animate-pulse`} />
+              ) : (
+                <div className="w-[15px] h-[15px] shrink-0" />
+              )}
+              <span className={`text-xs leading-snug ${
+                step.done ? "text-white/30" : step.active ? "text-white/60" : "text-white/15"
+              }`}>
+                {step.text}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center mt-6 gap-1">
+        {allSteps.map((_, i) => (
+          <div
+            key={i}
+            className={`h-1 rounded-full transition-all duration-300 ${
+              i < currentStep ? "w-6 bg-emerald-400/50" : i === currentStep ? `w-6 ${type === "market" ? "bg-purple-400/50" : "bg-orange-400/50"} animate-pulse` : "w-2 bg-white/[0.06]"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface SignalIndicator {
   name: string;
@@ -120,7 +291,9 @@ function PickCard({ pick, horizon }: { pick: BestPick; horizon: "sprint" | "mara
             <span className="text-white/50">${pick.price.toFixed(2)}</span>
             <span>Score: <span className="text-emerald-400/70">{pick.score.toFixed(1)}</span></span>
             <span>Conf: <span className="text-white/50">{pick.confidence}%</span></span>
-            <span className="text-white/20">{pick.strategy}</span>
+            <StrategyTooltip strategy={pick.strategy}>
+              <span className="text-white/20 cursor-help border-b border-dotted border-white/10">{pick.strategy}</span>
+            </StrategyTooltip>
           </div>
         </div>
         <div className="shrink-0 flex items-center gap-2">
@@ -312,15 +485,17 @@ function SignalBreakdownCard({ signal, defaultExpanded = false }: { signal: Tech
             <Badge variant={isBuy ? "green" : signal.action === "HOLD" ? "gold" : isSell ? "red" : "gray"}>
               {signal.action}
             </Badge>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
-              signal.strategy === "MOMENTUM"
-                ? "bg-blue-500/10 text-blue-400/80 border border-blue-500/20"
-                : signal.strategy === "MEAN_REVERSION"
-                ? "bg-purple-500/10 text-purple-400/80 border border-purple-500/20"
-                : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
-            }`}>
-              {signal.strategy}
-            </span>
+            <StrategyTooltip strategy={signal.strategy}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium cursor-help ${
+                signal.strategy === "MOMENTUM"
+                  ? "bg-blue-500/10 text-blue-400/80 border border-blue-500/20"
+                  : signal.strategy === "MEAN_REVERSION"
+                  ? "bg-purple-500/10 text-purple-400/80 border border-purple-500/20"
+                  : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
+              }`}>
+                {signal.strategy}
+              </span>
+            </StrategyTooltip>
             {signal.discoveryInfo && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-purple-500/10 text-purple-400/80 border border-purple-500/20">
                 {signal.discoveryInfo.source}
@@ -567,7 +742,9 @@ export default function SignalsPage() {
           </Button>
         </div>
 
-        {bestPicks && (bestPicks.sprint.length > 0 || bestPicks.marathon.length > 0 || bestPicks.legacy.length > 0) ? (
+        {bestPicksLoading && <ScanLoadingAnimation type="picks" />}
+
+        {!bestPicksLoading && bestPicks && (bestPicks.sprint.length > 0 || bestPicks.marathon.length > 0 || bestPicks.legacy.length > 0) ? (
           <div className="space-y-6">
             {bestPicksStats && (
               <div className="flex flex-wrap gap-2 mb-2">
@@ -644,7 +821,9 @@ export default function SignalsPage() {
           </Button>
         </div>
 
-        {marketSignals.length > 0 && (
+        {marketLoading && <ScanLoadingAnimation type="market" />}
+
+        {!marketLoading && marketSignals.length > 0 && (
           <div className="space-y-3">
             <div className="flex flex-wrap gap-2 mb-3">
               {[
