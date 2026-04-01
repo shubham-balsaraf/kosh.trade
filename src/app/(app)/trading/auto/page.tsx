@@ -1277,15 +1277,29 @@ function DiscoveriesSection({ discoveries }: { discoveries: DiscoveredTicker[] }
 
 interface EquityPoint { date: string; equity: number; }
 
-function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBalance: number }) {
+function EquityChart({ points, paperBalance, liveEquity }: { points: EquityPoint[]; paperBalance: number; liveEquity?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; date: string; value: number } | null>(null);
 
+  const displayPoints = useMemo(() => {
+    const pts = [...points];
+    if (liveEquity != null) {
+      const now = new Date().toISOString().slice(0, 10);
+      const lastIdx = pts.findIndex((p) => p.date === now);
+      if (lastIdx >= 0) {
+        pts[lastIdx] = { date: now, equity: Math.round(liveEquity * 100) / 100 };
+      } else {
+        pts.push({ date: now, equity: Math.round(liveEquity * 100) / 100 });
+      }
+    }
+    return pts;
+  }, [points, liveEquity]);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || points.length < 2) return;
+    if (!canvas || !container || displayPoints.length < 2) return;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
@@ -1304,12 +1318,12 @@ function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBal
     const cw = w - pad.left - pad.right;
     const ch = h - pad.top - pad.bottom;
 
-    const vals = points.map((p) => p.equity);
+    const vals = displayPoints.map((p) => p.equity);
     const minVal = Math.min(...vals, paperBalance) * 0.998;
     const maxVal = Math.max(...vals, paperBalance) * 1.002;
     const range = maxVal - minVal || 1;
 
-    const xStep = cw / (points.length - 1);
+    const xStep = cw / (displayPoints.length - 1);
 
     const toX = (i: number) => pad.left + i * xStep;
     const toY = (v: number) => pad.top + ch - ((v - minVal) / range) * ch;
@@ -1349,7 +1363,7 @@ function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBal
 
     ctx.beginPath();
     ctx.moveTo(toX(0), toY(vals[0]));
-    for (let i = 1; i < points.length; i++) {
+    for (let i = 1; i < displayPoints.length; i++) {
       const xm = (toX(i - 1) + toX(i)) / 2;
       ctx.bezierCurveTo(xm, toY(vals[i - 1]), xm, toY(vals[i]), toX(i), toY(vals[i]));
     }
@@ -1360,24 +1374,36 @@ function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBal
     const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + ch);
     grad.addColorStop(0, gradTop);
     grad.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.lineTo(toX(points.length - 1), pad.top + ch);
+    ctx.lineTo(toX(displayPoints.length - 1), pad.top + ch);
     ctx.lineTo(toX(0), pad.top + ch);
     ctx.closePath();
     ctx.fillStyle = grad;
     ctx.fill();
 
-    const labelCount = Math.min(5, points.length);
-    const labelStep = Math.max(1, Math.floor((points.length - 1) / (labelCount - 1)));
+    const labelCount = Math.min(5, displayPoints.length);
+    const labelStep = Math.max(1, Math.floor((displayPoints.length - 1) / (labelCount - 1)));
     ctx.fillStyle = "rgba(255,255,255,0.15)";
     ctx.font = "9px system-ui";
     ctx.textAlign = "center";
-    for (let i = 0; i < points.length; i += labelStep) {
-      const d = new Date(points[i].date);
+    for (let i = 0; i < displayPoints.length; i += labelStep) {
+      const d = new Date(displayPoints[i].date);
       ctx.fillText(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), toX(i), h - 6);
     }
 
-    const lastX = toX(points.length - 1);
+    const lastX = toX(displayPoints.length - 1);
     const lastY = toY(lastVal);
+
+    if (liveEquity != null) {
+      const pulseRadius = 10;
+      const pulseGrad = ctx.createRadialGradient(lastX, lastY, 0, lastX, lastY, pulseRadius);
+      pulseGrad.addColorStop(0, isUp ? "rgba(52,211,153,0.25)" : "rgba(248,113,113,0.25)");
+      pulseGrad.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.beginPath();
+      ctx.arc(lastX, lastY, pulseRadius, 0, Math.PI * 2);
+      ctx.fillStyle = pulseGrad;
+      ctx.fill();
+    }
+
     ctx.beginPath();
     ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
     ctx.fillStyle = lineColor;
@@ -1389,33 +1415,33 @@ function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBal
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.globalAlpha = 1;
-  }, [points, paperBalance]);
+  }, [displayPoints, paperBalance, liveEquity]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas || points.length < 2) return;
+    if (!canvas || displayPoints.length < 2) return;
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const pad = { left: 52, right: 12 };
     const cw = rect.width - pad.left - pad.right;
-    const xStep = cw / (points.length - 1);
+    const xStep = cw / (displayPoints.length - 1);
     const idx = Math.round((x - pad.left) / xStep);
-    if (idx >= 0 && idx < points.length) {
-      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, date: points[idx].date, value: points[idx].equity });
+    if (idx >= 0 && idx < displayPoints.length) {
+      setTooltip({ x: e.clientX - rect.left, y: e.clientY - rect.top, date: displayPoints[idx].date, value: displayPoints[idx].equity });
     }
   };
 
-  if (points.length < 2) {
+  if (displayPoints.length < 2) {
     return (
       <div className="glass-card p-6 text-center">
         <BarChart3 size={20} className="mx-auto text-white/8 mb-2" />
-        <p className="text-white/20 text-xs">Equity curve appears after your first closed trade</p>
+        <p className="text-white/20 text-xs">Equity curve appears after your first trade</p>
       </div>
     );
   }
 
-  const first = points[0].equity;
-  const last = points[points.length - 1].equity;
+  const first = displayPoints[0].equity;
+  const last = displayPoints[displayPoints.length - 1].equity;
   const totalReturn = ((last - first) / first) * 100;
 
   return (
@@ -1424,6 +1450,11 @@ function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBal
         <div className="flex items-center gap-2">
           <BarChart3 size={14} className="text-amber-400/70" />
           <h3 className="text-sm font-semibold text-white/60">Equity Curve</h3>
+          {liveEquity != null && (
+            <span className="flex items-center gap-1 text-[10px] text-emerald-400/50">
+              <Radio size={8} /> Live
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className={`text-xs font-bold ${totalReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
@@ -1488,7 +1519,7 @@ export default function AutoTradingPage() {
   useEffect(() => {
     if (openTickers.length === 0) return;
     fetchLiveQuotes();
-    const interval = setInterval(fetchLiveQuotes, 15000);
+    const interval = setInterval(fetchLiveQuotes, 10000);
     return () => clearInterval(interval);
   }, [openTickers, fetchLiveQuotes]);
 
@@ -1737,8 +1768,8 @@ export default function AutoTradingPage() {
         </div>
       </div>
 
-      {/* ─── Equity Chart ─── */}
-      <EquityChart points={equityHistory} paperBalance={config?.paperBalance || 10000} />
+      {/* ─── Equity Chart (Live) ─── */}
+      <EquityChart points={equityHistory} paperBalance={config?.paperBalance || 10000} liveEquity={openTrades.length > 0 ? liveEquity : undefined} />
 
       {/* ─── Weekly Target Tracker ─── */}
       {stats && config && (

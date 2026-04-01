@@ -789,6 +789,24 @@ function SignalBreakdownCard({ signal, defaultExpanded = false }: { signal: Tech
   );
 }
 
+/* ── Session cache helpers ───────────────────────────── */
+const CACHE_KEYS = {
+  market: "kosh:signals:market",
+  bestPicks: "kosh:signals:bestPicks",
+  intel: "kosh:signals:intel",
+  deepDive: "kosh:signals:deepDive",
+} as const;
+
+function saveToSession(key: string, data: unknown) {
+  try { sessionStorage.setItem(key, JSON.stringify(data)); } catch {}
+}
+function loadFromSession<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
 export default function SignalsPage() {
   const [ticker, setTicker] = useState("");
   const [data, setData] = useState<any>(null);
@@ -811,6 +829,34 @@ export default function SignalsPage() {
   const [intelLoading, setIntelLoading] = useState(false);
   const [intelStats, setIntelStats] = useState<{ totalSignals: number; totalTickers: number; signalCounts: Record<string, number> } | null>(null);
 
+  // Hydrate from session cache on mount
+  useEffect(() => {
+    const cached = {
+      market: loadFromSession<any>(CACHE_KEYS.market),
+      bestPicks: loadFromSession<any>(CACHE_KEYS.bestPicks),
+      intel: loadFromSession<any>(CACHE_KEYS.intel),
+      deepDive: loadFromSession<any>(CACHE_KEYS.deepDive),
+    };
+    if (cached.market) {
+      setMarketSignals(cached.market.signals || []);
+      setMarketDiscovered(cached.market.discovered || []);
+      setMarketScanned(cached.market.scanned || 0);
+    }
+    if (cached.bestPicks) {
+      setBestPicks({ sprint: cached.bestPicks.sprint || [], marathon: cached.bestPicks.marathon || [], legacy: cached.bestPicks.legacy || [] });
+      setBestPicksStats(cached.bestPicks.stats || null);
+    }
+    if (cached.intel) {
+      setNarratives(cached.intel.narratives || []);
+      setTickerTechnicals(cached.intel.tickerTechnicals || {});
+      setIntelStats(cached.intel.stats || null);
+    }
+    if (cached.deepDive) {
+      setData(cached.deepDive.data || null);
+      if (cached.deepDive.ticker) setTicker(cached.deepDive.ticker);
+    }
+  }, []);
+
   useEffect(() => {
     fetch("/api/signals")
       .then((r) => r.json())
@@ -826,6 +872,7 @@ export default function SignalsPage() {
       const res = await fetch(`/api/signals?ticker=${encodeURIComponent(ticker.trim().toUpperCase())}`);
       const json = await res.json();
       setData(json);
+      saveToSession(CACHE_KEYS.deepDive, { data: json, ticker: ticker.trim().toUpperCase() });
     } catch {
       setData(null);
     }
@@ -840,6 +887,7 @@ export default function SignalsPage() {
       setMarketSignals(json.signals || []);
       setMarketDiscovered(json.discovered || []);
       setMarketScanned(json.scanned || 0);
+      saveToSession(CACHE_KEYS.market, { signals: json.signals, discovered: json.discovered, scanned: json.scanned });
     } catch {
       setMarketSignals([]);
     }
@@ -855,8 +903,11 @@ export default function SignalsPage() {
         console.error("[BestPicks] API error:", json.error);
         setBestPicks(null);
       } else {
-        setBestPicks({ sprint: json.sprint || [], marathon: json.marathon || [], legacy: json.legacy || [] });
-        setBestPicksStats({ scanned: json.scanned || 0, totalBuySignals: json.totalBuySignals || 0, totalPicks: json.totalPicks || 0, signalDerived: json.signalDerived || 0 });
+        const picks = { sprint: json.sprint || [], marathon: json.marathon || [], legacy: json.legacy || [] };
+        const stats = { scanned: json.scanned || 0, totalBuySignals: json.totalBuySignals || 0, totalPicks: json.totalPicks || 0, signalDerived: json.signalDerived || 0 };
+        setBestPicks(picks);
+        setBestPicksStats(stats);
+        saveToSession(CACHE_KEYS.bestPicks, { ...picks, stats });
       }
     } catch (e) {
       console.error("[BestPicks] Fetch failed:", e);
@@ -873,13 +924,17 @@ export default function SignalsPage() {
       if (json.error) {
         console.error("[Intelligence] API error:", json.error);
       } else {
-        setNarratives(json.narratives || []);
-        setTickerTechnicals(json.tickerTechnicals || {});
-        setIntelStats({
+        const narrs = json.narratives || [];
+        const techs = json.tickerTechnicals || {};
+        const stats = {
           totalSignals: json.totalSignals || 0,
           totalTickers: json.totalTickers || 0,
           signalCounts: json.signalCounts || {},
-        });
+        };
+        setNarratives(narrs);
+        setTickerTechnicals(techs);
+        setIntelStats(stats);
+        saveToSession(CACHE_KEYS.intel, { narratives: narrs, tickerTechnicals: techs, stats });
       }
     } catch (e) {
       console.error("[Intelligence] Fetch failed:", e);
