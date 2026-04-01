@@ -79,7 +79,8 @@ export async function GET(req: NextRequest) {
     if (!config) {
       return NextResponse.json({ setup: false });
     }
-    return NextResponse.json(config);
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+    return NextResponse.json({ ...config, isPro: user?.role === "ADMIN" });
   }
 
   if (action === "trades") {

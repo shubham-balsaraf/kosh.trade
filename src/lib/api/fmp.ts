@@ -188,3 +188,31 @@ export async function getEarningsSurprises(ticker: string) {
 export async function getStockNews(ticker: string, limit = 10) {
   return fmpFetch<any[]>("/stock-news", { symbol: ticker.toUpperCase(), limit: String(limit) });
 }
+
+export async function getMarketNews(limit = 30) {
+  return fmpFetch<any[]>("/stock-news", { limit: String(limit) });
+}
+
+export async function getBulkInsiderTrading(limit = 50) {
+  return fmpFetch<any[]>("/insider-trading", { limit: String(limit) });
+}
+
+export async function getTopGainersLosers() {
+  const [gainers, losers] = await Promise.all([
+    fmpFetch<any[]>("/stock-screener", {
+      marketCapMoreThan: "500000000",
+      volumeMoreThan: "2000000",
+      changeMoreThan: "3",
+      limit: "15",
+      exchange: "NYSE,NASDAQ",
+    }),
+    fmpFetch<any[]>("/stock-screener", {
+      marketCapMoreThan: "500000000",
+      volumeMoreThan: "2000000",
+      changeLessThan: "-4",
+      limit: "15",
+      exchange: "NYSE,NASDAQ",
+    }),
+  ]);
+  return { gainers: gainers || [], losers: losers || [] };
+}

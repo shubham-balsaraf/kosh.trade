@@ -12,6 +12,7 @@ import {
   Search, Brain, ShieldCheck, ArrowRight, ArrowLeft, Sparkles,
   X, Plus, ChevronRight, AlertTriangle, RotateCcw,
   Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye, Radio,
+  Newspaper, Users, Landmark, CalendarDays, Radar, Crown,
 } from "lucide-react";
 
 interface TradingConfig {
@@ -60,6 +61,13 @@ interface AutoTrade {
   createdAt: string;
 }
 
+interface DiscoveredTicker {
+  ticker: string;
+  source: "screener" | "news" | "congress" | "insider" | "earnings";
+  reason: string;
+  urgency: number;
+}
+
 interface RunResult {
   status?: string;
   reason?: string;
@@ -68,6 +76,7 @@ interface RunResult {
   tradesExecuted?: number;
   exitsExecuted?: number;
   details?: any[];
+  discovered?: DiscoveredTicker[];
   error?: string;
 }
 
@@ -844,6 +853,140 @@ function PilotSplash({ onDone }: { onDone: () => void }) {
   );
 }
 
+const DISCOVERY_SOURCES = {
+  screener: { icon: Radar, label: "Screener", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
+  news: { icon: Newspaper, label: "News", color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
+  congress: { icon: Landmark, label: "Congress", color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
+  insider: { icon: Users, label: "Insider", color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+  earnings: { icon: CalendarDays, label: "Earnings", color: "text-cyan-400", bg: "bg-cyan-500/10 border-cyan-500/20" },
+} as const;
+
+function DiscoveriesSection({ discoveries, isPro }: { discoveries: DiscoveredTicker[]; isPro: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!isPro) {
+    return (
+      <div className="glass-card p-5 relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/[0.03] to-transparent pointer-events-none" />
+        <div className="relative z-10 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center justify-center">
+              <Radar size={18} className="text-amber-400/60" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white/60">Market Discovery</h3>
+                <Crown size={12} className="text-amber-400/70" />
+              </div>
+              <p className="text-xs text-white/20 mt-0.5">AI scans news, insider buys, congressional trades & market signals</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Lock size={14} className="text-amber-400/40" />
+            <span className="text-xs text-amber-400/60 font-medium">Pro</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!discoveries || discoveries.length === 0) {
+    return (
+      <div className="glass-card p-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/8 border border-amber-500/15 flex items-center justify-center">
+            <Radar size={18} className="text-amber-400/60" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-white/60">Market Discovery</h3>
+            <p className="text-xs text-white/20 mt-0.5">Run KoshPilot to discover opportunities from news, insiders, congress & screeners</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const shown = expanded ? discoveries : discoveries.slice(0, 5);
+  const sourceCounts = discoveries.reduce((acc, d) => {
+    acc[d.source] = (acc[d.source] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div className="glass-card p-5 space-y-4 animate-fade-slide-up">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Radar size={14} className="text-amber-400/70" />
+          <h3 className="text-sm font-semibold text-white/60">Discoveries</h3>
+          <span className="text-[10px] text-amber-400/50 bg-amber-500/[0.06] px-2 py-0.5 rounded-md font-medium">
+            {discoveries.length} found
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {Object.entries(sourceCounts).map(([source, count]) => {
+            const config = DISCOVERY_SOURCES[source as keyof typeof DISCOVERY_SOURCES];
+            if (!config) return null;
+            const Icon = config.icon;
+            return (
+              <span key={source} className={`inline-flex items-center gap-1 ${config.bg} border rounded-md px-1.5 py-0.5 text-[10px] ${config.color}`}>
+                <Icon size={10} /> {count}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {shown.map((d, i) => {
+          const config = DISCOVERY_SOURCES[d.source];
+          const Icon = config?.icon || Search;
+          return (
+            <div
+              key={`${d.ticker}-${i}`}
+              className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04] hover:border-white/[0.08] transition-all"
+            >
+              <StockLogo ticker={d.ticker} size={28} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-white/80 font-bold text-xs">{d.ticker}</span>
+                  <span className={`inline-flex items-center gap-1 ${config?.bg || ""} border rounded px-1.5 py-0.5 text-[9px] font-medium ${config?.color || "text-white/40"}`}>
+                    <Icon size={9} /> {config?.label || d.source}
+                  </span>
+                  {d.urgency >= 9 && (
+                    <span className="text-[9px] text-red-400/70 bg-red-500/[0.06] px-1.5 py-0.5 rounded font-medium">
+                      High Priority
+                    </span>
+                  )}
+                </div>
+                <p className="text-[10px] text-white/25 mt-0.5 truncate">{d.reason}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="flex items-center gap-0.5">
+                  {Array.from({ length: 5 }).map((_, j) => (
+                    <div
+                      key={j}
+                      className={`w-1 h-3 rounded-sm ${j < Math.ceil(d.urgency / 2) ? "bg-amber-400/60" : "bg-white/[0.06]"}`}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {discoveries.length > 5 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-xs text-white/25 hover:text-amber-400/60 transition-colors flex items-center gap-1 mx-auto"
+        >
+          {expanded ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {discoveries.length}</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface EquityPoint { date: string; equity: number; }
 
 function EquityChart({ points, paperBalance }: { points: EquityPoint[]; paperBalance: number }) {
@@ -1042,6 +1185,8 @@ export default function AutoTradingPage() {
   const [showModeSwitchConfirm, setShowModeSwitchConfirm] = useState(false);
   const [liveQuotes, setLiveQuotes] = useState<Record<string, LiveQuote>>({});
   const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
+  const [discoveries, setDiscoveries] = useState<DiscoveredTicker[]>([]);
+  const [isPro, setIsPro] = useState(false);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -1075,6 +1220,7 @@ export default function AutoTradingPage() {
       if (configData.setup === false) { setNeedsSetup(true); setLoading(false); return; }
       setConfig(configData);
       setNeedsSetup(false);
+      if (configData.isPro) setIsPro(true);
       const [statsRes, tradesRes, openRes, equityRes] = await Promise.all([
         fetch("/api/trading/auto?action=stats"),
         fetch("/api/trading/auto?action=trades&status=CLOSED"),
@@ -1112,7 +1258,9 @@ export default function AutoTradingPage() {
         await fetch("/api/trading/auto", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: true }) });
       }
       const res = await fetch("/api/trading/auto", { method: "POST" });
-      setRunResult(await res.json());
+      const result = await res.json();
+      setRunResult(result);
+      if (result.discovered?.length > 0) setDiscoveries(result.discovered);
       await fetchData();
     } catch (e: any) { setRunResult({ error: e.message || "Failed" }); }
     setRunning(false);
@@ -1413,6 +1561,9 @@ export default function AutoTradingPage() {
           </div>
         </div>
       )}
+
+      {/* ─── Discoveries ─── */}
+      <DiscoveriesSection discoveries={discoveries} isPro={isPro} />
 
       {/* ─── Standby Banner ─── */}
       {!config?.enabled && (

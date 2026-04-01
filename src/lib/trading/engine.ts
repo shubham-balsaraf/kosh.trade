@@ -5,6 +5,7 @@ import { calculatePosition, isMarketHours } from "./risk";
 import { executeEntry, checkExits, getPortfolioSummary } from "./executor";
 import { getAIConvictions, getDailyBriefing } from "./ai-analyst";
 import { sendTradeNotification, sendDailySummary } from "./notifications";
+import { discoverOpportunities, type DiscoveredTicker } from "./discovery";
 
 interface EngineResult {
   status: "OK" | "SKIPPED" | "ERROR";
@@ -14,6 +15,7 @@ interface EngineResult {
   tradesExecuted: number;
   exitsExecuted: number;
   details: any[];
+  discovered?: DiscoveredTicker[];
 }
 
 export interface RiskProfileParams {
@@ -90,7 +92,7 @@ async function getFullWatchlist(userId: string, configWatchlist: string[]): Prom
   return [...combined];
 }
 
-async function runPaperTradingCycle(userId: string, config: any, email: string | null): Promise<EngineResult> {
+async function runPaperTradingCycle(userId: string, config: any, email: string | null, isPro: boolean): Promise<EngineResult> {
   try {
     const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
@@ -144,7 +146,21 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     }
 
     const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
-    const scanResults = await scanMarket(fullWatchlist);
+
+    let discovered: DiscoveredTicker[] = [];
+    if (isPro) {
+      try {
+        discovered = await discoverOpportunities();
+      } catch (e) {
+        console.error("[Engine] Discovery failed (non-fatal):", e);
+      }
+    }
+    const discoveredTickers = discovered
+      .map((d) => d.ticker)
+      .filter((t) => !fullWatchlist.includes(t));
+    const allTickers = [...fullWatchlist, ...discoveredTickers.slice(0, 15)];
+
+    const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
 
     const currentOpen = await prisma.autoTrade.count({ where: { userId, status: "OPEN" } });
@@ -254,12 +270,13 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
 
     return {
       status: "OK",
-      reason: `Paper cycle: scanned ${scanResults.length} stocks, ${rankedSignals.length} signals, ${tradesExecuted} trades, ${exits.length} exits`,
+      reason: `Paper cycle: scanned ${scanResults.length} stocks (${discoveredTickers.length} discovered), ${rankedSignals.length} signals, ${tradesExecuted} trades, ${exits.length} exits`,
       scanned: scanResults.length,
       signalsFound: rankedSignals.length,
       tradesExecuted,
       exitsExecuted: exits.length,
       details,
+      discovered: discovered.length > 0 ? discovered : undefined,
     };
   } catch (e: any) {
     console.error("[Engine] Paper trading cycle failed:", e);
@@ -290,8 +307,10 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     return { status: "SKIPPED", reason: "Auto-trading not enabled", scanned: 0, signalsFound: 0, tradesExecuted: 0, exitsExecuted: 0, details: [] };
   }
 
+  const isPro = user.role === "ADMIN";
+
   if (config.mode === "PAPER") {
-    return runPaperTradingCycle(userId, config, user.email);
+    return runPaperTradingCycle(userId, config, user.email, isPro);
   }
 
   if (!user.alpacaApiKey && !process.env.ALPACA_API_KEY) {
@@ -321,7 +340,21 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     }
 
     const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
-    const scanResults = await scanMarket(fullWatchlist);
+
+    let discovered: DiscoveredTicker[] = [];
+    if (isPro) {
+      try {
+        discovered = await discoverOpportunities();
+      } catch (e) {
+        console.error("[Engine] Discovery failed (non-fatal):", e);
+      }
+    }
+    const discoveredTickers = discovered
+      .map((d) => d.ticker)
+      .filter((t) => !fullWatchlist.includes(t));
+    const allTickers = [...fullWatchlist, ...discoveredTickers.slice(0, 15)];
+
+    const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
 
     const openTrades = await prisma.autoTrade.findMany({
@@ -330,8 +363,13 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     });
     const openTickers = new Set(openTrades.map((t) => t.ticker));
 
+    const discoveryContext = new Map<string, string>();
+    for (const d of discovered) {
+      discoveryContext.set(d.ticker, d.reason);
+    }
+
     const aiConvictions = rankedSignals.length > 0
-      ? await getAIConvictions(rankedSignals)
+      ? await getAIConvictions(rankedSignals, discoveryContext)
       : new Map();
 
     const portfolio = await getPortfolioSummary(alpacaConfig, userId);
@@ -393,12 +431,13 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
 
     return {
       status: "OK",
-      reason: `Cycle complete: ${tradesExecuted} entries, ${exits.length} exits`,
+      reason: `Cycle complete: ${tradesExecuted} entries, ${exits.length} exits (${discoveredTickers.length} discovered)`,
       scanned: scanResults.length,
       signalsFound: rankedSignals.length,
       tradesExecuted,
       exitsExecuted: exits.length,
       details,
+      discovered: discovered.length > 0 ? discovered : undefined,
     };
   } catch (e: any) {
     console.error("[Engine] Trading cycle failed:", e);

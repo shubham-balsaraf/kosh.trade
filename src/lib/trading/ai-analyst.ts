@@ -11,11 +11,13 @@ interface AIVerdict {
 
 const SYSTEM_PROMPT = `You are a quantitative trading analyst for a short-term swing trading system.
 You receive technical signal data for stocks and must provide conviction scores.
+Some stocks include DISCOVERY context — catalysts from news, insider buys, congressional trades, screener spikes, or upcoming earnings. Weight these strongly in your conviction.
 
 Rules:
 - Score each stock 1-10 on conviction for a 2-10 day swing trade
 - 1-3 = avoid, 4-5 = weak, 6-7 = moderate, 8-10 = strong conviction
 - Focus on: momentum alignment, risk/reward ratio, sector trends, recent catalysts
+- Discovery context (insider buys, congressional trades, breaking news) should boost conviction when technicals align
 - Be conservative — protect capital first
 - No forward-looking statements or guarantees
 - Keep reasoning to 2 sentences max per stock
@@ -24,7 +26,8 @@ Respond ONLY in valid JSON array format:
 [{"ticker":"AAPL","conviction":7,"reasoning":"...","keyRisks":["..."],"catalyst":"..."}]`;
 
 export async function getAIConvictions(
-  signals: TradeSignal[]
+  signals: TradeSignal[],
+  discoveryContext?: Map<string, string>
 ): Promise<Map<string, AIVerdict>> {
   const results = new Map<string, AIVerdict>();
 
@@ -37,13 +40,18 @@ Give conviction scores 1-10 for each.
 
 ${top
   .map(
-    (s) =>
-      `${s.ticker}: Price $${s.price.toFixed(2)}, Signal ${s.action} (score ${s.score.toFixed(1)}), ` +
-      `RSI ${s.signals.find((x) => x.name === "RSI")?.reason || "N/A"}, ` +
-      `MACD ${s.signals.find((x) => x.name === "MACD")?.reason || "N/A"}, ` +
-      `Trend ${s.signals.find((x) => x.name === "Trend")?.reason || "N/A"}, ` +
-      `Stop $${s.stopLoss.toFixed(2)}, Target $${s.takeProfit.toFixed(2)}, ` +
-      `Strategy: ${s.strategy}`
+    (s) => {
+      let line =
+        `${s.ticker}: Price $${s.price.toFixed(2)}, Signal ${s.action} (score ${s.score.toFixed(1)}), ` +
+        `RSI ${s.signals.find((x) => x.name === "RSI")?.reason || "N/A"}, ` +
+        `MACD ${s.signals.find((x) => x.name === "MACD")?.reason || "N/A"}, ` +
+        `Trend ${s.signals.find((x) => x.name === "Trend")?.reason || "N/A"}, ` +
+        `Stop $${s.stopLoss.toFixed(2)}, Target $${s.takeProfit.toFixed(2)}, ` +
+        `Strategy: ${s.strategy}`;
+      const ctx = discoveryContext?.get(s.ticker);
+      if (ctx) line += `\n  DISCOVERY: ${ctx}`;
+      return line;
+    }
   )
   .join("\n")}`;
 
