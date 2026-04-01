@@ -94,6 +94,7 @@ async function getFullWatchlist(userId: string, configWatchlist: string[]): Prom
 
 async function runPaperTradingCycle(userId: string, config: any, email: string | null, isPro: boolean): Promise<EngineResult> {
   try {
+    console.log(`[Engine] Paper cycle for ${email || userId} | profile=${config.riskProfile || "MODERATE"} | isPro=${isPro} | watchlist=${config.watchlist?.length || 0} tickers`);
     const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
     const openTrades = await prisma.autoTrade.findMany({
@@ -159,9 +160,14 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       .map((d) => d.ticker)
       .filter((t) => !fullWatchlist.includes(t));
     const allTickers = [...fullWatchlist, ...discoveredTickers.slice(0, 15)];
+    console.log(`[Engine] Scanning ${allTickers.length} tickers (${fullWatchlist.length} watchlist + ${discoveredTickers.length} discovered)`);
 
     const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
+    console.log(`[Engine] Scan complete: ${scanResults.length} scanned → ${rankedSignals.length} actionable signals`);
+    if (rankedSignals.length > 0) {
+      console.log(`[Engine] Top signals: ${rankedSignals.slice(0, 5).map((s) => `${s.ticker}(${s.action},score=${s.score.toFixed(1)},strat=${s.strategy})`).join(" | ")}`);
+    }
 
     const currentOpen = await prisma.autoTrade.count({ where: { userId, status: "OPEN" } });
     const todayStart = new Date();

@@ -228,6 +228,9 @@ async function discoverFromEarnings(): Promise<DiscoveredTicker[]> {
 }
 
 export async function discoverOpportunities(): Promise<DiscoveredTicker[]> {
+  console.log("[Discovery] Starting market-wide scan across 5 sources...");
+  const startTime = Date.now();
+
   const results = await Promise.allSettled([
     discoverFromScreener(),
     discoverFromNews(),
@@ -236,9 +239,16 @@ export async function discoverOpportunities(): Promise<DiscoveredTicker[]> {
     discoverFromEarnings(),
   ]);
 
+  const sourceNames = ["Screener", "News", "Congress", "Insider", "Earnings"] as const;
   const all: DiscoveredTicker[] = [];
-  for (const r of results) {
-    if (r.status === "fulfilled") all.push(...r.value);
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      console.log(`[Discovery] ${sourceNames[i]}: ${r.value.length} tickers found${r.value.length > 0 ? ` → ${r.value.map((d) => d.ticker).join(", ")}` : ""}`);
+      all.push(...r.value);
+    } else {
+      console.error(`[Discovery] ${sourceNames[i]}: FAILED →`, r.reason);
+    }
   }
 
   const merged = new Map<string, DiscoveredTicker>();
@@ -252,7 +262,15 @@ export async function discoverOpportunities(): Promise<DiscoveredTicker[]> {
     }
   }
 
-  return [...merged.values()]
+  const final = [...merged.values()]
     .sort((a, b) => b.urgency - a.urgency)
     .slice(0, 25);
+
+  const elapsed = Date.now() - startTime;
+  console.log(`[Discovery] Complete in ${elapsed}ms — ${all.length} raw → ${final.length} unique tickers after dedup`);
+  if (final.length > 0) {
+    console.log(`[Discovery] Top 5: ${final.slice(0, 5).map((d) => `${d.ticker}(${d.source},urg=${d.urgency})`).join(" | ")}`);
+  }
+
+  return final;
 }
