@@ -1,36 +1,110 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Kosh
 
-## Getting Started
+A self-hosted trading intelligence platform that scans markets, identifies opportunities from multiple signal sources, and executes trades autonomously based on configurable risk profiles.
 
-First, run the development server:
+Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+**Live at [kosh.trade](https://kosh.trade)**
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                          kosh.trade (UI)                            │
+│                                                                     │
+│   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
+│   │Dashboard │  │ Signals  │  │Portfolio │  │    KoshPilot      │  │
+│   │          │  │          │  │          │  │  (Auto-Trading)   │  │
+│   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
+│        └──────────────┴─────────────┴─────────────────┘             │
+│                               │                                     │
+├───────────────────────────────┼─────────────────────────────────────┤
+│                        API Layer (Next.js)                          │
+│                               │                                     │
+│   ┌───────────────────────────┼───────────────────────────────┐     │
+│   │                           │                               │     │
+│   │  ┌─────────────┐  ┌──────┴──────┐  ┌──────────────────┐  │     │
+│   │  │  Signal      │  │  Trading    │  │  Stock Analysis  │  │     │
+│   │  │  Discovery   │  │  Engine     │  │  & Research      │  │     │
+│   │  └──────┬───────┘  └──────┬──────┘  └────────┬─────────┘  │     │
+│   │         │                 │                   │            │     │
+│   │  ┌──────┴───────┐  ┌─────┴───────┐  ┌───────┴────────┐   │     │
+│   │  │  AI Analyst  │  │  Risk Mgmt  │  │  Technical     │   │     │
+│   │  │  (Claude)    │  │  & Sizing   │  │  Scanner       │   │     │
+│   │  └──────────────┘  └─────────────┘  └────────────────┘   │     │
+│   │                                                           │     │
+│   └───────────────────────────────────────────────────────────┘     │
+│                               │                                     │
+├───────────────────────────────┼─────────────────────────────────────┤
+│                        Data Sources                                 │
+│                               │                                     │
+│   ┌──────────┐  ┌──────────┐  │  ┌──────────┐  ┌──────────────┐    │
+│   │   FMP    │  │  Yahoo   │  │  │ Finnhub  │  │  Claude AI   │    │
+│   │  API     │  │ Finance  │  │  │   API    │  │  (Anthropic) │    │
+│   └──────────┘  └──────────┘  │  └──────────┘  └──────────────┘    │
+│                               │                                     │
+└───────────────────────────────┼─────────────────────────────────────┘
+                                │
+                    ┌───────────┴───────────┐
+                    │   Raspberry Pi        │
+                    │                       │
+                    │  ┌─────────────────┐  │
+                    │  │  PostgreSQL     │  │
+                    │  │  (Prisma ORM)   │  │
+                    │  └─────────────────┘  │
+                    │  ┌─────────────────┐  │
+                    │  │  PM2 + Cron     │  │
+                    │  │  (Auto Cycles)  │  │
+                    │  └─────────────────┘  │
+                    └───────────────────────┘
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Features
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**KoshPilot — Autonomous Trading**
+- Signal-first market scanning across news, insider trades, congressional activity, M&A, sector rotation, and market movers
+- Technical analysis engine (RSI, MACD, Bollinger Bands, VWAP, volume, support/resistance)
+- AI-powered conviction scoring and market narrative generation
+- Risk-managed execution with stop-loss, take-profit, trailing stops, and position sizing
+- Three risk profiles: Conservative, Moderate, Aggressive
+- Cron-driven automation — runs on a schedule with zero human intervention
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Signals & Research**
+- Market-wide signal intelligence with narrative synthesis
+- Best-buy recommendations across short, medium, and long-term horizons
+- Stock deep-dive with technicals, fundamentals, earnings, insider activity
+- Congressional trade tracking
+- Dip finder and fear/greed monitoring
 
-## Learn More
+**Portfolio Management**
+- Multi-portfolio tracking with holdings and performance
+- Live equity graph with real-time price updates
+- AI-generated portfolio summaries
 
-To learn more about Next.js, take a look at the following resources:
+## Tech Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Layer | Tech |
+|-------|------|
+| Frontend | Next.js 16, React 19, Tailwind CSS, Recharts |
+| Backend | Next.js API Routes, TypeScript |
+| Database | PostgreSQL, Prisma ORM |
+| AI | Claude (Anthropic SDK) |
+| Market Data | FMP, Yahoo Finance, Finnhub |
+| Auth | NextAuth.js, Argon2 |
+| Payments | Stripe |
+| Infra | Raspberry Pi, PM2, Cron |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Setup
 
-## Deploy on Vercel
+```bash
+git clone https://github.com/shubham-balsaraf/kosh.git
+cd kosh
+npm install
+cp .env.example .env   # configure your API keys
+npx prisma db push
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## License
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Private — not open for redistribution.
