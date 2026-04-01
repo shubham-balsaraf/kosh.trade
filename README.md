@@ -10,20 +10,24 @@ Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
 
 ## Screenshots
 
+### Landing
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" width="100%" alt="Dashboard" />
+  <img src="docs/screenshots/landing.png" width="100%" alt="Landing Page" />
 </p>
 
+### Dashboard
 <p align="center">
-  <img src="docs/screenshots/koshpilot.png" width="100%" alt="KoshPilot — Autonomous Trading" />
+  <img src="docs/screenshots/dashboard.png" width="100%" alt="Dashboard — Market Sentiment, Congressional Trades" />
 </p>
 
+### KoshPilot — Autonomous Trading
 <p align="center">
-  <img src="docs/screenshots/signals.png" width="100%" alt="Signal Intelligence" />
+  <img src="docs/screenshots/koshpilot.png" width="100%" alt="KoshPilot — Live Equity Curve, Autopilot Status" />
 </p>
 
+### Signal Intelligence
 <p align="center">
-  <img src="docs/screenshots/stock.png" width="100%" alt="Stock Analysis" />
+  <img src="docs/screenshots/signals.png" width="100%" alt="Signals — AI Narratives, Macro Indicators" />
 </p>
 
 ---
