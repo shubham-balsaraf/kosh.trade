@@ -68,6 +68,26 @@ interface DiscoveredTicker {
   urgency: number;
 }
 
+interface SignalIndicator {
+  name: string;
+  score: number;
+  reason: string;
+}
+
+interface ScannedSignal {
+  ticker: string;
+  action: string;
+  score: number;
+  confidence: number;
+  strategy: string;
+  price: number;
+  stopLoss: number;
+  takeProfit: number;
+  indicators: SignalIndicator[];
+  source: "watchlist" | "discovered";
+  discoveryReason: string | null;
+}
+
 interface RunResult {
   status?: string;
   reason?: string;
@@ -77,6 +97,7 @@ interface RunResult {
   exitsExecuted?: number;
   details?: any[];
   discovered?: DiscoveredTicker[];
+  allSignals?: ScannedSignal[];
   error?: string;
 }
 
@@ -853,6 +874,239 @@ function PilotSplash({ onDone }: { onDone: () => void }) {
   );
 }
 
+function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal; defaultExpanded?: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const isPositive = signal.score > 0;
+  const isBuy = signal.action === "BUY" || signal.action === "STRONG_BUY";
+
+  return (
+    <div
+      className={`rounded-xl border transition-all duration-300 cursor-pointer ${
+        expanded ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08]"
+      }`}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="p-3 sm:p-4 flex items-center gap-3">
+        <StockLogo ticker={signal.ticker} size={28} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-white/90 font-bold text-xs">{signal.ticker}</span>
+            <Badge variant={isBuy ? "green" : signal.action === "HOLD" ? "gold" : signal.action === "SELL" || signal.action === "STRONG_SELL" ? "red" : "gray"}>
+              {signal.action}
+            </Badge>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+              signal.source === "discovered"
+                ? "bg-purple-500/10 text-purple-400/80 border border-purple-500/20"
+                : "bg-white/[0.04] text-white/30"
+            }`}>
+              {signal.source === "discovered" ? "Discovered" : "Watchlist"}
+            </span>
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-[10px] text-white/25">
+            <span>${signal.price.toFixed(2)}</span>
+            <span>Score: <span className={isPositive ? "text-emerald-400/70" : "text-red-400/70"}>{signal.score.toFixed(1)}</span></span>
+            <span>Conf: {signal.confidence}%</span>
+            <span>{signal.strategy}</span>
+          </div>
+        </div>
+        <div className="shrink-0 flex items-center gap-2">
+          <div className="flex items-center gap-0.5">
+            {Array.from({ length: 5 }).map((_, j) => (
+              <div
+                key={j}
+                className={`w-1 h-3 rounded-sm ${
+                  j < Math.ceil(Math.abs(signal.score) / 10)
+                    ? isPositive ? "bg-emerald-400/60" : "bg-red-400/60"
+                    : "bg-white/[0.06]"
+                }`}
+              />
+            ))}
+          </div>
+          {expanded ? <ChevronUp size={12} className="text-white/20" /> : <ChevronDown size={12} className="text-white/20" />}
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 pt-0 border-t border-white/[0.04] space-y-3 animate-fade-slide-up">
+          {signal.discoveryReason && (
+            <div className="mt-3 flex items-start gap-2 p-2.5 rounded-lg bg-purple-500/[0.04] border border-purple-500/10">
+              <Radar size={12} className="text-purple-400/70 shrink-0 mt-0.5" />
+              <p className="text-[10px] text-purple-300/60 leading-relaxed">{signal.discoveryReason}</p>
+            </div>
+          )}
+
+          <div className="mt-3 space-y-1.5">
+            <p className="text-[10px] text-white/25 uppercase tracking-wider font-semibold">Signal Breakdown</p>
+            {signal.indicators.map((ind) => {
+              const pct = Math.min(100, Math.abs(ind.score));
+              return (
+                <div key={ind.name} className="flex items-center gap-2">
+                  <span className="text-[10px] text-white/30 w-16 shrink-0 text-right font-medium">{ind.name}</span>
+                  <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        ind.score > 20 ? "bg-emerald-400/60" : ind.score > 0 ? "bg-emerald-400/30" : ind.score > -20 ? "bg-red-400/30" : "bg-red-400/60"
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className={`text-[10px] w-8 text-right font-mono ${ind.score > 0 ? "text-emerald-400/50" : ind.score < 0 ? "text-red-400/50" : "text-white/20"}`}>
+                    {ind.score > 0 ? "+" : ""}{ind.score.toFixed(0)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-4 text-[10px] text-white/20 pt-1">
+            <span className="text-white/15">Reason:</span>
+            {signal.indicators.filter((i) => Math.abs(i.score) > 10).slice(0, 3).map((i) => (
+              <span key={i.name} className="text-white/30">{i.reason}</span>
+            ))}
+          </div>
+
+          {signal.stopLoss > 0 && signal.takeProfit > 0 && (
+            <div className="flex items-center gap-4 text-[10px] pt-1">
+              <span className="text-red-400/40">SL ${signal.stopLoss.toFixed(2)}</span>
+              <span className="text-white/15">→</span>
+              <span className="text-emerald-400/40">TP ${signal.takeProfit.toFixed(2)}</span>
+              <span className="text-white/15">R:R {((signal.takeProfit - signal.price) / (signal.price - signal.stopLoss)).toFixed(1)}x</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MissionReport({ result, onClose }: { result: RunResult; onClose: () => void }) {
+  const [showAllSignals, setShowAllSignals] = useState(false);
+  const [filterSource, setFilterSource] = useState<"all" | "watchlist" | "discovered">("all");
+
+  if (result.status === "ERROR") {
+    return (
+      <div className="glass-card p-5 border-red-500/15 animate-scale-in">
+        <div className="flex items-start gap-3">
+          <AlertTriangle size={16} className="text-red-400/80 shrink-0 mt-0.5" />
+          <p className="text-red-300/80 text-xs flex-1">{result.reason || result.error}</p>
+          <button onClick={onClose} className="text-white/15 hover:text-white/40 shrink-0"><X size={14} /></button>
+        </div>
+      </div>
+    );
+  }
+
+  if (result.status === "SKIPPED") {
+    return (
+      <div className="glass-card p-5 border-amber-500/15 animate-scale-in">
+        <div className="flex items-start gap-3">
+          <Clock size={16} className="text-amber-400/80 shrink-0 mt-0.5" />
+          <p className="text-amber-300/80 text-xs flex-1">{result.reason}</p>
+          <button onClick={onClose} className="text-white/15 hover:text-white/40 shrink-0"><X size={14} /></button>
+        </div>
+      </div>
+    );
+  }
+
+  const signals = result.allSignals || [];
+  const watchlistSignals = signals.filter((s) => s.source === "watchlist");
+  const discoveredSignals = signals.filter((s) => s.source === "discovered");
+  const filteredSignals = filterSource === "all" ? signals : filterSource === "watchlist" ? watchlistSignals : discoveredSignals;
+  const shownSignals = showAllSignals ? filteredSignals : filteredSignals.slice(0, 8);
+
+  return (
+    <div className="glass-card p-5 border-amber-500/15 animate-scale-in space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Navigation size={16} className="text-amber-400/80" />
+          <p className="text-amber-300/90 font-semibold text-xs uppercase tracking-wider">Mission Report</p>
+        </div>
+        <button onClick={onClose} className="text-white/15 hover:text-white/40 transition-colors"><X size={14} /></button>
+      </div>
+
+      {/* Summary badges */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { icon: Search, val: result.scanned || 0, label: "scanned", color: "text-amber-400/70" },
+          { icon: Radar, val: discoveredSignals.length, label: "discovered", color: "text-purple-400/70" },
+          { icon: Brain, val: result.signalsFound || 0, label: "signals", color: "text-amber-400/70" },
+          { icon: TrendingUp, val: result.tradesExecuted || 0, label: "trades", color: "text-emerald-400/70" },
+          ...(result.exitsExecuted ? [{ icon: DollarSign, val: result.exitsExecuted, label: "exits", color: "text-white/40" }] : []),
+        ].map(({ icon: Icon, val, label, color }) => (
+          <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
+            <Icon size={12} className={color} />
+            <span className="text-white/80 font-semibold">{val}</span>
+            <span className="text-white/25">{label}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* Trade actions summary */}
+      {result.details && result.details.length > 0 && (
+        <div className="space-y-1 pt-1 border-t border-white/[0.04]">
+          <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-2">Actions Taken</p>
+          {result.details.map((d: any, i: number) => (
+            <div key={i} className="text-xs text-white/30 flex items-center gap-2">
+              <Badge variant={d.action === "BUY" ? "green" : d.action === "SELL" ? "red" : "gray"}>
+                {d.action}
+              </Badge>
+              <span className="text-white/70 font-medium">{d.ticker}</span>
+              {d.qty && <span>{d.qty} @ ${d.price?.toFixed(2)}</span>}
+              {d.pnl != null && <span className={d.pnl >= 0 ? "text-emerald-400/60" : "text-red-400/60"}>{d.pnl >= 0 ? "+" : ""}${d.pnl.toFixed(2)}</span>}
+              {d.reason && <span className="text-white/15 truncate">— {d.reason}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Signal breakdown */}
+      {signals.length > 0 && (
+        <div className="space-y-3 pt-2 border-t border-white/[0.04]">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-1">
+              All Signals Analyzed ({filteredSignals.length})
+            </p>
+            <div className="flex items-center gap-1">
+              {([
+                { id: "all", label: "All", count: signals.length },
+                { id: "watchlist", label: "Watchlist", count: watchlistSignals.length },
+                { id: "discovered", label: "Discovered", count: discoveredSignals.length },
+              ] as const).map(({ id, label, count }) => (
+                <button
+                  key={id}
+                  onClick={(e) => { e.stopPropagation(); setFilterSource(id); }}
+                  className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+                    filterSource === id
+                      ? id === "discovered" ? "bg-purple-500/15 text-purple-400/80 border border-purple-500/20"
+                        : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
+                      : "bg-white/[0.03] text-white/25 border border-white/[0.04] hover:border-white/[0.08]"
+                  }`}
+                >
+                  {label} ({count})
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            {shownSignals.map((signal, i) => (
+              <SignalCard key={`${signal.ticker}-${i}`} signal={signal} defaultExpanded={i === 0} />
+            ))}
+          </div>
+
+          {filteredSignals.length > 8 && (
+            <button
+              onClick={() => setShowAllSignals(!showAllSignals)}
+              className="text-xs text-white/25 hover:text-amber-400/60 transition-colors flex items-center gap-1 mx-auto"
+            >
+              {showAllSignals ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {filteredSignals.length} signals</>}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const DISCOVERY_SOURCES = {
   screener: { icon: Radar, label: "Screener", color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
   news: { icon: Newspaper, label: "News", color: "text-purple-400", bg: "bg-purple-500/10 border-purple-500/20" },
@@ -1475,64 +1729,7 @@ export default function AutoTradingPage() {
       )}
 
       {/* ─── Mission Report ─── */}
-      {runResult && (
-        <div className={`glass-card p-5 animate-scale-in ${
-          runResult.status === "ERROR" ? "border-red-500/15" : runResult.status === "SKIPPED" ? "border-amber-500/15" : "border-amber-500/15"
-        }`}>
-          <div className="flex items-start gap-3">
-            {runResult.status === "ERROR" ? (
-              <AlertTriangle size={16} className="text-red-400/80 shrink-0 mt-0.5" />
-            ) : runResult.status === "SKIPPED" ? (
-              <Clock size={16} className="text-amber-400/80 shrink-0 mt-0.5" />
-            ) : (
-              <Navigation size={16} className="text-amber-400/80 shrink-0 mt-0.5" />
-            )}
-            <div className="text-sm flex-1">
-              {runResult.status === "ERROR" ? (
-                <p className="text-red-300/80 text-xs">{runResult.reason || runResult.error}</p>
-              ) : runResult.status === "SKIPPED" ? (
-                <p className="text-amber-300/80 text-xs">{runResult.reason}</p>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-amber-300/90 font-semibold text-xs uppercase tracking-wider">Mission Report</p>
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { icon: Search, val: runResult.scanned || 0, label: "scanned", color: "text-amber-400/70" },
-                      { icon: Brain, val: runResult.signalsFound || 0, label: "signals", color: "text-amber-400/70" },
-                      { icon: TrendingUp, val: runResult.tradesExecuted || 0, label: "trades", color: "text-emerald-400/70" },
-                      ...(runResult.exitsExecuted ? [{ icon: DollarSign, val: runResult.exitsExecuted, label: "exits", color: "text-white/40" }] : []),
-                    ].map(({ icon: Icon, val, label, color }) => (
-                      <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
-                        <Icon size={12} className={color} />
-                        <span className="text-white/80 font-semibold">{val}</span>
-                        <span className="text-white/25">{label}</span>
-                      </span>
-                    ))}
-                  </div>
-                  {runResult.details && runResult.details.length > 0 && (
-                    <div className="space-y-1 pt-1">
-                      {runResult.details.slice(0, 5).map((d: any, i: number) => (
-                        <div key={i} className="text-xs text-white/30 flex items-center gap-2">
-                          <Badge variant={d.action === "BUY" ? "green" : d.action === "SELL" ? "red" : "gray"}>
-                            {d.action}
-                          </Badge>
-                          <span className="text-white/70 font-medium">{d.ticker}</span>
-                          {d.qty && <span>{d.qty} @ ${d.price?.toFixed(2)}</span>}
-                          {d.reason && <span className="text-white/15">- {d.reason}</span>}
-                        </div>
-                      ))}
-                      {runResult.details.length > 5 && <p className="text-white/15 text-xs">+ {runResult.details.length - 5} more</p>}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <button onClick={() => setRunResult(null)} className="text-white/15 hover:text-white/40 shrink-0 transition-colors">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+      {runResult && <MissionReport result={runResult} onClose={() => setRunResult(null)} />}
 
       {/* ─── Discoveries ─── */}
       <DiscoveriesSection discoveries={discoveries} />

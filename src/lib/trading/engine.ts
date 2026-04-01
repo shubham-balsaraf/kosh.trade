@@ -16,6 +16,7 @@ interface EngineResult {
   exitsExecuted: number;
   details: any[];
   discovered?: DiscoveredTicker[];
+  allSignals?: any[];
 }
 
 export interface RiskProfileParams {
@@ -183,6 +184,29 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     })).reduce((s, t) => s + (t.pnl || 0), 0);
     const currentEquity = paperBalance + totalPnl;
 
+    const discoveryMap = new Map<string, string>();
+    for (const d of discovered) {
+      discoveryMap.set(d.ticker, `${d.source}: ${d.reason}`);
+    }
+
+    const allSignals = rankedSignals.map((s) => ({
+      ticker: s.ticker,
+      action: s.action,
+      score: s.score,
+      confidence: s.confidence,
+      strategy: s.strategy,
+      price: s.price,
+      stopLoss: s.stopLoss,
+      takeProfit: s.takeProfit,
+      indicators: s.signals.map((ind) => ({
+        name: ind.name,
+        score: ind.score,
+        reason: ind.reason,
+      })),
+      source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
+      discoveryReason: discoveryMap.get(s.ticker) || null,
+    }));
+
     const details: any[] = [...exits];
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - currentOpen);
@@ -281,6 +305,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       exitsExecuted: exits.length,
       details,
       discovered: discovered.length > 0 ? discovered : undefined,
+      allSignals,
     };
   } catch (e: any) {
     console.error("[Engine] Paper trading cycle failed:", e);
