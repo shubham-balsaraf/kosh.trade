@@ -127,12 +127,14 @@ Provide a 3-4 sentence market briefing and top 2 trade ideas with reasoning. Be 
 
 const NARRATIVE_SYSTEM = `You are a market intelligence analyst who identifies actionable trading narratives from raw market signals.
 
-Given news headlines, insider trades, congressional activity, screener moves, and upcoming earnings, you must:
-1. Identify 3-6 distinct NARRATIVES — each connecting real events to sector/stock impact
+Given any combination of: news headlines, insider trades, congressional activity, market movers (price changes), and upcoming earnings — you must:
+1. Identify 3-6 distinct NARRATIVES — each connecting events or price action to sector/stock impact
 2. For each narrative, identify which stocks are DIRECTLY affected and could be traded
 3. Think in terms of cause and effect: "X happened → Y sector/stocks will move because Z"
 4. Include non-obvious second-order effects (e.g., Google AI chip → memory stocks down, cloud infra up)
 5. Every narrative must name specific tradeable tickers
+6. If you only have price movers without news, analyze the sector rotation patterns, momentum shifts, and relative strength to create narratives about what the market is telling us
+7. ALWAYS generate at least 3 narratives — if data is sparse, use the market mover data to identify sector themes
 
 Respond ONLY in valid JSON array. No markdown, no explanation outside JSON:
 [{
@@ -152,8 +154,7 @@ export async function generateMarketNarratives(signals: RawSignalBundle): Promis
 
   if (signals.news.length > 0) {
     const newsLines = signals.news
-      .filter((n) => n.urgency >= 5 || n.catalyst)
-      .slice(0, 20)
+      .slice(0, 25)
       .map((n) => `- "${n.title}"${n.ticker ? ` (${n.ticker})` : ""}${n.catalyst ? ` [${n.catalyst}]` : ""}`);
     if (newsLines.length > 0) sections.push(`NEWS HEADLINES:\n${newsLines.join("\n")}`);
   }

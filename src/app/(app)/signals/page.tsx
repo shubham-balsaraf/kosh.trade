@@ -15,22 +15,25 @@ import {
   Newspaper, AlertTriangle, Sparkles, ExternalLink,
 } from "lucide-react";
 
-const STRATEGY_INFO: Record<string, { label: string; description: string; icon: typeof Zap; color: string }> = {
+const STRATEGY_INFO: Record<string, { label: string; technical: string; simple: string; icon: typeof Zap; color: string }> = {
   MOMENTUM: {
     label: "Momentum",
-    description: "Rides strong uptrends. Buys when price is above all moving averages with a golden cross (SMA20 > SMA50). Best in trending markets — follows the principle that stocks in motion tend to stay in motion.",
+    technical: "Buys when price is above SMA20 & SMA50 with a golden cross confirmed. Targets stocks with strong trend alignment, bullish MACD, and healthy volume confirmation.",
+    simple: "Think of it like surfing — this strategy catches stocks that are already riding a big wave up and hops on before the wave is done. If everyone's buying, there's probably a good reason.",
     icon: TrendingUp,
     color: "blue",
   },
   MEAN_REVERSION: {
     label: "Mean Reversion",
-    description: "Catches oversold bounces. Buys when RSI drops below 35, signaling the stock has been sold off too aggressively. Expects price to snap back toward its average — a contrarian play on temporary mispricing.",
+    technical: "Triggers when RSI drops below 35, indicating oversold conditions. Expects a snap-back toward the moving average — a contrarian play on short-term mispricing with tight stop-losses.",
+    simple: "This is the \"buy the dip\" strategy, but smarter. When a good stock gets beaten down too hard and too fast, it usually bounces back. This catches that bounce before everyone else notices.",
     icon: Waves,
     color: "purple",
   },
   SWING: {
     label: "Swing",
-    description: "Captures multi-day price swings between support and resistance. Uses a blend of indicators when neither momentum nor mean reversion is dominant. Flexible strategy that adapts to mixed-signal environments.",
+    technical: "Uses a composite of RSI, MACD, Bollinger Bands, volume, and trend indicators when no single strategy dominates. Flexible multi-day holds between support and resistance zones.",
+    simple: "The all-rounder. When the market isn't screaming a clear direction, this strategy reads the room and makes calculated plays on stocks that are bouncing between predictable price levels.",
     icon: LineChart,
     color: "amber",
   },
@@ -50,12 +53,16 @@ function StrategyTooltip({ strategy, children }: { strategy: string; children: R
     <div className="relative inline-block" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
       {children}
       {show && (
-        <div className={`absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3.5 rounded-xl border bg-[#0d0f14] shadow-2xl shadow-black/60 ${borderCls} animate-fade-slide-up`}>
-          <div className="flex items-center gap-2 mb-2">
+        <div className={`absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-80 p-3.5 rounded-xl border bg-[#0d0f14] shadow-2xl shadow-black/60 ${borderCls} animate-fade-slide-up`}>
+          <div className="flex items-center gap-2 mb-2.5">
             <Icon size={14} className={iconCls} />
             <span className={`font-bold text-xs ${titleCls}`}>{info.label} Strategy</span>
           </div>
-          <p className="text-[11px] leading-relaxed text-white/55">{info.description}</p>
+          <p className="text-[10px] leading-relaxed text-white/50 font-medium">{info.technical}</p>
+          <div className={`mt-2.5 pt-2.5 border-t ${borderCls}`}>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/20">in plain english</span>
+            <p className="text-[10.5px] leading-relaxed text-white/60 mt-1 italic">{info.simple}</p>
+          </div>
           <div className={`absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r bg-[#0d0f14] ${borderCls} -mt-1`} />
         </div>
       )}

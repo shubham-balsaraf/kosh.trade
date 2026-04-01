@@ -1,4 +1,4 @@
-const FMP_BASE = "https://financialmodelingprep.com/stable";
+const FMP_BASE = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
 
 function apiKey(): string {
   return process.env.FMP_API_KEY || "";
@@ -72,6 +72,8 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 
 /* ── Core fetch with cache ───────────────────────────── */
 
+const FMP_FALLBACK = "https://financialmodelingprep.com/stable";
+
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
   if (!key) throw new Error("FMP_API_KEY is not configured");
@@ -80,40 +82,58 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
-  const url = new URL(`${FMP_BASE}${endpoint}`);
-  url.searchParams.set("apikey", key);
-  for (const [k, v] of Object.entries(params)) {
-    url.searchParams.set(k, v);
-  }
+  const bases = [FMP_BASE, FMP_FALLBACK];
+  let lastError = "";
 
-  const res = await fetch(url.toString(), { cache: "no-store" });
+  for (const base of bases) {
+    try {
+      const url = new URL(`${base}${endpoint}`);
+      url.searchParams.set("apikey", key);
+      for (const [k, v] of Object.entries(params)) {
+        url.searchParams.set(k, v);
+      }
 
-  if (res.status === 429) {
-    console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 1s`);
-    await new Promise((r) => setTimeout(r, 1000));
-    const retry = await fetch(url.toString(), { cache: "no-store" });
-    if (!retry.ok) throw new Error(`FMP API error: ${retry.status}`);
-    const retryJson = await retry.json();
-    if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {
-      throw new Error(retryJson["Error Message"]);
+      const res = await fetch(url.toString(), { cache: "no-store" });
+
+      if (res.status === 429) {
+        console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 1s`);
+        await new Promise((r) => setTimeout(r, 1000));
+        const retry = await fetch(url.toString(), { cache: "no-store" });
+        if (!retry.ok) { lastError = `${retry.status}`; continue; }
+        const retryJson = await retry.json();
+        if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {
+          lastError = retryJson["Error Message"]; continue;
+        }
+        setCache(cacheKey, retryJson, getCacheTTL(endpoint));
+        return retryJson;
+      }
+
+      if (res.status === 404 || res.status === 403) {
+        lastError = `${res.status} from ${base}`;
+        continue;
+      }
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
+        throw new Error(`FMP API error: ${res.status}`);
+      }
+
+      const json = await res.json();
+      if (json && typeof json === "object" && "Error Message" in json) {
+        lastError = json["Error Message"]; continue;
+      }
+
+      setCache(cacheKey, json, getCacheTTL(endpoint));
+      return json;
+    } catch (e: any) {
+      if (e.message?.includes("FMP API error")) throw e;
+      lastError = e.message || "unknown";
     }
-    setCache(cacheKey, retryJson, getCacheTTL(endpoint));
-    return retryJson;
   }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
-    throw new Error(`FMP API error: ${res.status}`);
-  }
-  const json = await res.json();
-  if (json && typeof json === "object" && "Error Message" in json) {
-    console.error(`[FMP] ${endpoint}: ${json["Error Message"]}`);
-    throw new Error(json["Error Message"]);
-  }
-
-  setCache(cacheKey, json, getCacheTTL(endpoint));
-  return json;
+  console.error(`[FMP] ${endpoint} failed on all bases: ${lastError}`);
+  throw new Error(`FMP API error: ${lastError}`);
 }
 
 /* ── Exported API methods ────────────────────────────── */

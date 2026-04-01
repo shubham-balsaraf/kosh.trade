@@ -161,6 +161,15 @@ export async function GET(req: NextRequest) {
     if (mode === "signal-intelligence") {
       console.log("[Signals] Running signal intelligence pipeline...");
 
+      // Step 1: Always scan core stocks via Yahoo (never fails)
+      const INTEL_UNIVERSE = [
+        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD",
+        "JPM", "GS", "UNH", "LLY", "XOM", "CVX", "LMT",
+        "WMT", "COST", "NFLX", "AVGO", "CRM", "PLTR",
+        "BTC-USD", "ETH-USD", "SOL-USD",
+        "SPY", "QQQ",
+      ];
+
       let rawSignals: Awaited<ReturnType<typeof getRawSignals>>;
       try {
         rawSignals = await getRawSignals();
@@ -170,6 +179,33 @@ export async function GET(req: NextRequest) {
         rawSignals = { news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [] };
       }
 
+      // Step 2: If FMP data is thin, enrich with Yahoo Finance scans
+      const hasSignalData = rawSignals.news.length + rawSignals.insiderBuys.length +
+        rawSignals.congressBuys.length + rawSignals.screenerMoves.length + rawSignals.earnings.length;
+
+      let baselineScans: ScanResult[] = [];
+      try {
+        baselineScans = await scanMarket(INTEL_UNIVERSE);
+        console.log(`[Signals] Yahoo baseline: ${baselineScans.length} stocks scanned`);
+      } catch (e) {
+        console.error("[Signals] Yahoo baseline scan failed:", e);
+      }
+
+      // Enrich screenerMoves from Yahoo data if FMP gave us nothing
+      if (rawSignals.screenerMoves.length === 0 && baselineScans.length > 0) {
+        const sorted = [...baselineScans].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent));
+        for (const s of sorted.slice(0, 16)) {
+          rawSignals.screenerMoves.push({
+            ticker: s.ticker,
+            changePct: s.changePercent,
+            volume: 0,
+            direction: s.changePercent >= 0 ? "gainer" : "loser",
+          });
+        }
+        console.log(`[Signals] Enriched screener with ${rawSignals.screenerMoves.length} Yahoo movers`);
+      }
+
+      // Step 3: Generate narratives
       let narratives: Awaited<ReturnType<typeof generateMarketNarratives>>;
       try {
         narratives = await generateMarketNarratives(rawSignals);
@@ -179,18 +215,33 @@ export async function GET(req: NextRequest) {
         narratives = [];
       }
 
-      const allAffectedTickers = new Set<string>();
-      for (const n of narratives) {
-        for (const t of n.affectedTickers) allAffectedTickers.add(t);
-        for (const t of n.triggerTickers) allAffectedTickers.add(t);
+      // Step 4: Build technicals map from baseline scans + any narrative tickers
+      let tickerTechnicals: Record<string, any> = {};
+      for (const scan of baselineScans) {
+        const sig = generateSignals(scan);
+        tickerTechnicals[scan.ticker] = {
+          price: sig.price,
+          action: sig.action,
+          score: sig.score,
+          confidence: sig.confidence,
+          strategy: sig.strategy,
+          rsi: scan.rsi,
+          changePercent: scan.changePercent,
+          volumeRatio: scan.volumeRatio,
+        };
       }
 
-      let tickerTechnicals: Record<string, any> = {};
-      const tickersToScan = [...allAffectedTickers].slice(0, 30);
-      if (tickersToScan.length > 0) {
+      // Scan any narrative tickers not already covered
+      const extraTickers = new Set<string>();
+      for (const n of narratives) {
+        for (const t of [...n.affectedTickers, ...n.triggerTickers]) {
+          if (!tickerTechnicals[t]) extraTickers.add(t);
+        }
+      }
+      if (extraTickers.size > 0) {
         try {
-          const scans = await scanMarket(tickersToScan);
-          for (const scan of scans) {
+          const extraScans = await scanMarket([...extraTickers].slice(0, 15));
+          for (const scan of extraScans) {
             const sig = generateSignals(scan);
             tickerTechnicals[scan.ticker] = {
               price: sig.price,
@@ -204,7 +255,7 @@ export async function GET(req: NextRequest) {
             };
           }
         } catch (e) {
-          console.error("[Signals] Technical scan for narratives failed:", e);
+          console.error("[Signals] Extra ticker scan failed:", e);
         }
       }
 
@@ -216,14 +267,19 @@ export async function GET(req: NextRequest) {
         earnings: rawSignals.earnings.length,
       };
 
-      console.log(`[Signals] Intelligence complete: ${narratives.length} narratives, ${allAffectedTickers.size} tickers identified`);
+      const totalTickers = new Set([
+        ...Object.keys(tickerTechnicals),
+        ...narratives.flatMap((n) => [...n.affectedTickers, ...n.triggerTickers]),
+      ]).size;
+
+      console.log(`[Signals] Intelligence complete: ${narratives.length} narratives, ${totalTickers} tickers, ${Object.keys(tickerTechnicals).length} with technicals`);
 
       return NextResponse.json({
         narratives,
         tickerTechnicals,
         signalCounts,
         totalSignals: Object.values(signalCounts).reduce((a, b) => a + b, 0),
-        totalTickers: allAffectedTickers.size,
+        totalTickers: totalTickers,
       });
     }
 
