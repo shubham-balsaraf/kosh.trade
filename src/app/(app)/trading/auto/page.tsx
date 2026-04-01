@@ -86,7 +86,7 @@ interface ScannedSignal {
   indicators: SignalIndicator[];
   source: "watchlist" | "discovered";
   discoveryReason: string | null;
-  decision: "TRADED" | "SKIPPED" | "NOT_EVALUATED";
+  decision: "TRADED" | "SKIPPED" | "NOT_EVALUATED" | "ADD_ON";
   decisionReason: string | null;
 }
 
@@ -881,12 +881,13 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
   const isPositive = signal.score > 0;
   const isBuy = signal.action === "BUY" || signal.action === "STRONG_BUY";
   const isTraded = signal.decision === "TRADED";
+  const isAddOn = signal.decision === "ADD_ON";
   const isSkipped = signal.decision === "SKIPPED";
 
   return (
     <div
       className={`rounded-xl border transition-all duration-300 cursor-pointer ${
-        isTraded
+        isTraded || isAddOn
           ? "border-emerald-500/20 bg-emerald-500/[0.03]"
           : expanded ? "border-white/[0.08] bg-white/[0.03]" : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08]"
       }`}
@@ -903,6 +904,11 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
             {isTraded && (
               <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-emerald-500/15 text-emerald-400/90 border border-emerald-500/25">
                 EXECUTED
+              </span>
+            )}
+            {isAddOn && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-blue-500/15 text-blue-400/90 border border-blue-500/25">
+                ADD-ON
               </span>
             )}
             {isSkipped && (
@@ -929,6 +935,9 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
           )}
           {isTraded && signal.decisionReason && (
             <p className="text-[10px] text-emerald-400/60 mt-1 leading-snug">{signal.decisionReason}</p>
+          )}
+          {isAddOn && signal.decisionReason && (
+            <p className="text-[10px] text-blue-400/60 mt-1 leading-snug">{signal.decisionReason}</p>
           )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
@@ -1033,11 +1042,11 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
   const signals = result.allSignals || [];
   const watchlistSignals = signals.filter((s) => s.source === "watchlist");
   const discoveredSignals = signals.filter((s) => s.source === "discovered");
-  const tradedSignals = signals.filter((s) => s.decision === "TRADED");
+  const tradedSignals = signals.filter((s) => s.decision === "TRADED" || s.decision === "ADD_ON");
   const skippedSignals = signals.filter((s) => s.decision === "SKIPPED");
 
   let filteredSignals = filterSource === "all" ? signals : filterSource === "watchlist" ? watchlistSignals : discoveredSignals;
-  if (filterDecision === "traded") filteredSignals = filteredSignals.filter((s) => s.decision === "TRADED");
+  if (filterDecision === "traded") filteredSignals = filteredSignals.filter((s) => s.decision === "TRADED" || s.decision === "ADD_ON");
   else if (filterDecision === "skipped") filteredSignals = filteredSignals.filter((s) => s.decision === "SKIPPED");
   const shownSignals = showAllSignals ? filteredSignals : filteredSignals.slice(0, 8);
 
@@ -1074,7 +1083,7 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
           <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-2">Actions Taken</p>
           {result.details.map((d: any, i: number) => (
             <div key={i} className="text-xs text-white/30 flex items-center gap-2">
-              <Badge variant={d.action === "BUY" ? "green" : d.action === "SELL" ? "red" : "gray"}>
+              <Badge variant={d.action === "BUY" || d.action === "ADD_ON" ? "green" : d.action === "SELL" ? "red" : "gray"}>
                 {d.action}
               </Badge>
               <span className="text-white/70 font-medium">{d.ticker}</span>

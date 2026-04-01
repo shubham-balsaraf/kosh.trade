@@ -30,6 +30,12 @@ export interface RiskProfileParams {
   maxDailyLossPct: number;
   maxOpenPositions: number;
   weeklyTargetPct: number;
+  maxPositionsPerTicker: number;
+  maxTickerExposurePct: number;
+  addToWinnerMinGainPct: number;
+  addToLoserMaxDropPct: number;
+  addScoreMultiplier: number;
+  addOnSizeMultiplier: number;
 }
 
 export function getRiskProfile(profile: string): RiskProfileParams {
@@ -46,6 +52,12 @@ export function getRiskProfile(profile: string): RiskProfileParams {
         maxDailyLossPct: 1,
         maxOpenPositions: 3,
         weeklyTargetPct: 5,
+        maxPositionsPerTicker: 1,
+        maxTickerExposurePct: 5,
+        addToWinnerMinGainPct: 999,
+        addToLoserMaxDropPct: 0,
+        addScoreMultiplier: 999,
+        addOnSizeMultiplier: 0,
       };
     case "AGGRESSIVE":
       return {
@@ -59,6 +71,12 @@ export function getRiskProfile(profile: string): RiskProfileParams {
         maxDailyLossPct: 5,
         maxOpenPositions: 10,
         weeklyTargetPct: 20,
+        maxPositionsPerTicker: 3,
+        maxTickerExposurePct: 20,
+        addToWinnerMinGainPct: 2,
+        addToLoserMaxDropPct: 8,
+        addScoreMultiplier: 1.0,
+        addOnSizeMultiplier: 0.6,
       };
     default: // MODERATE
       return {
@@ -72,6 +90,12 @@ export function getRiskProfile(profile: string): RiskProfileParams {
         maxDailyLossPct: 3,
         maxOpenPositions: 5,
         weeklyTargetPct: 10,
+        maxPositionsPerTicker: 2,
+        maxTickerExposurePct: 10,
+        addToWinnerMinGainPct: 3,
+        addToLoserMaxDropPct: 5,
+        addScoreMultiplier: 1.3,
+        addOnSizeMultiplier: 0.5,
       };
   }
 }
@@ -103,6 +127,21 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     });
 
     const openTickers = new Set(openTrades.map((t) => t.ticker));
+
+    interface HeldPosition { count: number; totalQty: number; totalCost: number; avgEntry: number; }
+    const heldPositions = new Map<string, HeldPosition>();
+    for (const t of openTrades) {
+      const existing = heldPositions.get(t.ticker);
+      const cost = (t.entryPrice || 0) * t.qty;
+      if (existing) {
+        existing.count++;
+        existing.totalQty += t.qty;
+        existing.totalCost += cost;
+        existing.avgEntry = existing.totalCost / existing.totalQty;
+      } else {
+        heldPositions.set(t.ticker, { count: 1, totalQty: t.qty, totalCost: cost, avgEntry: t.entryPrice || 0 });
+      }
+    }
 
     const exits: any[] = [];
     for (const trade of openTrades) {
@@ -216,13 +255,59 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - currentOpen);
 
-    for (const signal of rankedSignals.slice(0, maxNewTrades)) {
-      if (openTickers.has(signal.ticker)) {
-        const skipReason = `Already holding ${signal.ticker}`;
-        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
-        const sm = signalMap.get(signal.ticker);
-        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
-        continue;
+    for (const signal of rankedSignals.slice(0, maxNewTrades + riskProfile.maxPositionsPerTicker)) {
+      let isAddOn = false;
+      const held = heldPositions.get(signal.ticker);
+
+      if (held) {
+        if (riskProfile.maxPositionsPerTicker <= 1) {
+          const skipReason = `Already holding ${signal.ticker} (${config.riskProfile || "MODERATE"} doesn't allow adding)`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+          const sm = signalMap.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+          continue;
+        }
+
+        if (held.count >= riskProfile.maxPositionsPerTicker) {
+          const skipReason = `Max positions per ticker reached (${held.count}/${riskProfile.maxPositionsPerTicker})`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+          const sm = signalMap.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+          continue;
+        }
+
+        const currentExposurePct = (held.totalCost / currentEquity) * 100;
+        if (currentExposurePct >= riskProfile.maxTickerExposurePct) {
+          const skipReason = `Ticker exposure ${currentExposurePct.toFixed(1)}% exceeds ${riskProfile.maxTickerExposurePct}% limit`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+          const sm = signalMap.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+          continue;
+        }
+
+        const gainPct = ((signal.price - held.avgEntry) / held.avgEntry) * 100;
+        const isWinner = gainPct >= riskProfile.addToWinnerMinGainPct;
+        const isLoserDip = gainPct <= -riskProfile.addToLoserMaxDropPct && (signal.action === "BUY" || signal.action === "STRONG_BUY");
+
+        if (!isWinner && !isLoserDip) {
+          const skipReason = `Already holding (${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}% P&L) — need ≥+${riskProfile.addToWinnerMinGainPct}% to add or ≥-${riskProfile.addToLoserMaxDropPct}% dip with BUY signal`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+          const sm = signalMap.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+          continue;
+        }
+
+        const minScoreForAdd = riskProfile.minScore * riskProfile.addScoreMultiplier;
+        if (signal.score < minScoreForAdd) {
+          const skipReason = `Signal too weak to add (score ${signal.score.toFixed(1)} < ${minScoreForAdd.toFixed(0)} required for add-on)`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+          const sm = signalMap.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+          continue;
+        }
+
+        isAddOn = true;
+        console.log(`[Engine] ADD-ON eligible: ${signal.ticker} | held ${held.count}x, avg $${held.avgEntry.toFixed(2)}, P&L ${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}% | ${isWinner ? "pyramiding winner" : "averaging dip"}`);
       }
 
       if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
@@ -233,11 +318,12 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         continue;
       }
 
+      const positionPctMultiplier = isAddOn ? riskProfile.addOnSizeMultiplier : 1;
       const position = calculatePosition(signal, {
         portfolioValue: currentEquity,
-        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier,
+        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier * positionPctMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
-        maxOpenPositions: config.maxOpenPositions,
+        maxOpenPositions: config.maxOpenPositions + (isAddOn ? riskProfile.maxPositionsPerTicker : 0),
         currentOpenPositions: currentOpen + tradesExecuted,
         dayTradesUsed: 0,
         dailyPnl,
@@ -270,11 +356,21 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         },
       });
 
+      if (held) {
+        held.count++;
+        held.totalQty += position.qty;
+        held.totalCost += position.qty * signal.price;
+        held.avgEntry = held.totalCost / held.totalQty;
+      } else {
+        heldPositions.set(signal.ticker, { count: 1, totalQty: position.qty, totalCost: position.qty * signal.price, avgEntry: signal.price });
+      }
       openTickers.add(signal.ticker);
       tradesExecuted++;
+
+      const actionLabel = isAddOn ? "ADD_ON" : "BUY";
       details.push({
         ticker: signal.ticker,
-        action: "BUY",
+        action: actionLabel,
         qty: position.qty,
         price: signal.price,
         stopLoss: position.stopLoss,
@@ -285,15 +381,20 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       });
 
       const smTraded = signalMap.get(signal.ticker);
-      if (smTraded) { smTraded.decision = "TRADED"; smTraded.decisionReason = `Bought ${position.qty} shares`; }
+      if (smTraded) {
+        smTraded.decision = isAddOn ? "ADD_ON" : "TRADED";
+        smTraded.decisionReason = isAddOn
+          ? `Added ${position.qty} shares (now ${held ? held.totalQty : position.qty} total)`
+          : `Bought ${position.qty} shares`;
+      }
 
       if (email) {
         sendTradeNotification(email, {
           ticker: signal.ticker,
-          action: "BUY",
+          action: actionLabel,
           qty: position.qty,
           price: signal.price,
-          reason: `${signal.strategy} signal (score: ${signal.score.toFixed(1)})`,
+          reason: `${isAddOn ? "Add-on: " : ""}${signal.strategy} signal (score: ${signal.score.toFixed(1)})`,
         }).catch(() => {});
       }
     }
@@ -384,11 +485,25 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
 
-    const openTrades = await prisma.autoTrade.findMany({
+    const openTradesLive = await prisma.autoTrade.findMany({
       where: { userId, status: "OPEN" },
-      select: { ticker: true },
+      select: { ticker: true, entryPrice: true, qty: true },
     });
-    const openTickers = new Set(openTrades.map((t) => t.ticker));
+    const openTickers = new Set(openTradesLive.map((t) => t.ticker));
+
+    const heldPositionsLive = new Map<string, { count: number; totalQty: number; totalCost: number; avgEntry: number }>();
+    for (const t of openTradesLive) {
+      const cost = (t.entryPrice || 0) * t.qty;
+      const existing = heldPositionsLive.get(t.ticker);
+      if (existing) {
+        existing.count++;
+        existing.totalQty += t.qty;
+        existing.totalCost += cost;
+        existing.avgEntry = existing.totalCost / existing.totalQty;
+      } else {
+        heldPositionsLive.set(t.ticker, { count: 1, totalQty: t.qty, totalCost: cost, avgEntry: t.entryPrice || 0 });
+      }
+    }
 
     const discoveryContext = new Map<string, string>();
     const discoveryMap = new Map<string, string>();
@@ -430,13 +545,52 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
 
-    for (const signal of rankedSignals.slice(0, maxNewTrades)) {
-      if (openTickers.has(signal.ticker)) {
-        const skipR = `Already holding ${signal.ticker}`;
-        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
-        const sm = signalMapLive.get(signal.ticker);
-        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
-        continue;
+    for (const signal of rankedSignals.slice(0, maxNewTrades + riskProfile.maxPositionsPerTicker)) {
+      let isAddOn = false;
+      const held = heldPositionsLive.get(signal.ticker);
+
+      if (held) {
+        if (riskProfile.maxPositionsPerTicker <= 1) {
+          const skipR = `Already holding ${signal.ticker} (${config.riskProfile || "MODERATE"} doesn't allow adding)`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+          const sm = signalMapLive.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
+          continue;
+        }
+        if (held.count >= riskProfile.maxPositionsPerTicker) {
+          const skipR = `Max positions per ticker reached (${held.count}/${riskProfile.maxPositionsPerTicker})`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+          const sm = signalMapLive.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
+          continue;
+        }
+        const currentExposurePct = (held.totalCost / portfolio.equity) * 100;
+        if (currentExposurePct >= riskProfile.maxTickerExposurePct) {
+          const skipR = `Ticker exposure ${currentExposurePct.toFixed(1)}% exceeds ${riskProfile.maxTickerExposurePct}% limit`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+          const sm = signalMapLive.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
+          continue;
+        }
+        const gainPct = ((signal.price - held.avgEntry) / held.avgEntry) * 100;
+        const isWinner = gainPct >= riskProfile.addToWinnerMinGainPct;
+        const isLoserDip = gainPct <= -riskProfile.addToLoserMaxDropPct && (signal.action === "BUY" || signal.action === "STRONG_BUY");
+        if (!isWinner && !isLoserDip) {
+          const skipR = `Already holding (${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}% P&L) — need ≥+${riskProfile.addToWinnerMinGainPct}% to add or ≥-${riskProfile.addToLoserMaxDropPct}% dip with BUY signal`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+          const sm = signalMapLive.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
+          continue;
+        }
+        const minScoreForAdd = riskProfile.minScore * riskProfile.addScoreMultiplier;
+        if (signal.score < minScoreForAdd) {
+          const skipR = `Signal too weak to add (score ${signal.score.toFixed(1)} < ${minScoreForAdd.toFixed(0)} required for add-on)`;
+          details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
+          const sm = signalMapLive.get(signal.ticker);
+          if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
+          continue;
+        }
+        isAddOn = true;
       }
 
       if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
@@ -458,11 +612,12 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         continue;
       }
 
+      const positionPctMultiplier = isAddOn ? riskProfile.addOnSizeMultiplier : 1;
       const position = calculatePosition(signal, {
         portfolioValue: portfolio.equity,
-        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier,
+        maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier * positionPctMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
-        maxOpenPositions: config.maxOpenPositions,
+        maxOpenPositions: config.maxOpenPositions + (isAddOn ? riskProfile.maxPositionsPerTicker : 0),
         currentOpenPositions: portfolio.openPositions + tradesExecuted,
         dayTradesUsed: portfolio.dayTradesUsed,
         dailyPnl: portfolio.dailyPnl,
@@ -478,13 +633,27 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         signal.score
       );
 
-      details.push(result);
+      const actionLabel = isAddOn ? "ADD_ON" : result.action;
+      details.push({ ...result, action: actionLabel });
       if (result.action === "BUY") {
+        if (held) {
+          held.count++;
+          held.totalQty += result.qty || position.qty;
+          held.totalCost += (result.qty || position.qty) * signal.price;
+          held.avgEntry = held.totalCost / held.totalQty;
+        } else {
+          heldPositionsLive.set(signal.ticker, { count: 1, totalQty: result.qty || position.qty, totalCost: (result.qty || position.qty) * signal.price, avgEntry: signal.price });
+        }
         openTickers.add(signal.ticker);
         tradesExecuted++;
-        sendTradeNotification(user.email, result).catch(() => {});
+        sendTradeNotification(user.email, { ...result, action: actionLabel }).catch(() => {});
         const sm = signalMapLive.get(signal.ticker);
-        if (sm) { sm.decision = "TRADED"; sm.decisionReason = `Bought ${result.qty} shares`; }
+        if (sm) {
+          sm.decision = isAddOn ? "ADD_ON" : "TRADED";
+          sm.decisionReason = isAddOn
+            ? `Added ${result.qty || position.qty} shares (now ${held ? held.totalQty : position.qty} total)`
+            : `Bought ${result.qty || position.qty} shares`;
+        }
       }
     }
 
