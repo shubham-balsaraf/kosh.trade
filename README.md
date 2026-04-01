@@ -6,6 +6,28 @@ Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
 
 **Live at [kosh.trade](https://kosh.trade)**
 
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" width="100%" alt="Dashboard" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/koshpilot.png" width="100%" alt="KoshPilot — Autonomous Trading" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/signals.png" width="100%" alt="Signal Intelligence" />
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/stock.png" width="100%" alt="Stock Analysis" />
+</p>
+
+---
+
 ## Architecture
 
 ```
@@ -59,27 +81,37 @@ Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
                     └───────────────────────┘
 ```
 
+## How It Works
+
+**Signal Discovery** — Scans 12+ data sources every hour: market news, insider trades, congressional purchases, analyst upgrades/downgrades, M&A activity, sector performance, SEC filings, crypto markets, and market movers. Signals are aggregated and ranked by urgency.
+
+**AI Analysis** — Claude synthesizes raw signals into market narratives, identifies affected stocks (including second-order effects), and scores each opportunity with a conviction rating.
+
+**Technical Validation** — Every candidate runs through RSI, MACD, Bollinger Bands, VWAP, volume analysis, trend detection, and support/resistance levels before any trade is placed.
+
+**Autonomous Execution** — Trades are placed automatically with position sizing based on risk profile, stop-losses, take-profit targets, and trailing stops. The engine also monitors open positions and exits when conditions are met.
+
 ## Features
 
 **KoshPilot — Autonomous Trading**
-- Signal-first market scanning across news, insider trades, congressional activity, M&A, sector rotation, and market movers
-- Technical analysis engine (RSI, MACD, Bollinger Bands, VWAP, volume, support/resistance)
-- AI-powered conviction scoring and market narrative generation
-- Risk-managed execution with stop-loss, take-profit, trailing stops, and position sizing
-- Three risk profiles: Conservative, Moderate, Aggressive
-- Cron-driven automation — runs on a schedule with zero human intervention
+- Signal-first market scanning — discovers what to trade from signals, not from a fixed list
+- Risk-managed execution with three profiles: Conservative, Moderate, Aggressive
+- Position add-on policy for existing holdings
+- Live equity graph with real-time P&L tracking
+- Autopilot health monitoring — shows cron status, last run, signals scanned
+- Cron-driven on a Raspberry Pi — fully hands-off
 
 **Signals & Research**
-- Market-wide signal intelligence with narrative synthesis
-- Best-buy recommendations across short, medium, and long-term horizons
+- Market-wide signal intelligence with AI narrative synthesis
+- Best-buy recommendations across investment horizons
 - Stock deep-dive with technicals, fundamentals, earnings, insider activity
 - Congressional trade tracking
-- Dip finder and fear/greed monitoring
+- Dip finder and fear/greed index
 
 **Portfolio Management**
 - Multi-portfolio tracking with holdings and performance
-- Live equity graph with real-time price updates
 - AI-generated portfolio summaries
+- Price alerts and notifications
 
 ## Tech Stack
 
@@ -97,8 +129,8 @@ Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
 ## Setup
 
 ```bash
-git clone https://github.com/shubham-balsaraf/kosh.git
-cd kosh
+git clone https://github.com/shubham-balsaraf/kosh.trade.git
+cd kosh.trade
 npm install
 cp .env.example .env   # configure your API keys
 npx prisma db push
