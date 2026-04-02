@@ -5,7 +5,7 @@ import Card from "@/components/ui/Card";
 import StockLogo from "@/components/ui/StockLogo";
 import {
   Trophy, Target, RefreshCw, ChevronDown, Sparkles,
-  ArrowUpRight, Info, History, Radar, BarChart3,
+  Info, History, Radar, BarChart3,
   TrendingUp, TrendingDown, Shield, Crosshair, Clock,
 } from "lucide-react";
 import ProGate from "@/components/ui/ProGate";
@@ -182,10 +182,21 @@ function OutcomeBadge({ outcome }: { outcome: string }) {
   );
 }
 
+function PredictionArrow({ upside }: { upside: number }) {
+  const isUp = upside > 0;
+  return (
+    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold ${isUp ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+      {isUp ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+      {isUp ? "+" : ""}{upside}%
+    </div>
+  );
+}
+
 function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: boolean; onToggle: () => void }) {
   const holdCfg = HOLD_CONFIG[pick.holdPeriod] || HOLD_CONFIG.MEDIUM;
   const rankColors = ["text-amber-400", "text-gray-300", "text-amber-600"];
   const rankColor = pick.rank <= 3 ? rankColors[pick.rank - 1] : "text-white/30";
+  const isUp = pick.upsidePct > 0;
 
   return (
     <div className="glass-card border border-white/[0.04] hover:border-white/[0.08] transition-all duration-300">
@@ -208,27 +219,27 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
               <div className="w-28">
                 <ConvictionBar value={pick.conviction} />
               </div>
-              {pick.dataConfidence != null && (
+              {pick.dataConfidence != null && pick.dataConfidence > 0 && (
                 <ConfidenceGauge value={pick.dataConfidence} />
               )}
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-6 shrink-0">
-            <div className="text-right">
-              <p className="text-[10px] text-white/25">Current</p>
-              <p className="text-sm text-white font-semibold">${pick.currentPrice.toFixed(2)}</p>
+          <div className="hidden md:flex items-center gap-5 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p className="text-[10px] text-white/25">Now</p>
+                <p className="text-sm text-white font-semibold">${pick.currentPrice.toFixed(2)}</p>
+              </div>
+              <div className={`flex flex-col items-center px-1 ${isUp ? "text-emerald-400/40" : "text-red-400/40"}`}>
+                <span className="text-[8px] font-bold">→</span>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-white/25">Kosh Target</p>
+                <p className={`text-sm font-bold ${isUp ? "text-emerald-400" : "text-red-400"}`}>${pick.targetPrice.toFixed(2)}</p>
+              </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] text-white/25">Target</p>
-              <p className="text-sm text-emerald-400 font-semibold">${pick.targetPrice.toFixed(2)}</p>
-            </div>
-            <div className="text-right">
-              <p className="text-[10px] text-white/25">Upside</p>
-              <p className={`text-sm font-bold ${pick.upsidePct > 0 ? "text-emerald-400" : "text-red-400"}`}>
-                {pick.upsidePct > 0 ? "+" : ""}{pick.upsidePct}%
-              </p>
-            </div>
+            <PredictionArrow upside={pick.upsidePct} />
             <div className={`px-2.5 py-1 rounded-lg border text-[10px] font-semibold ${holdCfg.bg} ${holdCfg.color}`}>
               {pick.holdLabel}
             </div>
@@ -237,19 +248,27 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
           <ChevronDown size={16} className={`text-white/20 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
         </div>
 
-        <div className="md:hidden flex items-center gap-4 mt-3 text-xs">
+        <div className="md:hidden flex items-center gap-3 mt-3 text-xs">
           <span className="text-white/40">${pick.currentPrice.toFixed(2)}</span>
-          <ArrowUpRight size={12} className="text-white/20" />
-          <span className="text-emerald-400">${pick.targetPrice.toFixed(2)}</span>
-          <span className={`font-bold ${pick.upsidePct > 0 ? "text-emerald-400" : "text-red-400"}`}>
-            {pick.upsidePct > 0 ? "+" : ""}{pick.upsidePct}%
-          </span>
+          <span className={`text-[8px] ${isUp ? "text-emerald-400/40" : "text-red-400/40"}`}>→</span>
+          <span className={`font-semibold ${isUp ? "text-emerald-400" : "text-red-400"}`}>${pick.targetPrice.toFixed(2)}</span>
+          <PredictionArrow upside={pick.upsidePct} />
           <span className={`px-2 py-0.5 rounded border text-[10px] ${holdCfg.bg} ${holdCfg.color}`}>{pick.holdLabel}</span>
         </div>
       </button>
 
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3 border-t border-white/[0.04] pt-3 animate-fade-in">
+          <div className={`rounded-lg px-3 py-2.5 text-xs ${isUp ? "bg-emerald-500/5 border border-emerald-500/10" : "bg-red-500/5 border border-red-500/10"}`}>
+            <p className={`font-semibold mb-1 ${isUp ? "text-emerald-400" : "text-red-400"}`}>
+              Kosh Prediction: {pick.ticker} {isUp ? "will rise" : "may decline"} from ${pick.currentPrice.toFixed(2)} to ${pick.targetPrice.toFixed(2)} ({isUp ? "+" : ""}{pick.upsidePct}%)
+            </p>
+            <p className="text-white/30">
+              Hold period: {pick.holdLabel} · Based on {pick.signals.length} signal source{pick.signals.length > 1 ? "s" : ""} ({pick.signals.join(", ")})
+              {pick.dataConfidence != null && pick.dataConfidence > 0 ? ` · ${pick.dataConfidence}% data coverage` : ""}
+            </p>
+          </div>
+
           <div>
             <p className="text-[10px] text-white/25 uppercase tracking-wider mb-1.5">Investment Thesis</p>
             <p className="text-sm text-white/60 leading-relaxed">{pick.thesis}</p>
@@ -270,7 +289,7 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
               <p className="text-[10px] text-white/25 mb-1">Sector</p>
               <span className="text-xs text-white/50">{pick.sector}</span>
             </div>
-            {pick.dataConfidence != null && (
+            {pick.dataConfidence != null && pick.dataConfidence > 0 && (
               <div>
                 <p className="text-[10px] text-white/25 mb-1">Data Coverage</p>
                 <span className="text-xs text-white/50">{pick.dataConfidence}% of scoring dimensions had data</span>
@@ -666,16 +685,25 @@ export default function TopPicksPage() {
     setGeneratedAt(null);
     sessionStorage.removeItem(CACHE_KEY);
     try {
-      const res = await fetch("/api/top-picks", { method: "POST" });
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 150000);
+      const res = await fetch("/api/top-picks", {
+        method: "POST",
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
       const data = await res.json();
-      if (data.picks) {
+      if (data.picks?.length > 0) {
         setPicks(data.picks);
         setGeneratedAt(data.generatedAt);
         sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
-        fetchHistory();
-        fetchAlgoStats();
       }
-    } catch {}
+    } catch {
+      // POST may timeout but picks are persisted server-side
+    }
+    await fetchLatestPicks();
+    fetchHistory();
+    fetchAlgoStats();
     setLoading(false);
   }
 

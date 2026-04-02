@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth/options";
 import { prisma } from "@/lib/db";
 import { generateConvictionPicks, updatePickPerformance } from "@/lib/trading/conviction";
 
+export const maxDuration = 120;
+
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session) {
