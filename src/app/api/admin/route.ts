@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       tier: true,
       role: true,
       image: true,
+      bannedUntil: true,
       createdAt: true,
       _count: { select: { autoTrades: true, searchHistory: true } },
     },
@@ -71,6 +72,32 @@ export async function PATCH(req: NextRequest) {
       where: { id: userId },
       data: { tier },
       select: { id: true, email: true, tier: true, role: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (action === "restrict-user") {
+    const { userId } = body;
+    if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    const target = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } });
+    if (target?.email === ADMIN_EMAIL) {
+      return NextResponse.json({ error: "Cannot restrict admin" }, { status: 400 });
+    }
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { tier: "FREE", bannedUntil: new Date("2099-12-31") },
+      select: { id: true, email: true, tier: true, bannedUntil: true },
+    });
+    return NextResponse.json(updated);
+  }
+
+  if (action === "unrestrict-user") {
+    const { userId } = body;
+    if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { bannedUntil: null },
+      select: { id: true, email: true, tier: true, bannedUntil: true },
     });
     return NextResponse.json(updated);
   }

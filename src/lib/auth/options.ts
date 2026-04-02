@@ -100,6 +100,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).id = token.id;
         (session.user as any).tier = token.tier;
         (session.user as any).role = token.role;
+        (session.user as any).banned = token.banned;
       }
       return session;
     },
