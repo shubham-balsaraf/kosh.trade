@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import StockLogo from "@/components/ui/StockLogo";
 import DataFreshness from "@/components/ui/DataFreshness";
 import ProGate from "@/components/ui/ProGate";
+import { useTrackView } from "@/hooks/useTrackView";
 import { formatCurrency } from "@/lib/utils";
 import {
   BarChart3, TrendingUp, TrendingDown, Globe, Users, Target,
@@ -810,6 +811,7 @@ function loadFromSession<T>(key: string): T | null {
 }
 
 export default function SignalsPage() {
+  useTrackView("Signals");
   const [ticker, setTicker] = useState("");
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(false);

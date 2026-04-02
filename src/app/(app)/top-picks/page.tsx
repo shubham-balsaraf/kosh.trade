@@ -8,6 +8,7 @@ import {
   ArrowUpRight, Info, History, Radar,
 } from "lucide-react";
 import ProGate from "@/components/ui/ProGate";
+import { useTrackView } from "@/hooks/useTrackView";
 
 interface Pick {
   ticker: string;
@@ -327,6 +328,7 @@ function TrackRecordSection({ history, onRefresh }: { history: HistoryBatch[]; o
 }
 
 export default function TopPicksPage() {
+  useTrackView("Top Picks");
   const [picks, setPicks] = useState<Pick[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);

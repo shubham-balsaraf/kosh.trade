@@ -16,6 +16,7 @@ import {
   Newspaper, Users, Landmark, CalendarDays, Radar,
 } from "lucide-react";
 import ProGate from "@/components/ui/ProGate";
+import { useTrackView } from "@/hooks/useTrackView";
 
 interface TradingConfig {
   enabled: boolean;
@@ -1797,6 +1798,7 @@ function EquityChart({ points, paperBalance, liveEquity }: { points: EquityPoint
 }
 
 export default function AutoTradingPage() {
+  useTrackView("KoshPilot");
   const [config, setConfig] = useState<TradingConfig | null>(null);
   const [needsSetup, setNeedsSetup] = useState(false);
   const [showSplash, setShowSplash] = useState(true);

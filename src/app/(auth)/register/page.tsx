@@ -21,6 +21,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setError("");
     setErrorCode("");
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address (e.g. you@example.com)");
+      return;
+    }
+
     setLoading(true);
 
     try {

@@ -6,9 +6,11 @@ import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { formatCurrency } from "@/lib/utils";
 import ProGate from "@/components/ui/ProGate";
+import { useTrackView } from "@/hooks/useTrackView";
 import { TrendingDown, ArrowDown } from "lucide-react";
 
 export default function DipFinderPage() {
+  useTrackView("Dip Finder");
   const router = useRouter();
   const [stocks, setStocks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

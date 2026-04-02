@@ -14,6 +14,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    const trimmedEmail = email.trim().toLowerCase();
+
+    if (!emailRegex.test(trimmedEmail)) {
+      return NextResponse.json(
+        { error: "Please enter a valid email address (e.g. you@example.com)" },
+        { status: 400 }
+      );
+    }
+
+    const disposableDomains = ["mailinator.com", "tempmail.com", "throwaway.email", "guerrillamail.com", "yopmail.com", "10minutemail.com", "trashmail.com"];
+    const domain = trimmedEmail.split("@")[1];
+    if (disposableDomains.includes(domain)) {
+      return NextResponse.json(
+        { error: "Disposable email addresses are not allowed. Please use a real email." },
+        { status: 400 }
+      );
+    }
+
     if (password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters" },
@@ -22,7 +41,7 @@ export async function POST(req: NextRequest) {
     }
 
     const existing = await prisma.user.findUnique({
-      where: { email },
+      where: { email: trimmedEmail },
       include: { accounts: { select: { provider: true }, take: 1 } },
     });
     if (existing) {
@@ -54,13 +73,13 @@ export async function POST(req: NextRequest) {
       parallelism: 1,
     });
 
-    const userName = name || email.split("@")[0];
+    const userName = name || trimmedEmail.split("@")[0];
     const user = await prisma.user.create({
-      data: { email, passwordHash, name: userName },
+      data: { email: trimmedEmail, passwordHash, name: userName },
       select: { id: true, email: true, name: true },
     });
 
-    sendWelcomeEmail(email, userName).catch(() => {});
+    sendWelcomeEmail(trimmedEmail, userName).catch(() => {});
 
     return NextResponse.json(user, { status: 201 });
   } catch {

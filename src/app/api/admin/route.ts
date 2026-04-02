@@ -29,6 +29,46 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(settings);
   }
 
+  if (action === "user-activity") {
+    const userId = req.nextUrl.searchParams.get("userId");
+    if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+    const logs = await prisma.activityLog.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+      select: { id: true, action: true, detail: true, ip: true, userAgent: true, createdAt: true },
+    });
+    const loginCount = await prisma.activityLog.count({ where: { userId, action: "login" } });
+    const lastLogin = await prisma.activityLog.findFirst({
+      where: { userId, action: "login" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    });
+    const featureViews = await prisma.activityLog.groupBy({
+      by: ["detail"],
+      where: { userId, action: "page_view" },
+      _count: true,
+    });
+    return NextResponse.json({
+      logs,
+      loginCount,
+      lastLogin: lastLogin?.createdAt || null,
+      featureViews: featureViews.map((f) => ({ feature: f.detail, count: f._count })),
+    });
+  }
+
+  if (action === "activity-feed") {
+    const logs = await prisma.activityLog.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        id: true, action: true, detail: true, createdAt: true,
+        user: { select: { name: true, email: true } },
+      },
+    });
+    return NextResponse.json({ logs });
+  }
+
   const users = await prisma.user.findMany({
     select: {
       id: true,
@@ -39,15 +79,28 @@ export async function GET(req: NextRequest) {
       image: true,
       bannedUntil: true,
       createdAt: true,
-      _count: { select: { autoTrades: true, searchHistory: true } },
+      _count: { select: { autoTrades: true, searchHistory: true, activityLogs: true } },
     },
     orderBy: { createdAt: "desc" },
   });
 
+  const lastLogins = await prisma.activityLog.findMany({
+    where: { action: "login" },
+    orderBy: { createdAt: "desc" },
+    distinct: ["userId"],
+    select: { userId: true, createdAt: true },
+  });
+  const lastLoginMap = new Map(lastLogins.map((l) => [l.userId, l.createdAt]));
+
   const totalUsers = users.length;
   const proUsers = users.filter((u) => u.tier === "PRO" || u.role === "ADMIN").length;
 
-  return NextResponse.json({ users, totalUsers, proUsers });
+  const enriched = users.map((u) => ({
+    ...u,
+    lastLoginAt: lastLoginMap.get(u.id)?.toISOString() || null,
+  }));
+
+  return NextResponse.json({ users: enriched, totalUsers, proUsers });
 }
 
 export async function PATCH(req: NextRequest) {

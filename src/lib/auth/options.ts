@@ -65,6 +65,18 @@ export const authOptions: NextAuthOptions = {
       if (user.email) {
         sendWelcomeEmail(user.email, user.name || "").catch(() => {});
       }
+      if (user.id) {
+        prisma.activityLog.create({
+          data: { userId: user.id, action: "signup", detail: user.email || undefined },
+        }).catch(() => {});
+      }
+    },
+    async signIn({ user }) {
+      if (user.id) {
+        prisma.activityLog.create({
+          data: { userId: user.id, action: "login" },
+        }).catch(() => {});
+      }
     },
   },
   callbacks: {

@@ -21,6 +21,13 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setIsGoogleAccount(false);
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(email.trim())) {
+      setError("Please enter a valid email address");
+      return;
+    }
+
     setLoading(true);
 
     const result = await signIn("credentials", {
