@@ -24,8 +24,8 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const user = session?.user as any;
-  const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
   const isAdmin = user?.role === "ADMIN";
+  const isPro = isAdmin || (user?.tier === "PRO" && !user?.banned);
 
   return (
     <aside className={cn(

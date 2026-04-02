@@ -30,8 +30,8 @@ export default function BottomNav() {
   const { data: session } = useSession();
   const [showMore, setShowMore] = useState(false);
   const user = session?.user as any;
-  const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
   const isAdmin = user?.role === "ADMIN";
+  const isPro = isAdmin || (user?.tier === "PRO" && !user?.banned);
 
   const allMoreItems = isAdmin ? [...moreItems, adminItem] : moreItems;
   const moreActive = allMoreItems.some(({ href }) => pathname === href || pathname.startsWith(href + "/"));

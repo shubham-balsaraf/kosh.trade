@@ -19,8 +19,8 @@ export default function Navbar() {
   const searchRef = useRef<HTMLDivElement>(null);
 
   const user = session?.user as any;
-  const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
   const isAdmin = user?.role === "ADMIN";
+  const isPro = isAdmin || (user?.tier === "PRO" && !user?.banned);
 
   const fetchSuggestions = useCallback(async (q: string) => {
     if (q.length < 1) { setSuggestions([]); return; }

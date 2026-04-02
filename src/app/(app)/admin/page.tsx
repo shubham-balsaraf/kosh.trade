@@ -19,7 +19,6 @@ interface UserRow {
   tier: string;
   role: string;
   image: string | null;
-  bannedUntil: string | null;
   lastLoginAt: string | null;
   createdAt: string;
   _count: { autoTrades: number; searchHistory: number; activityLogs: number };
@@ -40,6 +39,18 @@ interface UserActivity {
   loginCount: number;
   lastLogin: string | null;
   featureViews: { feature: string; count: number }[];
+}
+
+interface Analytics {
+  totalPageViews: number;
+  weekPageViews: number;
+  totalLogins: number;
+  weekLogins: number;
+  activeUsersWeek: number;
+  featureBreakdown: { feature: string; count: number }[];
+  weekFeatureBreakdown: { feature: string; count: number }[];
+  dailyActivity: { date: string; count: number }[];
+  topUsers: { name: string; events: number }[];
 }
 
 const ACTION_LABELS: Record<string, { label: string; color: string }> = {
@@ -160,6 +171,127 @@ function UserDetailPanel({ userId, onClose }: { userId: string; onClose: () => v
   );
 }
 
+function AnalyticsDashboard() {
+  const [data, setData] = useState<Analytics | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin?action=analytics")
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <BarChart3 size={16} className="text-white/20" />
+          <h3 className="text-sm font-bold text-white">Analytics</h3>
+        </div>
+        <Loader2 size={16} className="animate-spin text-white/15 mx-auto my-6" />
+      </Card>
+    );
+  }
+
+  if (!data) return null;
+
+  const maxDaily = Math.max(...data.dailyActivity.map((d) => d.count), 1);
+  const totalFeatureViews = data.featureBreakdown.reduce((s, f) => s + f.count, 0) || 1;
+
+  return (
+    <Card className="p-5 space-y-5">
+      <div className="flex items-center gap-2">
+        <BarChart3 size={16} className="text-indigo-400/50" />
+        <h3 className="text-sm font-bold text-white">Platform Analytics</h3>
+      </div>
+
+      {/* Top stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <div className="p-3 bg-white/[0.02] rounded-xl text-center">
+          <p className="text-xl font-bold text-white">{data.activeUsersWeek}</p>
+          <p className="text-[9px] text-white/20 uppercase">Active This Week</p>
+        </div>
+        <div className="p-3 bg-white/[0.02] rounded-xl text-center">
+          <p className="text-xl font-bold text-emerald-300">{data.weekLogins}</p>
+          <p className="text-[9px] text-white/20 uppercase">Logins This Week</p>
+        </div>
+        <div className="p-3 bg-white/[0.02] rounded-xl text-center">
+          <p className="text-xl font-bold text-indigo-300">{data.weekPageViews}</p>
+          <p className="text-[9px] text-white/20 uppercase">Views This Week</p>
+        </div>
+        <div className="p-3 bg-white/[0.02] rounded-xl text-center">
+          <p className="text-xl font-bold text-white">{data.totalLogins}</p>
+          <p className="text-[9px] text-white/20 uppercase">Total Logins</p>
+        </div>
+        <div className="p-3 bg-white/[0.02] rounded-xl text-center">
+          <p className="text-xl font-bold text-white">{data.totalPageViews}</p>
+          <p className="text-[9px] text-white/20 uppercase">Total Views</p>
+        </div>
+      </div>
+
+      {/* Daily bar chart */}
+      <div>
+        <p className="text-[10px] text-white/25 font-semibold uppercase mb-3">Daily Activity (7 days)</p>
+        <div className="flex items-end gap-2 h-24">
+          {data.dailyActivity.map((d) => (
+            <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
+              <span className="text-[9px] text-white/30 font-bold">{d.count}</span>
+              <div
+                className="w-full bg-indigo-500/30 rounded-t-md transition-all"
+                style={{ height: `${Math.max(4, (d.count / maxDaily) * 80)}px` }}
+              />
+              <span className="text-[9px] text-white/20">{d.date}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Feature breakdown */}
+        <div>
+          <p className="text-[10px] text-white/25 font-semibold uppercase mb-2">Most Used Features (All Time)</p>
+          <div className="space-y-1.5">
+            {data.featureBreakdown.map((f) => (
+              <div key={f.feature} className="flex items-center gap-2">
+                <span className="text-[10px] text-white/40 w-24 shrink-0 truncate">{f.feature}</span>
+                <div className="flex-1 h-2 bg-white/[0.03] rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500/40 rounded-full"
+                    style={{ width: `${(f.count / totalFeatureViews) * 100}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-white/25 w-8 text-right">{f.count}</span>
+              </div>
+            ))}
+            {data.featureBreakdown.length === 0 && (
+              <p className="text-[10px] text-white/15 text-center py-2">No data yet</p>
+            )}
+          </div>
+        </div>
+
+        {/* Most active users */}
+        <div>
+          <p className="text-[10px] text-white/25 font-semibold uppercase mb-2">Most Active Users (This Week)</p>
+          <div className="space-y-1.5">
+            {data.topUsers.map((u, i) => (
+              <div key={i} className="flex items-center gap-2 p-2 bg-white/[0.015] rounded-lg">
+                <span className="text-[10px] font-bold text-amber-400/50 w-4">{i + 1}</span>
+                <span className="text-[10px] text-white/50 flex-1 truncate">{u.name}</span>
+                <span className="text-[9px] text-white/25">{u.events} events</span>
+              </div>
+            ))}
+            {data.topUsers.length === 0 && (
+              <p className="text-[10px] text-white/15 text-center py-2">No data yet</p>
+            )}
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
 function ActivityFeed() {
   const [logs, setLogs] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -224,6 +356,7 @@ export default function AdminPage() {
   const [gateEnabled, setGateEnabled] = useState(false);
   const [gateLoading, setGateLoading] = useState(false);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [tab, setTab] = useState<"users" | "analytics">("users");
 
   const fetchUsers = useCallback(async () => {
     try {
@@ -264,30 +397,10 @@ export default function AdminPage() {
     }
   }, [session, isAdmin, router, fetchUsers, fetchSettings]);
 
-  const toggleTier = async (userId: string, currentTier: string) => {
+  const toggleRestrict = async (userId: string, currentTier: string) => {
     setUpdating(userId);
     try {
-      const newTier = currentTier === "PRO" ? "FREE" : "PRO";
-      const res = await fetch("/api/admin", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "update-tier", userId, tier: newTier }),
-      });
-      if (res.ok) {
-        setUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, tier: newTier } : u))
-        );
-        setProUsers((prev) => (newTier === "PRO" ? prev + 1 : prev - 1));
-      }
-    } catch {} finally {
-      setUpdating(null);
-    }
-  };
-
-  const toggleRestrict = async (userId: string, isRestricted: boolean) => {
-    setUpdating(userId);
-    try {
-      const action = isRestricted ? "unrestrict-user" : "restrict-user";
+      const action = currentTier === "FREE" ? "unrestrict-user" : "restrict-user";
       const res = await fetch("/api/admin", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -296,12 +409,14 @@ export default function AdminPage() {
       if (res.ok) {
         const data = await res.json();
         setUsers((prev) =>
-          prev.map((u) =>
-            u.id === userId
-              ? { ...u, tier: data.tier, bannedUntil: data.bannedUntil }
-              : u
-          )
+          prev.map((u) => (u.id === userId ? { ...u, tier: data.tier } : u))
         );
+        const newProCount = users.filter((u) =>
+          u.id === userId
+            ? data.tier === "PRO" || u.role === "ADMIN"
+            : u.tier === "PRO" || u.role === "ADMIN"
+        ).length;
+        setProUsers(newProCount);
       }
     } catch {} finally {
       setUpdating(null);
@@ -345,6 +460,8 @@ export default function AdminPage() {
     );
   }
 
+  const restrictedCount = users.filter((u) => u.tier === "FREE" && u.role !== "ADMIN").length;
+
   return (
     <div className="space-y-6 max-w-5xl">
       {/* Header */}
@@ -360,13 +477,34 @@ export default function AdminPage() {
               <p className="text-xs text-white/30">God mode. Manage users, tiers, and feature access.</p>
             </div>
           </div>
-          <button
-            onClick={() => { setLoading(true); fetchUsers(); fetchSettings(); }}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white/70 text-xs transition-all"
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-white/[0.03] rounded-xl border border-white/[0.06] p-0.5">
+              <button
+                onClick={() => setTab("users")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  tab === "users" ? "bg-white/[0.06] text-white" : "text-white/30 hover:text-white/50"
+                }`}
+              >
+                <Users size={12} className="inline mr-1" />
+                Users
+              </button>
+              <button
+                onClick={() => setTab("analytics")}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  tab === "analytics" ? "bg-white/[0.06] text-white" : "text-white/30 hover:text-white/50"
+                }`}
+              >
+                <BarChart3 size={12} className="inline mr-1" />
+                Analytics
+              </button>
+            </div>
+            <button
+              onClick={() => { setLoading(true); fetchUsers(); fetchSettings(); }}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] text-white/40 hover:text-white/70 text-xs transition-all"
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -383,9 +521,9 @@ export default function AdminPage() {
           <p className="text-[10px] text-white/25 uppercase tracking-wider">Pro Users</p>
         </Card>
         <Card className="p-4 text-center">
-          <UserX size={18} className="mx-auto text-white/15 mb-1" />
-          <p className="text-2xl font-bold text-white">{totalUsers - proUsers}</p>
-          <p className="text-[10px] text-white/25 uppercase tracking-wider">Free Users</p>
+          <Ban size={18} className="mx-auto text-red-400/30 mb-1" />
+          <p className="text-2xl font-bold text-red-300">{restrictedCount}</p>
+          <p className="text-[10px] text-white/25 uppercase tracking-wider">Restricted</p>
         </Card>
         <Card className="p-4 text-center">
           <Activity size={18} className="mx-auto text-white/15 mb-1" />
@@ -394,180 +532,158 @@ export default function AdminPage() {
         </Card>
       </div>
 
-      {/* Activity Feed */}
-      <ActivityFeed />
+      {tab === "analytics" && <AnalyticsDashboard />}
 
-      {/* Feature Gate Toggle */}
-      <Card className={`p-5 border ${gateEnabled ? "border-red-500/20" : "border-white/[0.04]"}`}>
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              Pro Feature Gate
-              {gateEnabled && <Badge variant="red">ACTIVE</Badge>}
-            </h3>
-            <p className="text-xs text-white/30 mt-1">
-              {gateEnabled
-                ? "Pro features are BLOCKED for non-Pro users. Only Pro and Admin users can access gold features."
-                : "Pro features are currently accessible to all users (preview mode)."}
-            </p>
-          </div>
-          <button
-            onClick={toggleGate}
-            disabled={gateLoading}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
-              gateEnabled
-                ? "bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20"
-                : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20"
-            }`}
-          >
-            {gateLoading ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : gateEnabled ? (
-              <ToggleRight size={18} />
-            ) : (
-              <ToggleLeft size={18} />
-            )}
-            {gateEnabled ? "Disable Gate (Allow All)" : "Enable Gate (Block Free Users)"}
-          </button>
-        </div>
-      </Card>
+      {tab === "users" && (
+        <>
+          {/* Activity Feed */}
+          <ActivityFeed />
 
-      {/* User List */}
-      <Card className="p-5">
-        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <Users size={16} className="text-white/30" />
-            All Users ({filtered.length})
-          </h3>
-          <div className="relative">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" />
-            <input
-              type="text"
-              placeholder="Filter by email or name..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="pl-9 pr-4 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-sm text-white placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 w-64"
-            />
-          </div>
-        </div>
+          {/* Feature Gate Toggle */}
+          <Card className={`p-5 border ${gateEnabled ? "border-red-500/20" : "border-white/[0.04]"}`}>
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  Pro Feature Gate
+                  {gateEnabled && <Badge variant="red">ACTIVE</Badge>}
+                </h3>
+                <p className="text-xs text-white/30 mt-1">
+                  {gateEnabled
+                    ? "Pro features are BLOCKED for restricted (Free) users. Only Pro and Admin users can access gold features."
+                    : "All users currently have Pro access by default. Only individually restricted users are blocked."}
+                </p>
+              </div>
+              <button
+                onClick={toggleGate}
+                disabled={gateLoading}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs transition-all ${
+                  gateEnabled
+                    ? "bg-red-500/10 border border-red-500/20 text-red-300 hover:bg-red-500/20"
+                    : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 hover:bg-emerald-500/20"
+                }`}
+              >
+                {gateLoading ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : gateEnabled ? (
+                  <ToggleRight size={18} />
+                ) : (
+                  <ToggleLeft size={18} />
+                )}
+                {gateEnabled ? "Disable Gate" : "Enable Gate"}
+              </button>
+            </div>
+          </Card>
 
-        <div className="space-y-1.5">
-          {filtered.map((u) => {
-            const isRestricted = u.bannedUntil && new Date(u.bannedUntil) > new Date();
-            const isExpanded = expandedUser === u.id;
-            return (
-              <div key={u.id}>
-                <div
-                  className={`flex items-center justify-between p-3 rounded-xl transition-all ${
-                    isRestricted
-                      ? "bg-red-500/[0.03] border border-red-500/10"
-                      : u.role === "ADMIN"
-                        ? "bg-indigo-500/[0.04] border border-indigo-500/10"
-                        : u.tier === "PRO"
-                          ? "bg-amber-500/[0.03] border border-amber-500/8"
-                          : "bg-white/[0.015] border border-white/[0.04]"
-                  }`}
-                >
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
-                      isRestricted
-                        ? "bg-gradient-to-br from-red-800 to-red-900"
-                        : u.role === "ADMIN"
-                          ? "bg-gradient-to-br from-indigo-500 to-purple-600"
-                          : u.tier === "PRO"
-                            ? "bg-gradient-to-br from-amber-500 to-yellow-600"
-                            : "bg-white/[0.06]"
-                    }`}>
-                      {isRestricted ? <Ban size={14} /> : u.name?.[0]?.toUpperCase() || "?"}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className={`text-sm font-medium truncate ${isRestricted ? "text-red-300/70" : "text-white"}`}>{u.name || "No name"}</p>
-                        {u.role === "ADMIN" && <Badge variant="indigo">Admin</Badge>}
-                        {isRestricted && <Badge variant="red">Restricted</Badge>}
-                        {!isRestricted && u.tier === "PRO" && u.role !== "ADMIN" && <Badge variant="gold">Pro</Badge>}
-                        {!isRestricted && u.tier === "FREE" && u.role !== "ADMIN" && (
-                          <span className="text-[9px] text-white/20 font-medium px-1.5 py-0.5 bg-white/[0.03] rounded">FREE</span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-3 mt-0.5 flex-wrap">
-                        <span className="text-[10px] text-white/25 flex items-center gap-1">
-                          <Mail size={9} /> {u.email}
-                        </span>
-                        <span className="text-[10px] text-white/15 flex items-center gap-1">
-                          <Calendar size={9} /> {new Date(u.createdAt).toLocaleDateString()}
-                        </span>
-                        {u.lastLoginAt && (
-                          <span className="text-[10px] text-emerald-400/30 flex items-center gap-1">
-                            <LogIn size={9} /> {timeAgo(u.lastLoginAt)}
-                          </span>
-                        )}
-                        <span className="text-[10px] text-white/15">
-                          {u._count.autoTrades} trades · {u._count.searchHistory} searches · {u._count.activityLogs} events
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+          {/* User List */}
+          <Card className="p-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Users size={16} className="text-white/30" />
+                All Users ({filtered.length})
+              </h3>
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/20" />
+                <input
+                  type="text"
+                  placeholder="Filter by email or name..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="pl-9 pr-4 py-2 bg-white/[0.03] border border-white/[0.06] rounded-xl text-sm text-white placeholder:text-white/15 focus:outline-none focus:ring-1 focus:ring-white/10 w-64"
+                />
+              </div>
+            </div>
 
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => setExpandedUser(isExpanded ? null : u.id)}
-                      className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold text-white/20 hover:text-white/50 hover:bg-white/[0.03] transition-all"
-                      title="View activity"
+            <div className="space-y-1.5">
+              {filtered.map((u) => {
+                const isRestricted = u.tier === "FREE" && u.role !== "ADMIN";
+                const isExpanded = expandedUser === u.id;
+                return (
+                  <div key={u.id}>
+                    <div
+                      className={`flex items-center justify-between p-3 rounded-xl transition-all ${
+                        isRestricted
+                          ? "bg-red-500/[0.03] border border-red-500/10"
+                          : u.role === "ADMIN"
+                            ? "bg-indigo-500/[0.04] border border-indigo-500/10"
+                            : "bg-amber-500/[0.02] border border-amber-500/8"
+                      }`}
                     >
-                      <MousePointer size={11} />
-                      {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    </button>
-                    {u.role !== "ADMIN" && (
-                      <>
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
+                          isRestricted
+                            ? "bg-gradient-to-br from-red-800 to-red-900"
+                            : u.role === "ADMIN"
+                              ? "bg-gradient-to-br from-indigo-500 to-purple-600"
+                              : "bg-gradient-to-br from-amber-500 to-yellow-600"
+                        }`}>
+                          {isRestricted ? <Ban size={14} /> : u.name?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className={`text-sm font-medium truncate ${isRestricted ? "text-red-300/70" : "text-white"}`}>{u.name || "No name"}</p>
+                            {u.role === "ADMIN" && <Badge variant="indigo">Admin</Badge>}
+                            {isRestricted && <Badge variant="red">Restricted</Badge>}
+                            {!isRestricted && u.role !== "ADMIN" && <Badge variant="gold">Pro</Badge>}
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                            <span className="text-[10px] text-white/25 flex items-center gap-1">
+                              <Mail size={9} /> {u.email}
+                            </span>
+                            <span className="text-[10px] text-white/15 flex items-center gap-1">
+                              <Calendar size={9} /> {new Date(u.createdAt).toLocaleDateString()}
+                            </span>
+                            {u.lastLoginAt && (
+                              <span className="text-[10px] text-emerald-400/30 flex items-center gap-1">
+                                <LogIn size={9} /> {timeAgo(u.lastLoginAt)}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-white/15">
+                              {u._count.autoTrades} trades · {u._count.searchHistory} searches · {u._count.activityLogs} events
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
                         <button
-                          onClick={() => toggleRestrict(u.id, !!isRestricted)}
-                          disabled={updating === u.id}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                            isRestricted
-                              ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/15 hover:bg-emerald-500/20"
-                              : "bg-orange-500/10 text-orange-300 border border-orange-500/15 hover:bg-orange-500/20"
-                          }`}
+                          onClick={() => setExpandedUser(isExpanded ? null : u.id)}
+                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold text-white/20 hover:text-white/50 hover:bg-white/[0.03] transition-all"
+                          title="View activity"
                         >
-                          {updating === u.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : isRestricted ? (
-                            <><ShieldOff size={12} /> Unrestrict</>
-                          ) : (
-                            <><Ban size={12} /> Restrict</>
-                          )}
+                          <MousePointer size={11} />
+                          {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
                         </button>
-                        {!isRestricted && (
+                        {u.role !== "ADMIN" && (
                           <button
-                            onClick={() => toggleTier(u.id, u.tier)}
+                            onClick={() => toggleRestrict(u.id, u.tier)}
                             disabled={updating === u.id}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                              u.tier === "PRO"
-                                ? "bg-red-500/10 text-red-300 border border-red-500/15 hover:bg-red-500/20"
-                                : "bg-emerald-500/10 text-emerald-300 border border-emerald-500/15 hover:bg-emerald-500/20"
+                              isRestricted
+                                ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/15 hover:bg-emerald-500/20"
+                                : "bg-orange-500/10 text-orange-300 border border-orange-500/15 hover:bg-orange-500/20"
                             }`}
                           >
                             {updating === u.id ? (
                               <Loader2 size={12} className="animate-spin" />
-                            ) : u.tier === "PRO" ? (
-                              <><UserX size={12} /> Revoke Pro</>
+                            ) : isRestricted ? (
+                              <><ShieldOff size={12} /> Restore Pro</>
                             ) : (
-                              <><UserCheck size={12} /> Grant Pro</>
+                              <><Ban size={12} /> Restrict</>
                             )}
                           </button>
                         )}
-                      </>
+                      </div>
+                    </div>
+                    {isExpanded && (
+                      <UserDetailPanel userId={u.id} onClose={() => setExpandedUser(null)} />
                     )}
                   </div>
-                </div>
-                {isExpanded && (
-                  <UserDetailPanel userId={u.id} onClose={() => setExpandedUser(null)} />
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </Card>
+                );
+              })}
+            </div>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

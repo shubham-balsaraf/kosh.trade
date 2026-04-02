@@ -57,6 +57,89 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (action === "analytics") {
+    const now = new Date();
+    const weekAgo = new Date(now.getTime() - 7 * 86400000);
+
+    const totalPageViews = await prisma.activityLog.count({
+      where: { action: "page_view" },
+    });
+    const weekPageViews = await prisma.activityLog.count({
+      where: { action: "page_view", createdAt: { gte: weekAgo } },
+    });
+    const totalLogins = await prisma.activityLog.count({
+      where: { action: "login" },
+    });
+    const weekLogins = await prisma.activityLog.count({
+      where: { action: "login", createdAt: { gte: weekAgo } },
+    });
+
+    const featureBreakdown = await prisma.activityLog.groupBy({
+      by: ["detail"],
+      where: { action: "page_view", detail: { not: null } },
+      _count: true,
+      orderBy: { _count: { detail: "desc" } },
+    });
+
+    const weekFeatureBreakdown = await prisma.activityLog.groupBy({
+      by: ["detail"],
+      where: { action: "page_view", detail: { not: null }, createdAt: { gte: weekAgo } },
+      _count: true,
+      orderBy: { _count: { detail: "desc" } },
+    });
+
+    const dailyActivity: { date: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const dayStart = new Date(now);
+      dayStart.setDate(dayStart.getDate() - i);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setDate(dayEnd.getDate() + 1);
+      const count = await prisma.activityLog.count({
+        where: { createdAt: { gte: dayStart, lt: dayEnd } },
+      });
+      dailyActivity.push({
+        date: dayStart.toLocaleDateString("en-US", { weekday: "short" }),
+        count,
+      });
+    }
+
+    const activeUsersWeek = await prisma.activityLog.findMany({
+      where: { createdAt: { gte: weekAgo } },
+      distinct: ["userId"],
+      select: { userId: true },
+    });
+
+    const topUsers = await prisma.activityLog.groupBy({
+      by: ["userId"],
+      where: { createdAt: { gte: weekAgo } },
+      _count: true,
+      orderBy: { _count: { userId: "desc" } },
+      take: 5,
+    });
+    const topUserIds = topUsers.map((t) => t.userId);
+    const topUserDetails = await prisma.user.findMany({
+      where: { id: { in: topUserIds } },
+      select: { id: true, name: true, email: true },
+    });
+    const topUsersEnriched = topUsers.map((t) => {
+      const u = topUserDetails.find((d) => d.id === t.userId);
+      return { name: u?.name || u?.email || "Unknown", events: t._count };
+    });
+
+    return NextResponse.json({
+      totalPageViews,
+      weekPageViews,
+      totalLogins,
+      weekLogins,
+      activeUsersWeek: activeUsersWeek.length,
+      featureBreakdown: featureBreakdown.map((f) => ({ feature: f.detail, count: f._count })),
+      weekFeatureBreakdown: weekFeatureBreakdown.map((f) => ({ feature: f.detail, count: f._count })),
+      dailyActivity,
+      topUsers: topUsersEnriched,
+    });
+  }
+
   if (action === "activity-feed") {
     const logs = await prisma.activityLog.findMany({
       orderBy: { createdAt: "desc" },
@@ -77,7 +160,6 @@ export async function GET(req: NextRequest) {
       tier: true,
       role: true,
       image: true,
-      bannedUntil: true,
       createdAt: true,
       _count: { select: { autoTrades: true, searchHistory: true, activityLogs: true } },
     },
@@ -138,8 +220,8 @@ export async function PATCH(req: NextRequest) {
     }
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { tier: "FREE", bannedUntil: new Date("2099-12-31") },
-      select: { id: true, email: true, tier: true, bannedUntil: true },
+      data: { tier: "FREE" },
+      select: { id: true, email: true, tier: true },
     });
     return NextResponse.json(updated);
   }
@@ -149,8 +231,8 @@ export async function PATCH(req: NextRequest) {
     if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
     const updated = await prisma.user.update({
       where: { id: userId },
-      data: { bannedUntil: null },
-      select: { id: true, email: true, tier: true, bannedUntil: true },
+      data: { tier: "PRO" },
+      select: { id: true, email: true, tier: true },
     });
     return NextResponse.json(updated);
   }
