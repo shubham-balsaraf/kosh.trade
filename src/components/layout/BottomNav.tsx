@@ -4,17 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useState } from "react";
-import { Home, Search, Navigation, BarChart3, MoreHorizontal, Briefcase, TrendingDown, Bell, Settings, HelpCircle, X } from "lucide-react";
+import { Home, Search, Navigation, BarChart3, MoreHorizontal, Briefcase, TrendingDown, Bell, Settings, HelpCircle, X, Trophy, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const mainItems = [
   { href: "/dashboard", icon: Home, label: "Home" },
   { href: "/search", icon: Search, label: "Search" },
   { href: "/trading/auto", icon: Navigation, label: "KoshPilot" },
-  { href: "/signals", icon: BarChart3, label: "Signals" },
+  { href: "/top-picks", icon: Trophy, label: "Top Picks" },
 ];
 
 const moreItems = [
+  { href: "/signals", icon: BarChart3, label: "Signals" },
   { href: "/portfolio", icon: Briefcase, label: "Portfolio" },
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder" },
   { href: "/alerts", icon: Bell, label: "Alerts" },
@@ -22,14 +23,18 @@ const moreItems = [
   { href: "/support", icon: HelpCircle, label: "Support" },
 ];
 
+const adminItem = { href: "/admin", icon: ShieldCheck, label: "Admin Panel" };
+
 export default function BottomNav() {
   const pathname = usePathname();
   const { data: session } = useSession();
   const [showMore, setShowMore] = useState(false);
   const user = session?.user as any;
   const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
+  const isAdmin = user?.role === "ADMIN";
 
-  const moreActive = moreItems.some(({ href }) => pathname === href || pathname.startsWith(href + "/"));
+  const allMoreItems = isAdmin ? [...moreItems, adminItem] : moreItems;
+  const moreActive = allMoreItems.some(({ href }) => pathname === href || pathname.startsWith(href + "/"));
 
   return (
     <>
@@ -37,7 +42,7 @@ export default function BottomNav() {
         <div className="fixed inset-0 z-40 md:hidden" onClick={() => setShowMore(false)}>
           <div className="absolute inset-0 bg-black/70 backdrop-blur-md" />
           <div className="absolute bottom-20 left-4 right-4 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl p-2 z-50 safe-area-pb" onClick={(e) => e.stopPropagation()}>
-            {moreItems.map(({ href, icon: Icon, label }) => {
+            {allMoreItems.map(({ href, icon: Icon, label }) => {
               const active = pathname === href || pathname.startsWith(href + "/");
               return (
                 <Link

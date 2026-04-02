@@ -215,6 +215,78 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  if (action === "accuracy") {
+    const window = req.nextUrl.searchParams.get("window") || "month";
+    const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true } });
+    const mode = config?.mode || "PAPER";
+
+    const now = new Date();
+    let since: Date;
+    if (window === "week") {
+      since = new Date(now.getTime() - 7 * 86400000);
+    } else if (window === "year") {
+      since = new Date(now.getTime() - 365 * 86400000);
+    } else {
+      since = new Date(now.getTime() - 30 * 86400000);
+    }
+
+    const trades = await prisma.autoTrade.findMany({
+      where: { userId, status: "CLOSED", mode, exitAt: { gte: since } },
+      select: { ticker: true, pnl: true, entryPrice: true, exitPrice: true, qty: true, strategy: true, exitAt: true, entryAt: true },
+      orderBy: { exitAt: "desc" },
+    });
+
+    const totalTrades = trades.length;
+    const winners = trades.filter((t) => (t.pnl || 0) > 0);
+    const losers = trades.filter((t) => (t.pnl || 0) <= 0);
+    const totalPnl = trades.reduce((s, t) => s + (t.pnl || 0), 0);
+    const winRate = totalTrades > 0 ? (winners.length / totalTrades) * 100 : 0;
+    const avgReturn = totalTrades > 0 ? totalPnl / totalTrades : 0;
+
+    let bestPick = null;
+    let worstPick = null;
+    if (trades.length > 0) {
+      const sorted = [...trades].sort((a, b) => (b.pnl || 0) - (a.pnl || 0));
+      const best = sorted[0];
+      const worst = sorted[sorted.length - 1];
+      bestPick = { ticker: best.ticker, pnl: Math.round((best.pnl || 0) * 100) / 100 };
+      worstPick = { ticker: worst.ticker, pnl: Math.round((worst.pnl || 0) * 100) / 100 };
+    }
+
+    const strategyBreakdown: Record<string, { wins: number; losses: number; pnl: number }> = {};
+    for (const t of trades) {
+      const strat = t.strategy || "Unknown";
+      if (!strategyBreakdown[strat]) strategyBreakdown[strat] = { wins: 0, losses: 0, pnl: 0 };
+      if ((t.pnl || 0) > 0) strategyBreakdown[strat].wins++;
+      else strategyBreakdown[strat].losses++;
+      strategyBreakdown[strat].pnl += t.pnl || 0;
+    }
+
+    return NextResponse.json({
+      window,
+      totalTrades,
+      winners: winners.length,
+      losers: losers.length,
+      winRate: Math.round(winRate * 10) / 10,
+      totalPnl: Math.round(totalPnl * 100) / 100,
+      avgReturn: Math.round(avgReturn * 100) / 100,
+      bestPick,
+      worstPick,
+      strategyBreakdown: Object.entries(strategyBreakdown).map(([strategy, data]) => ({
+        strategy,
+        ...data,
+        pnl: Math.round(data.pnl * 100) / 100,
+        winRate: Math.round(((data.wins / (data.wins + data.losses)) * 100) * 10) / 10,
+      })),
+      recentTrades: trades.slice(0, 10).map((t) => ({
+        ticker: t.ticker,
+        pnl: Math.round((t.pnl || 0) * 100) / 100,
+        strategy: t.strategy,
+        exitAt: t.exitAt?.toISOString(),
+      })),
+    });
+  }
+
   if (action === "equity-history") {
     const config = await prisma.tradingConfig.findUnique({ where: { userId }, select: { mode: true, paperBalance: true, createdAt: true } });
     const mode = config?.mode || "PAPER";

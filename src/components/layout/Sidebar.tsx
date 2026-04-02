@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap, HelpCircle, Navigation } from "lucide-react";
+import { Home, Search, Briefcase, BarChart3, TrendingDown, Bell, Settings, CreditCard, Crown, Zap, HelpCircle, Navigation, Trophy, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ProBadge from "@/components/ui/ProBadge";
 
@@ -11,7 +11,8 @@ const navItems = [
   { href: "/dashboard", icon: Home, label: "Dashboard", proOnly: false },
   { href: "/search", icon: Search, label: "Search", proOnly: false },
   { href: "/portfolio", icon: Briefcase, label: "Portfolio", proOnly: false },
-  { href: "/trading/auto", icon: Navigation, label: "KoshPilot", proOnly: false },
+  { href: "/trading/auto", icon: Navigation, label: "KoshPilot", proOnly: true },
+  { href: "/top-picks", icon: Trophy, label: "Top Picks", proOnly: true },
   { href: "/signals", icon: BarChart3, label: "Signals", proOnly: true },
   { href: "/dip-finder", icon: TrendingDown, label: "Dip Finder", proOnly: true },
   { href: "/alerts", icon: Bell, label: "Alerts", proOnly: false },
@@ -24,6 +25,7 @@ export default function Sidebar() {
   const { data: session } = useSession();
   const user = session?.user as any;
   const isPro = user?.role === "ADMIN" || user?.tier === "PRO";
+  const isAdmin = user?.role === "ADMIN";
 
   return (
     <aside className={cn(
@@ -64,7 +66,21 @@ export default function Sidebar() {
         );
       })}
 
-      <div className="mt-auto pt-3 border-t border-white/[0.04]">
+      <div className="mt-auto pt-3 border-t border-white/[0.04] space-y-0.5">
+        {isAdmin && (
+          <Link
+            href="/admin"
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300",
+              pathname === "/admin" || pathname.startsWith("/admin/")
+                ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/15"
+                : "text-indigo-400/40 hover:text-indigo-300/80 hover:bg-indigo-500/[0.04]"
+            )}
+          >
+            <ShieldCheck size={18} />
+            Admin Panel
+          </Link>
+        )}
         <Link
           href="/pricing"
           className={cn(

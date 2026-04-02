@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Card from "@/components/ui/Card";
 import Badge from "@/components/ui/Badge";
 import { formatCurrency } from "@/lib/utils";
+import ProGate from "@/components/ui/ProGate";
 import { TrendingDown, ArrowDown } from "lucide-react";
 
 export default function DipFinderPage() {
@@ -21,6 +22,7 @@ export default function DipFinderPage() {
   }, []);
 
   return (
+    <ProGate feature="Dip Finder">
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Dip Finder</h1>
@@ -91,5 +93,6 @@ export default function DipFinderPage() {
         </div>
       )}
     </div>
+    </ProGate>
   );
 }

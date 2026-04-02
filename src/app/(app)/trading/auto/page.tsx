@@ -6,6 +6,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import StockLogo from "@/components/ui/StockLogo";
+import DataFreshness from "@/components/ui/DataFreshness";
 import {
   Navigation, Power, PowerOff, TrendingUp, TrendingDown, DollarSign,
   BarChart3, Target, Clock, Activity, RefreshCw, Settings, Zap,
@@ -14,6 +15,7 @@ import {
   Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye, Radio,
   Newspaper, Users, Landmark, CalendarDays, Radar,
 } from "lucide-react";
+import ProGate from "@/components/ui/ProGate";
 
 interface TradingConfig {
   enabled: boolean;
@@ -1312,6 +1314,167 @@ function LiveUptime({ since }: { since: string }) {
   return <span className="tabular-nums">{elapsed}</span>;
 }
 
+interface AccuracyData {
+  window: string;
+  totalTrades: number;
+  winners: number;
+  losers: number;
+  winRate: number;
+  totalPnl: number;
+  avgReturn: number;
+  bestPick: { ticker: string; pnl: number } | null;
+  worstPick: { ticker: string; pnl: number } | null;
+  strategyBreakdown: Array<{ strategy: string; wins: number; losses: number; pnl: number; winRate: number }>;
+  recentTrades: Array<{ ticker: string; pnl: number; strategy: string | null; exitAt: string | null }>;
+}
+
+function AccuracyPanel() {
+  const [window, setWindow] = useState<"week" | "month" | "year">("month");
+  const [data, setData] = useState<AccuracyData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+
+  const fetchAccuracy = useCallback(async (w: string) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/trading/auto?action=accuracy&window=${w}`);
+      const json = await res.json();
+      setData(json);
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchAccuracy(window);
+  }, [window, fetchAccuracy]);
+
+  if (!data && !loading) return null;
+
+  return (
+    <div className="glass-card border border-white/[0.04] animate-fade-slide-up">
+      <button onClick={() => setExpanded(!expanded)} className="w-full p-4 text-left">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <BarChart3 size={16} className="text-indigo-400/70" />
+            <h3 className="text-sm font-semibold text-white/70">Prediction Accuracy</h3>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex gap-0.5 p-0.5 bg-white/[0.03] rounded-lg" onClick={(e) => e.stopPropagation()}>
+              {(["week", "month", "year"] as const).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setWindow(w)}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                    window === w ? "bg-white/[0.08] text-white" : "text-white/25 hover:text-white/50"
+                  }`}
+                >
+                  {w === "week" ? "7D" : w === "month" ? "30D" : "1Y"}
+                </button>
+              ))}
+            </div>
+            <ChevronDown size={14} className={`text-white/20 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </div>
+        </div>
+
+        {data && (
+          <div className="grid grid-cols-4 gap-4 mt-3">
+            <div>
+              <p className={`text-lg font-black ${data.winRate >= 50 ? "text-emerald-400" : "text-red-400"}`}>
+                {data.winRate}%
+              </p>
+              <p className="text-[10px] text-white/20">Win Rate</p>
+            </div>
+            <div>
+              <p className={`text-lg font-black ${data.totalPnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {data.totalPnl >= 0 ? "+" : ""}${Math.abs(data.totalPnl).toFixed(0)}
+              </p>
+              <p className="text-[10px] text-white/20">Total PnL</p>
+            </div>
+            <div>
+              <p className={`text-lg font-black ${data.avgReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {data.avgReturn >= 0 ? "+" : ""}${data.avgReturn.toFixed(2)}
+              </p>
+              <p className="text-[10px] text-white/20">Avg / Trade</p>
+            </div>
+            <div>
+              <p className="text-lg font-black text-white">
+                {data.totalTrades}
+              </p>
+              <p className="text-[10px] text-white/20">Trades</p>
+            </div>
+          </div>
+        )}
+      </button>
+
+      {expanded && data && (
+        <div className="px-4 pb-4 space-y-4 border-t border-white/[0.04] pt-3">
+          {/* Win / Loss bar */}
+          {data.totalTrades > 0 && (
+            <div>
+              <div className="flex justify-between text-[10px] mb-1">
+                <span className="text-emerald-400/60">{data.winners}W</span>
+                <span className="text-red-400/60">{data.losers}L</span>
+              </div>
+              <div className="flex h-2 rounded-full overflow-hidden bg-white/[0.03]">
+                <div className="bg-emerald-400/60 transition-all" style={{ width: `${(data.winners / data.totalTrades) * 100}%` }} />
+                <div className="bg-red-400/60 transition-all" style={{ width: `${(data.losers / data.totalTrades) * 100}%` }} />
+              </div>
+            </div>
+          )}
+
+          {/* Best / Worst */}
+          <div className="grid grid-cols-2 gap-3">
+            {data.bestPick && (
+              <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/10">
+                <p className="text-[10px] text-emerald-400/50">Best Pick</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <StockLogo ticker={data.bestPick.ticker} size={20} />
+                  <span className="text-sm font-bold text-white">{data.bestPick.ticker}</span>
+                  <span className="text-xs text-emerald-400 font-semibold ml-auto">+${data.bestPick.pnl.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+            {data.worstPick && (
+              <div className="bg-red-500/5 rounded-xl p-3 border border-red-500/10">
+                <p className="text-[10px] text-red-400/50">Worst Pick</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <StockLogo ticker={data.worstPick.ticker} size={20} />
+                  <span className="text-sm font-bold text-white">{data.worstPick.ticker}</span>
+                  <span className="text-xs text-red-400 font-semibold ml-auto">${data.worstPick.pnl.toFixed(2)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Strategy breakdown */}
+          {data.strategyBreakdown.length > 0 && (
+            <div>
+              <p className="text-[10px] text-white/25 uppercase tracking-wider mb-2">By Strategy</p>
+              <div className="space-y-1.5">
+                {data.strategyBreakdown.map((s) => (
+                  <div key={s.strategy} className="flex items-center justify-between text-xs">
+                    <span className="text-white/40">{s.strategy}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-white/20">{s.wins}W / {s.losses}L</span>
+                      <span className={`font-semibold ${s.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {s.pnl >= 0 ? "+" : ""}${s.pnl.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {data.totalTrades === 0 && (
+            <p className="text-center text-white/20 text-xs py-4">No closed trades in this period</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CronStatusBar({ cronStatus, enabled, createdAt, onRefresh }: {
   cronStatus: CronStatus | null; enabled: boolean; createdAt?: string; onRefresh: () => void;
 }) {
@@ -1792,6 +1955,7 @@ export default function AutoTradingPage() {
   const pnlPct = config?.paperBalance ? ((realizedPnl + totalUnrealizedPnl) / config.paperBalance * 100) : 0;
 
   return (
+    <ProGate feature="KoshPilot">
     <div className="space-y-6 max-w-5xl">
       {/* ─── Header ─── */}
       <div className="relative mesh-bg rounded-3xl p-6 overflow-hidden animate-fade-slide-up">
@@ -1890,6 +2054,11 @@ export default function AutoTradingPage() {
         onRefresh={fetchCronStatus}
       />
 
+      {/* ─── Data Freshness ─── */}
+      <div className="flex justify-end">
+        <DataFreshness />
+      </div>
+
       {/* ─── Portfolio Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-slide-up-1">
         <div className="stat-card-gold p-5 text-center md:col-span-1">
@@ -1986,6 +2155,9 @@ export default function AutoTradingPage() {
           )}
         </div>
       )}
+
+      {/* ─── Prediction Accuracy ─── */}
+      <AccuracyPanel />
 
       {/* ─── Mission Report ─── */}
       {runResult && <MissionReport result={runResult} onClose={() => setRunResult(null)} />}
@@ -2272,5 +2444,6 @@ export default function AutoTradingPage() {
         )}
       </div>
     </div>
+    </ProGate>
   );
 }

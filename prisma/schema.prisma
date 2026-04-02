@@ -211,6 +211,36 @@ model AutoTrade {
   @@index([userId, mode])
 }
 
+model ConvictionPick {
+  id            String   @id @default(cuid())
+  ticker        String
+  companyName   String?
+  rank          Int
+  conviction    Float
+  targetPrice   Float
+  currentPrice  Float
+  holdPeriod    String
+  holdLabel     String
+  thesis        String
+  signals       String[]
+  sector        String?
+  pickedAt      DateTime @default(now())
+  peakPrice     Float?
+  latestPrice   Float?
+  returnPct     Float?
+  peakReturnPct Float?
+  lastTrackedAt DateTime?
+
+  @@index([pickedAt(sort: Desc)])
+  @@index([ticker, pickedAt(sort: Desc)])
+}
+
+model AppSettings {
+  id                String  @id @default("global")
+  proGateEnabled    Boolean @default(false)
+  updatedAt         DateTime @updatedAt
+}
+
 model TradingConfig {
   id                String   @id @default(cuid())
   userId            String   @unique
