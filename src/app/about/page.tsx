@@ -161,7 +161,7 @@ export default function AboutPage() {
               GitHub
             </a>
             <a
-              href="https://linkedin.com/in/shubhambalsaraf"
+              href="https://www.linkedin.com/in/shubham-balsaraf/"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white text-sm font-medium rounded-xl transition-all"
