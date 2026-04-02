@@ -4,7 +4,7 @@ import Logo from "@/components/ui/Logo";
 import LandingNav from "@/components/ui/LandingNav";
 import {
   TrendingUp, Brain, Zap, BarChart3, Shield, Bell,
-  Github, Linkedin, Globe, ArrowRight, Code2, Database,
+  GitBranch, Link2, Globe, ArrowRight, Code2, Database,
   Cpu, LineChart, Lock, Server,
 } from "lucide-react";
 
@@ -157,7 +157,7 @@ export default function AboutPage() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white text-sm font-medium rounded-xl transition-all"
             >
-              <Github size={16} />
+              <GitBranch size={16} />
               GitHub
             </a>
             <a
@@ -166,7 +166,7 @@ export default function AboutPage() {
               rel="noopener noreferrer"
               className="flex items-center gap-2 px-4 py-2 bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white text-sm font-medium rounded-xl transition-all"
             >
-              <Linkedin size={16} />
+              <Link2 size={16} />
               LinkedIn
             </a>
             <a
