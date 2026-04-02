@@ -24,11 +24,13 @@ export interface ConvictionPickResult {
   companyName: string;
   rank: number;
   conviction: number;
+  dataConfidence: number;
   targetPrice: number;
   currentPrice: number;
   upsidePct: number;
   holdPeriod: "SHORT" | "MEDIUM" | "LONG";
   holdLabel: string;
+  holdDays: number;
   thesis: string;
   signals: string[];
   sector: string;
@@ -71,6 +73,7 @@ interface ScoredCandidate {
     riskAdjusted: number;
   };
   compositeScore: number;
+  dataConfidence: number;
   confidenceBand: "VERY_HIGH" | "HIGH" | "MODERATE";
   sources: string[];
   scan?: ScanResult;
@@ -91,6 +94,28 @@ const WEIGHTS = {
 
 const MAX_PER_SECTOR = 3;
 const MIN_COMPOSITE_SCORE = 30;
+
+const HOLD_PERIOD_DAYS: Record<string, number> = { SHORT: 21, MEDIUM: 60, LONG: 180 };
+
+function computeDataConfidence(scores: ScoredCandidate["scores"]): number {
+  const dims = [
+    { key: "signalDiversity", w: WEIGHTS.signalDiversity },
+    { key: "technical", w: WEIGHTS.technical },
+    { key: "fundamental", w: WEIGHTS.fundamental },
+    { key: "valuation", w: WEIGHTS.valuation },
+    { key: "smartMoney", w: WEIGHTS.smartMoney },
+    { key: "catalystSentiment", w: WEIGHTS.catalystSentiment },
+    { key: "riskAdjusted", w: WEIGHTS.riskAdjusted },
+  ] as const;
+
+  let coveredWeight = 0;
+  let totalWeight = 0;
+  for (const d of dims) {
+    totalWeight += d.w;
+    if (scores[d.key] > 0) coveredWeight += d.w;
+  }
+  return totalWeight > 0 ? Math.round((coveredWeight / totalWeight) * 100) : 0;
+}
 
 /* ── Helpers ────────────────────────────────────────────── */
 
@@ -871,6 +896,7 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
       ticker,
       scores,
       compositeScore,
+      dataConfidence: computeDataConfidence(scores),
       confidenceBand: confidenceBand(compositeScore),
       sources,
       scan,
@@ -916,11 +942,13 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
       companyName: candidate.fundamentals?.companyName || qualityProfiles.get(candidate.ticker)?.companyName || candidate.ticker,
       rank: idx + 1,
       conviction: candidate.compositeScore,
+      dataConfidence: candidate.dataConfidence,
       targetPrice: Math.round(targetPrice * 100) / 100,
       currentPrice: Math.round(currentPrice * 100) / 100,
       upsidePct: Math.round(upsidePct * 10) / 10,
       holdPeriod: period,
       holdLabel: label,
+      holdDays: HOLD_PERIOD_DAYS[period] || 60,
       thesis: "",
       signals: candidate.sources,
       sector: candidate.fundamentals?.sector || qualityProfiles.get(candidate.ticker)?.sector || "Unknown",
@@ -953,10 +981,12 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
       companyName: p.companyName,
       rank: p.rank,
       conviction: p.conviction,
+      dataConfidence: p.dataConfidence,
       targetPrice: p.targetPrice,
       currentPrice: p.currentPrice,
       holdPeriod: p.holdPeriod,
       holdLabel: p.holdLabel,
+      holdDays: p.holdDays,
       thesis: p.thesis,
       signals: p.signals,
       sector: p.sector,
@@ -981,10 +1011,14 @@ export async function updatePickPerformance(): Promise<{ updated: number }> {
     where: {
       pickedAt: { gte: new Date(Date.now() - 365 * 86400000) },
     },
-    select: { id: true, ticker: true, currentPrice: true, peakPrice: true, targetPrice: true, pickedAt: true },
+    select: {
+      id: true, ticker: true, currentPrice: true, peakPrice: true,
+      targetPrice: true, pickedAt: true, hitTarget: true, hitTargetAt: true,
+      holdPeriod: true, holdDays: true,
+    },
   });
 
-  const uniqueTickers: string[] = [...new Set(picks.map((p: any) => p.ticker as string))];
+  const uniqueTickers: string[] = Array.from(new Set(picks.map((p: any) => String(p.ticker))));
   const quoteMap = new Map<string, number>();
 
   const batchSize = 5;
@@ -1000,17 +1034,36 @@ export async function updatePickPerformance(): Promise<{ updated: number }> {
   }
 
   let updated = 0;
-  for (const pick of picks) {
+  for (const pick of picks as any[]) {
     const latestPrice = quoteMap.get(pick.ticker);
     if (!latestPrice) continue;
 
     const returnPct = ((latestPrice - pick.currentPrice) / pick.currentPrice) * 100;
     const newPeak = Math.max(latestPrice, pick.peakPrice || latestPrice);
     const peakReturnPct = ((newPeak - pick.currentPrice) / pick.currentPrice) * 100;
-    const hitTarget = latestPrice >= pick.targetPrice || newPeak >= pick.targetPrice;
+    const targetReached = latestPrice >= pick.targetPrice || newPeak >= pick.targetPrice;
     const daysSincePick = Math.floor((Date.now() - new Date(pick.pickedAt).getTime()) / 86400000);
-    const drawdown = newPeak > 0 ? ((newPeak - latestPrice) / newPeak) * 100 : 0;
-    const riskAdjReturn = drawdown > 0 ? returnPct / drawdown : returnPct;
+    const expectedDays = pick.holdDays || HOLD_PERIOD_DAYS[pick.holdPeriod] || 60;
+    const graceWindow = 60;
+
+    const alreadyHit = pick.hitTarget === true;
+    const hitTargetNow = alreadyHit || targetReached;
+    const hitTargetAt = alreadyHit ? pick.hitTargetAt : (targetReached ? new Date() : null);
+
+    let withinTimeline: boolean | null = null;
+    if (hitTargetNow && hitTargetAt) {
+      const hitDays = Math.floor((new Date(hitTargetAt).getTime() - new Date(pick.pickedAt).getTime()) / 86400000);
+      withinTimeline = hitDays <= (expectedDays + graceWindow);
+    }
+
+    let outcome: string | null = null;
+    if (hitTargetNow && withinTimeline === true) {
+      outcome = "BULLSEYE";
+    } else if (hitTargetNow && withinTimeline === false) {
+      outcome = "LATE_HIT";
+    } else if (daysSincePick > expectedDays + graceWindow) {
+      outcome = returnPct > 0 ? "WINNER" : "MISS";
+    }
 
     await prisma.convictionPick.update({
       where: { id: pick.id },
@@ -1020,12 +1073,16 @@ export async function updatePickPerformance(): Promise<{ updated: number }> {
         peakPrice: Math.round(newPeak * 100) / 100,
         peakReturnPct: Math.round(peakReturnPct * 100) / 100,
         lastTrackedAt: new Date(),
+        hitTarget: hitTargetNow,
+        ...(hitTargetAt && !alreadyHit ? { hitTargetAt } : {}),
+        ...(withinTimeline !== null ? { withinTimeline } : {}),
+        ...(outcome ? { outcome } : {}),
       },
     });
     updated++;
 
     if (daysSincePick > 0) {
-      console.log(`[Conviction] ${pick.ticker}: ${returnPct.toFixed(1)}% return, peak ${peakReturnPct.toFixed(1)}%, dd ${drawdown.toFixed(1)}%, risk-adj ${riskAdjReturn.toFixed(2)}, ${hitTarget ? "HIT TARGET" : "pending"}, ${daysSincePick}d`);
+      console.log(`[Conviction] ${pick.ticker}: ${returnPct.toFixed(1)}% return, peak ${peakReturnPct.toFixed(1)}%, ${hitTargetNow ? "HIT" : "pending"}, ${outcome || "tracking"}, ${daysSincePick}d`);
     }
   }
 

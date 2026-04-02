@@ -5,7 +5,8 @@ import Card from "@/components/ui/Card";
 import StockLogo from "@/components/ui/StockLogo";
 import {
   Trophy, Target, RefreshCw, ChevronDown, Sparkles,
-  ArrowUpRight, Info, History, Radar,
+  ArrowUpRight, Info, History, Radar, BarChart3,
+  TrendingUp, TrendingDown, Shield, Crosshair, Clock,
 } from "lucide-react";
 import ProGate from "@/components/ui/ProGate";
 import { useTrackView } from "@/hooks/useTrackView";
@@ -15,17 +16,21 @@ interface Pick {
   companyName: string;
   rank: number;
   conviction: number;
+  dataConfidence?: number | null;
   targetPrice: number;
   currentPrice: number;
   upsidePct: number;
   holdPeriod: string;
   holdLabel: string;
+  holdDays?: number | null;
   thesis: string;
   signals: string[];
   sector: string;
   latestPrice?: number;
   returnPct?: number | null;
   peakReturnPct?: number | null;
+  outcome?: string | null;
+  hitTarget?: boolean;
 }
 
 interface HistoryBatch {
@@ -35,6 +40,35 @@ interface HistoryBatch {
   profitable: number;
   total: number;
   hitRate: number;
+}
+
+interface AlgoStats {
+  totalPicks: number;
+  winRate: number;
+  targetHitRate: number;
+  timelineAccuracy: number;
+  avgReturn: number;
+  avgPeakReturn: number;
+  avgConfidence: number;
+  outcomes: Record<string, number>;
+  notableCalls: {
+    ticker: string;
+    companyName: string;
+    predictedTarget: number;
+    entryPrice: number;
+    peakReturn: number;
+    hitDays: number;
+    outcome: string;
+    pickedAt: string;
+  }[];
+  notableMisses: {
+    ticker: string;
+    companyName: string;
+    predictedTarget: number;
+    entryPrice: number;
+    returnPct: number;
+    pickedAt: string;
+  }[];
 }
 
 const CACHE_KEY = "kosh:top-picks";
@@ -57,6 +91,14 @@ const HOLD_CONFIG: Record<string, { color: string; bg: string }> = {
   SHORT: { color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
   MEDIUM: { color: "text-blue-400", bg: "bg-blue-500/10 border-blue-500/20" },
   LONG: { color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
+};
+
+const OUTCOME_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  BULLSEYE: { label: "Bullseye", color: "text-emerald-400", bg: "bg-emerald-500/15" },
+  LATE_HIT: { label: "Late Hit", color: "text-blue-400", bg: "bg-blue-500/15" },
+  WINNER: { label: "Winner", color: "text-amber-400", bg: "bg-amber-500/15" },
+  MISS: { label: "Miss", color: "text-red-400", bg: "bg-red-500/15" },
+  TRACKING: { label: "Tracking", color: "text-white/30", bg: "bg-white/5" },
 };
 
 const ANALYSIS_STEPS = [
@@ -105,7 +147,7 @@ function AnalysisLoader() {
 }
 
 function ConvictionBar({ value }: { value: number }) {
-  const color = value >= 70 ? "bg-emerald-400" : value >= 50 ? "bg-blue-400" : value >= 30 ? "bg-amber-400" : "bg-red-400";
+  const color = value >= 45 ? "bg-emerald-400" : value >= 25 ? "bg-blue-400" : value >= 15 ? "bg-amber-400" : "bg-red-400";
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -113,6 +155,30 @@ function ConvictionBar({ value }: { value: number }) {
       </div>
       <span className="text-[10px] text-white/40 font-mono w-6 text-right">{value}</span>
     </div>
+  );
+}
+
+function ConfidenceGauge({ value }: { value: number }) {
+  const color = value >= 80 ? "text-emerald-400 border-emerald-500/30" :
+    value >= 50 ? "text-blue-400 border-blue-500/30" :
+    "text-amber-400 border-amber-500/30";
+  const bgColor = value >= 80 ? "bg-emerald-500/10" :
+    value >= 50 ? "bg-blue-500/10" :
+    "bg-amber-500/10";
+  return (
+    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border ${color} ${bgColor}`}>
+      <Shield size={10} />
+      <span className="text-[10px] font-bold">{value}%</span>
+    </div>
+  );
+}
+
+function OutcomeBadge({ outcome }: { outcome: string }) {
+  const cfg = OUTCOME_CONFIG[outcome] || OUTCOME_CONFIG.TRACKING;
+  return (
+    <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold ${cfg.bg} ${cfg.color}`}>
+      {cfg.label}
+    </span>
   );
 }
 
@@ -136,9 +202,15 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
             <div className="flex items-center gap-2">
               <span className="text-white font-bold text-sm">{pick.ticker}</span>
               <span className="text-white/25 text-xs truncate">{pick.companyName}</span>
+              {pick.outcome && <OutcomeBadge outcome={pick.outcome} />}
             </div>
-            <div className="mt-1.5 w-32">
-              <ConvictionBar value={pick.conviction} />
+            <div className="mt-1.5 flex items-center gap-3">
+              <div className="w-28">
+                <ConvictionBar value={pick.conviction} />
+              </div>
+              {pick.dataConfidence != null && (
+                <ConfidenceGauge value={pick.dataConfidence} />
+              )}
             </div>
           </div>
 
@@ -165,7 +237,6 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
           <ChevronDown size={16} className={`text-white/20 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
         </div>
 
-        {/* Mobile price row */}
         <div className="md:hidden flex items-center gap-4 mt-3 text-xs">
           <span className="text-white/40">${pick.currentPrice.toFixed(2)}</span>
           <ArrowUpRight size={12} className="text-white/20" />
@@ -199,6 +270,12 @@ function PickCard({ pick, isExpanded, onToggle }: { pick: Pick; isExpanded: bool
               <p className="text-[10px] text-white/25 mb-1">Sector</p>
               <span className="text-xs text-white/50">{pick.sector}</span>
             </div>
+            {pick.dataConfidence != null && (
+              <div>
+                <p className="text-[10px] text-white/25 mb-1">Data Coverage</p>
+                <span className="text-xs text-white/50">{pick.dataConfidence}% of scoring dimensions had data</span>
+              </div>
+            )}
           </div>
 
           {pick.returnPct != null && (
@@ -264,7 +341,7 @@ function TrackRecordSection({ history, onRefresh }: { history: HistoryBatch[]; o
         </Card>
         <Card className="!p-3 text-center">
           <p className="text-2xl font-black text-emerald-400">{totalPicks > 0 ? Math.round((profitable / totalPicks) * 100) : 0}%</p>
-          <p className="text-[10px] text-white/30">Hit Rate</p>
+          <p className="text-[10px] text-white/30">Win Rate</p>
         </Card>
         <Card className="!p-3 text-center">
           <p className={`text-2xl font-black ${avgReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
@@ -293,7 +370,7 @@ function TrackRecordSection({ history, onRefresh }: { history: HistoryBatch[]; o
                 <span className={`text-xs font-bold ${batch.avgReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
                   {batch.avgReturn >= 0 ? "+" : ""}{batch.avgReturn}% avg
                 </span>
-                <span className="text-[10px] text-white/25">{batch.hitRate}% hit rate</span>
+                <span className="text-[10px] text-white/25">{batch.hitRate}% profitable</span>
                 <ChevronDown size={14} className={`text-white/20 transition-transform ${expandedBatch === batch.date ? "rotate-180" : ""}`} />
               </div>
             </button>
@@ -305,6 +382,7 @@ function TrackRecordSection({ history, onRefresh }: { history: HistoryBatch[]; o
                       <StockLogo ticker={p.ticker} size={20} />
                       <span className="text-white font-medium">{p.ticker}</span>
                       <span className="text-white/20">{p.companyName}</span>
+                      {p.outcome && <OutcomeBadge outcome={p.outcome} />}
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="text-white/30">${p.currentPrice?.toFixed(2)}</span>
@@ -327,6 +405,184 @@ function TrackRecordSection({ history, onRefresh }: { history: HistoryBatch[]; o
   );
 }
 
+function AlgoPerformance({ stats }: { stats: AlgoStats | null }) {
+  if (!stats) {
+    return (
+      <Card className="text-center py-10">
+        <BarChart3 size={32} className="mx-auto text-white/15 mb-3" />
+        <p className="text-white/30 text-sm">Loading algorithm performance...</p>
+      </Card>
+    );
+  }
+
+  if (stats.totalPicks === 0) {
+    return (
+      <Card className="text-center py-10">
+        <BarChart3 size={32} className="mx-auto text-white/15 mb-3" />
+        <p className="text-white/30 text-sm">No tracked picks yet. Generate picks and update prices to see performance.</p>
+      </Card>
+    );
+  }
+
+  const outcomeEntries = Object.entries(stats.outcomes).filter(([, v]) => v > 0);
+  const maxOutcome = Math.max(...outcomeEntries.map(([, v]) => v));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <BarChart3 size={18} className="text-white/30" />
+        <h2 className="text-lg font-bold text-white">Algorithm Performance</h2>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Card className="!p-3 text-center">
+          <p className="text-2xl font-black text-emerald-400">{stats.winRate}%</p>
+          <p className="text-[10px] text-white/30">Win Rate</p>
+        </Card>
+        <Card className="!p-3 text-center">
+          <p className="text-2xl font-black text-indigo-400">{stats.targetHitRate}%</p>
+          <p className="text-[10px] text-white/30">Target Hit Rate</p>
+        </Card>
+        <Card className="!p-3 text-center">
+          <p className="text-2xl font-black text-blue-400">{stats.timelineAccuracy}%</p>
+          <p className="text-[10px] text-white/30">Timeline Accuracy</p>
+        </Card>
+        <Card className="!p-3 text-center">
+          <p className="text-2xl font-black text-amber-400">{stats.avgConfidence}%</p>
+          <p className="text-[10px] text-white/30">Avg Data Coverage</p>
+        </Card>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <Card className="!p-4">
+          <p className="text-xs text-white/40 font-semibold mb-3">Returns</p>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-white/50">Avg Return</span>
+              <span className={`text-sm font-bold ${stats.avgReturn >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                {stats.avgReturn >= 0 ? "+" : ""}{stats.avgReturn}%
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-white/50">Avg Peak Return</span>
+              <span className="text-sm font-bold text-blue-400">+{stats.avgPeakReturn}%</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-white/50">Total Picks Tracked</span>
+              <span className="text-sm font-bold text-white">{stats.totalPicks}</span>
+            </div>
+          </div>
+        </Card>
+
+        <Card className="!p-4">
+          <p className="text-xs text-white/40 font-semibold mb-3">Outcome Breakdown</p>
+          <div className="space-y-2">
+            {outcomeEntries.map(([outcome, count]) => {
+              const cfg = OUTCOME_CONFIG[outcome] || OUTCOME_CONFIG.TRACKING;
+              return (
+                <div key={outcome} className="flex items-center gap-3">
+                  <span className={`text-[10px] font-semibold w-16 ${cfg.color}`}>{cfg.label}</span>
+                  <div className="flex-1 h-2 bg-white/5 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-700 ${cfg.bg.replace("/15", "/60")}`}
+                      style={{ width: `${maxOutcome > 0 ? (count / maxOutcome) * 100 : 0}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-white/40 w-6 text-right">{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {stats.notableCalls.length > 0 && (
+        <Card className="!p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Crosshair size={14} className="text-emerald-400" />
+            <p className="text-xs text-white/40 font-semibold">Notable Calls — Target Hits</p>
+          </div>
+          <div className="space-y-2">
+            {stats.notableCalls.map((call) => (
+              <div key={`${call.ticker}-${call.pickedAt}`} className="flex items-center justify-between py-2 border-b border-white/[0.03] last:border-0">
+                <div className="flex items-center gap-3">
+                  <StockLogo ticker={call.ticker} size={24} />
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-white font-bold">{call.ticker}</span>
+                      <OutcomeBadge outcome={call.outcome} />
+                    </div>
+                    <p className="text-[10px] text-white/30">
+                      Predicted ${call.predictedTarget.toFixed(0)} at ${call.entryPrice.toFixed(0)} — Hit in {call.hitDays} days
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-emerald-400">+{call.peakReturn}%</p>
+                  <p className="text-[10px] text-white/20">{call.pickedAt}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {stats.notableMisses.length > 0 && (
+        <Card className="!p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <TrendingDown size={14} className="text-red-400" />
+            <p className="text-xs text-white/40 font-semibold">Notable Misses</p>
+          </div>
+          <div className="space-y-2">
+            {stats.notableMisses.map((miss) => (
+              <div key={`${miss.ticker}-${miss.pickedAt}`} className="flex items-center justify-between py-2 border-b border-white/[0.03] last:border-0">
+                <div className="flex items-center gap-3">
+                  <StockLogo ticker={miss.ticker} size={24} />
+                  <div>
+                    <span className="text-sm text-white font-medium">{miss.ticker}</span>
+                    <p className="text-[10px] text-white/30">
+                      Target ${miss.predictedTarget.toFixed(0)} from ${miss.entryPrice.toFixed(0)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm font-bold text-red-400">{miss.returnPct}%</p>
+                  <p className="text-[10px] text-white/20">{miss.pickedAt}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card className="!p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <Info size={14} className="text-white/20" />
+          <p className="text-[10px] text-white/25 font-semibold uppercase tracking-wider">How Outcomes Are Classified</p>
+        </div>
+        <div className="grid md:grid-cols-4 gap-3 text-[10px]">
+          <div>
+            <p className="text-emerald-400 font-semibold">Bullseye</p>
+            <p className="text-white/25 mt-0.5">Target price hit within the predicted hold period (+60d grace)</p>
+          </div>
+          <div>
+            <p className="text-blue-400 font-semibold">Late Hit</p>
+            <p className="text-white/25 mt-0.5">Target price was eventually hit, but took longer than predicted</p>
+          </div>
+          <div>
+            <p className="text-amber-400 font-semibold">Winner</p>
+            <p className="text-white/25 mt-0.5">Positive return even though target price was not reached</p>
+          </div>
+          <div>
+            <p className="text-red-400 font-semibold">Miss</p>
+            <p className="text-white/25 mt-0.5">Negative return past the predicted hold timeline</p>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 export default function TopPicksPage() {
   useTrackView("Top Picks");
   const [picks, setPicks] = useState<Pick[]>([]);
@@ -334,7 +590,8 @@ export default function TopPicksPage() {
   const [loading, setLoading] = useState(false);
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryBatch[]>([]);
-  const [tab, setTab] = useState<"picks" | "history">("picks");
+  const [algoStats, setAlgoStats] = useState<AlgoStats | null>(null);
+  const [tab, setTab] = useState<"picks" | "history" | "algo">("picks");
 
   const loadCachedPicks = useCallback(() => {
     try {
@@ -367,6 +624,7 @@ export default function TopPicksPage() {
       fetchLatestPicks();
     }
     fetchHistory();
+    fetchAlgoStats();
   }, [loadCachedPicks, loadCachedHistory]);
 
   async function fetchLatestPicks() {
@@ -392,6 +650,16 @@ export default function TopPicksPage() {
     } catch {}
   }
 
+  async function fetchAlgoStats() {
+    try {
+      const res = await fetch("/api/top-picks?action=algo-stats");
+      const data = await res.json();
+      if (data.totalPicks !== undefined) {
+        setAlgoStats(data);
+      }
+    } catch {}
+  }
+
   async function generatePicks() {
     setLoading(true);
     setPicks([]);
@@ -405,6 +673,7 @@ export default function TopPicksPage() {
         setGeneratedAt(data.generatedAt);
         sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
         fetchHistory();
+        fetchAlgoStats();
       }
     } catch {}
     setLoading(false);
@@ -414,13 +683,13 @@ export default function TopPicksPage() {
     try {
       await fetch("/api/top-picks?action=update-performance");
       fetchHistory();
+      fetchAlgoStats();
     } catch {}
   }
 
   return (
     <ProGate feature="Top Picks">
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -441,7 +710,6 @@ export default function TopPicksPage() {
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl w-fit">
         <button
           onClick={() => setTab("picks")}
@@ -462,6 +730,15 @@ export default function TopPicksPage() {
             {history.length > 0 && <span className="text-[10px] text-white/20">({history.length})</span>}
           </div>
         </button>
+        <button
+          onClick={() => setTab("algo")}
+          className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all ${tab === "algo" ? "bg-white/[0.08] text-white" : "text-white/30 hover:text-white/60"}`}
+        >
+          <div className="flex items-center gap-1.5">
+            <BarChart3 size={12} />
+            Algorithm
+          </div>
+        </button>
       </div>
 
       {tab === "picks" && (
@@ -475,7 +752,7 @@ export default function TopPicksPage() {
               </div>
               <h3 className="text-lg font-bold text-white mb-2">No picks generated yet</h3>
               <p className="text-white/30 text-sm max-w-md mx-auto">
-                Click "Generate Picks" to run a deep analysis across news, insider trades, congressional activity,
+                Click &quot;Generate Picks&quot; to run a deep analysis across news, insider trades, congressional activity,
                 earnings, technicals, and more to find the top 10 highest-conviction stocks.
               </p>
             </Card>
@@ -499,33 +776,20 @@ export default function TopPicksPage() {
             </div>
           )}
 
-          {/* How it works */}
           {!loading && picks.length > 0 && (
             <Card className="!p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Info size={14} className="text-white/20" />
-                <p className="text-[10px] text-white/25 font-semibold uppercase tracking-wider">How Conviction Scoring Works</p>
+                <p className="text-[10px] text-white/25 font-semibold uppercase tracking-wider">How Scoring Works</p>
               </div>
-              <div className="grid md:grid-cols-5 gap-3 text-[10px]">
+              <div className="grid md:grid-cols-2 gap-4 text-[10px]">
                 <div>
-                  <p className="text-white/50 font-semibold">Signal Diversity — 25%</p>
-                  <p className="text-white/25 mt-0.5">More independent sources = higher conviction</p>
+                  <p className="text-white/50 font-semibold mb-1">Conviction Score</p>
+                  <p className="text-white/25">Weighted blend of 7 dimensions: signal diversity, technicals, fundamentals, valuation, smart money, AI sentiment, and risk-adjusted return. Higher = stronger recommendation.</p>
                 </div>
                 <div>
-                  <p className="text-white/50 font-semibold">Technical Alignment — 20%</p>
-                  <p className="text-white/25 mt-0.5">RSI, MACD, volume, trend confirmation</p>
-                </div>
-                <div>
-                  <p className="text-white/50 font-semibold">Insider & Congress — 20%</p>
-                  <p className="text-white/25 mt-0.5">Buy clusters, large purchases, political interest</p>
-                </div>
-                <div>
-                  <p className="text-white/50 font-semibold">AI Confidence — 20%</p>
-                  <p className="text-white/25 mt-0.5">Claude's assessment of overall trade setup</p>
-                </div>
-                <div>
-                  <p className="text-white/50 font-semibold">Earnings Momentum — 15%</p>
-                  <p className="text-white/25 mt-0.5">Beat history, analyst upgrades, catalysts</p>
+                  <p className="text-white/50 font-semibold mb-1">Kosh Confidence <Shield size={10} className="inline text-blue-400" /></p>
+                  <p className="text-white/25">Percentage of scoring dimensions that had real data. 100% means all 7 dimensions had data. Lower confidence means some data sources were unavailable (e.g., fundamental data).</p>
                 </div>
               </div>
             </Card>
@@ -535,6 +799,10 @@ export default function TopPicksPage() {
 
       {tab === "history" && (
         <TrackRecordSection history={history} onRefresh={updatePerformance} />
+      )}
+
+      {tab === "algo" && (
+        <AlgoPerformance stats={algoStats} />
       )}
     </div>
     </ProGate>

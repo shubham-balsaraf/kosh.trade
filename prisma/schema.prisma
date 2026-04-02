@@ -213,24 +213,30 @@ model AutoTrade {
 }
 
 model ConvictionPick {
-  id            String   @id @default(cuid())
-  ticker        String
-  companyName   String?
-  rank          Int
-  conviction    Float
-  targetPrice   Float
-  currentPrice  Float
-  holdPeriod    String
-  holdLabel     String
-  thesis        String
-  signals       String[]
-  sector        String?
-  pickedAt      DateTime @default(now())
-  peakPrice     Float?
-  latestPrice   Float?
-  returnPct     Float?
-  peakReturnPct Float?
-  lastTrackedAt DateTime?
+  id              String    @id @default(cuid())
+  ticker          String
+  companyName     String?
+  rank            Int
+  conviction      Float
+  dataConfidence  Float?
+  targetPrice     Float
+  currentPrice    Float
+  holdPeriod      String
+  holdLabel       String
+  holdDays        Int?
+  thesis          String
+  signals         String[]
+  sector          String?
+  pickedAt        DateTime  @default(now())
+  peakPrice       Float?
+  latestPrice     Float?
+  returnPct       Float?
+  peakReturnPct   Float?
+  lastTrackedAt   DateTime?
+  hitTarget       Boolean   @default(false)
+  hitTargetAt     DateTime?
+  withinTimeline  Boolean?
+  outcome         String?
 
   @@index([pickedAt(sort: Desc)])
   @@index([ticker, pickedAt(sort: Desc)])
