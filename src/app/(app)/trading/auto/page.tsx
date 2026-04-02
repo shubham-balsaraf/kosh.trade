@@ -26,6 +26,8 @@ interface TradingConfig {
   weeklyTargetPct: number;
   watchlist: string[];
   strategies: string[];
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 interface Stats {
@@ -106,7 +108,7 @@ interface RunResult {
 interface CronStatus {
   configured: boolean;
   enabled: boolean;
-  status: "active" | "stale" | "inactive";
+  status: "active" | "stale" | "inactive" | "sleeping";
   lastRunAt: string | null;
   lastResult: string | null;
   lastTrades: number;
@@ -1289,13 +1291,37 @@ function DiscoveriesSection({ discoveries }: { discoveries: DiscoveredTicker[] }
 
 interface EquityPoint { date: string; equity: number; }
 
-function CronStatusBar({ cronStatus, onRefresh }: { cronStatus: CronStatus | null; onRefresh: () => void }) {
+function LiveUptime({ since }: { since: string }) {
+  const [elapsed, setElapsed] = useState("");
+  useEffect(() => {
+    const start = new Date(since).getTime();
+    const tick = () => {
+      const diff = Date.now() - start;
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+      if (d > 0) setElapsed(`${d}d ${h}h ${m}m`);
+      else if (h > 0) setElapsed(`${h}h ${m}m ${s}s`);
+      else setElapsed(`${m}m ${s}s`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [since]);
+  return <span className="tabular-nums">{elapsed}</span>;
+}
+
+function CronStatusBar({ cronStatus, enabled, createdAt, onRefresh }: {
+  cronStatus: CronStatus | null; enabled: boolean; createdAt?: string; onRefresh: () => void;
+}) {
   if (!cronStatus || !cronStatus.configured) return null;
 
   const statusConfig = {
-    active: { color: "emerald", icon: "●", label: "Active", glow: "shadow-emerald-500/20 shadow-sm" },
-    stale: { color: "amber", icon: "◌", label: "Delayed", glow: "shadow-amber-500/10" },
-    inactive: { color: "red", icon: "○", label: "Not Running", glow: "" },
+    active: { color: "emerald", label: "Active", glow: "shadow-emerald-500/20 shadow-sm" },
+    sleeping: { color: "blue", label: "Sleeping — Market Closed", glow: "shadow-blue-500/10" },
+    stale: { color: "amber", label: "Delayed", glow: "shadow-amber-500/10" },
+    inactive: { color: "red", label: "Not Running", glow: "" },
   };
   const s = statusConfig[cronStatus.status];
 
@@ -1310,29 +1336,45 @@ function CronStatusBar({ cronStatus, onRefresh }: { cronStatus: CronStatus | nul
 
   const nextRun = () => {
     if (cronStatus.status === "inactive") return "Not scheduled";
+    if (cronStatus.status === "sleeping") return "Next market open";
     if (cronStatus.minutesAgo == null) return "Pending first run";
-    const remainMins = 15 - (cronStatus.minutesAgo % 15);
-    return `~${remainMins}m`;
+    return "~:45 next hour";
   };
 
-  const dotColor = s.color === "emerald" ? "bg-emerald-400" : s.color === "amber" ? "bg-amber-400" : "bg-red-400";
-  const dotPing = s.color === "emerald" ? "bg-emerald-400" : s.color === "amber" ? "bg-amber-400" : "bg-red-400";
-  const labelColor = s.color === "emerald" ? "text-emerald-400" : s.color === "amber" ? "text-amber-400" : "text-red-400";
-  const borderColor = s.color === "emerald" ? "border-emerald-500/15" : s.color === "amber" ? "border-amber-500/15" : "border-red-500/15";
+  const colorMap: Record<string, { dot: string; label: string; border: string }> = {
+    emerald: { dot: "bg-emerald-400", label: "text-emerald-400", border: "border-emerald-500/15" },
+    blue: { dot: "bg-blue-400", label: "text-blue-400", border: "border-blue-500/15" },
+    amber: { dot: "bg-amber-400", label: "text-amber-400", border: "border-amber-500/15" },
+    red: { dot: "bg-red-400", label: "text-red-400", border: "border-red-500/15" },
+  };
+  const c = colorMap[s.color];
 
   return (
-    <div className={`glass-card p-4 ${s.glow} ${borderColor} border animate-fade-slide-up`}>
+    <div className={`glass-card p-4 ${s.glow} ${c.border} border animate-fade-slide-up`}>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
-              {cronStatus.status === "active" && (
-                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${dotPing} opacity-50`} />
+              {(cronStatus.status === "active" || (cronStatus.status === "sleeping" && enabled)) && (
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${c.dot} opacity-50`} />
               )}
-              <span className={`relative inline-flex rounded-full h-2 w-2 ${dotColor}`} />
+              <span className={`relative inline-flex rounded-full h-2 w-2 ${c.dot}`} />
             </span>
-            <span className={`text-xs font-semibold ${labelColor}`}>Autopilot {s.label}</span>
+            <span className={`text-xs font-semibold ${c.label}`}>Autopilot {s.label}</span>
           </div>
+
+          {enabled && createdAt && (
+            <>
+              <span className="text-white/10 text-[10px]">|</span>
+              <div className="flex items-center gap-1.5">
+                <Zap size={10} className="text-emerald-400/50" />
+                <span className="text-[10px] text-emerald-400/60 font-medium">
+                  Running for <LiveUptime since={createdAt} />
+                </span>
+              </div>
+            </>
+          )}
+
           <span className="text-white/10 text-[10px]">|</span>
           <div className="flex items-center gap-1.5">
             <Clock size={10} className="text-white/20" />
@@ -1841,7 +1883,12 @@ export default function AutoTradingPage() {
       )}
 
       {/* ─── Cron / Autopilot Status ─── */}
-      <CronStatusBar cronStatus={cronStatus} onRefresh={fetchCronStatus} />
+      <CronStatusBar
+        cronStatus={cronStatus}
+        enabled={config?.enabled ?? false}
+        createdAt={config?.createdAt}
+        onRefresh={fetchCronStatus}
+      />
 
       {/* ─── Portfolio Stats ─── */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-slide-up-1">

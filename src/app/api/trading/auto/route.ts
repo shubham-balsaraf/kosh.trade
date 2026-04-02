@@ -25,8 +25,8 @@ export async function POST(req: NextRequest) {
         const startTime = Date.now();
         try {
           const result = await runTradingCycle(c.userId);
-          const tradesExecuted = (result as any).executed?.length || 0;
-          const signalsFound = (result as any).allSignals?.length || 0;
+          const tradesExecuted = (result as any).tradesExecuted || 0;
+          const signalsFound = (result as any).signalsFound || 0;
           await prisma.tradingConfig.update({
             where: { userId: c.userId },
             data: {
@@ -182,13 +182,25 @@ export async function GET(req: NextRequest) {
 
     const lastCronAt = config.lastCronAt ? new Date(config.lastCronAt) : null;
     const minutesAgo = lastCronAt ? Math.round((Date.now() - lastCronAt.getTime()) / 60000) : null;
-    const isHealthy = lastCronAt != null && minutesAgo != null && minutesAgo < 20;
-    const isStale = lastCronAt != null && minutesAgo != null && minutesAgo >= 20 && minutesAgo < 60;
-    const isDead = lastCronAt == null || (minutesAgo != null && minutesAgo >= 60);
 
-    let status: "active" | "stale" | "inactive" = "inactive";
-    if (isHealthy) status = "active";
-    else if (isStale) status = "stale";
+    const nowUtc = new Date();
+    const utcHour = nowUtc.getUTCHours();
+    const utcDay = nowUtc.getUTCDay();
+    const isMarketHoursUtc = utcDay >= 1 && utcDay <= 5 && utcHour >= 13 && utcHour <= 20;
+    const isWeekday = utcDay >= 1 && utcDay <= 5;
+
+    let status: "active" | "stale" | "inactive" | "sleeping" = "inactive";
+    if (lastCronAt != null && minutesAgo != null) {
+      if (minutesAgo < 75) {
+        status = "active";
+      } else if (!isMarketHoursUtc && isWeekday && minutesAgo < 24 * 60) {
+        status = "sleeping";
+      } else if (!isWeekday && minutesAgo < 3 * 24 * 60) {
+        status = "sleeping";
+      } else {
+        status = "inactive";
+      }
+    }
 
     return NextResponse.json({
       configured: true,
