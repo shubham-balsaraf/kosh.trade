@@ -2,10 +2,10 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import Logo from "@/components/ui/Logo";
 import LandingNav from "@/components/ui/LandingNav";
+import DiscordCTA from "@/components/ui/DiscordCTA";
 import {
-  TrendingUp, Brain, Zap, BarChart3, Shield, Bell,
-  GitBranch, Link2, Globe, ArrowRight, Code2, Database,
-  Cpu, LineChart, Lock, Server,
+  Brain, GitBranch, Link2, Code2, Database,
+  LineChart, Lock, Server,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -182,19 +182,9 @@ export default function AboutPage() {
         </div>
       </div>
 
-      {/* CTA */}
-      <div className="max-w-3xl mx-auto px-4 py-20 text-center">
-        <h2 className="text-2xl font-bold text-white mb-3">
-          Ready to invest smarter?
-        </h2>
-        <p className="text-gray-500 mb-8">Free to use. No credit card required.</p>
-        <Link
-          href="/register"
-          className="inline-flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105"
-        >
-          Get Started
-          <ArrowRight size={18} />
-        </Link>
+      {/* Discord CTA */}
+      <div className="max-w-3xl mx-auto px-4 py-20">
+        <DiscordCTA />
       </div>
 
       {/* Footer */}
