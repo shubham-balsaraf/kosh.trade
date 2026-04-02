@@ -1,4 +1,4 @@
-const FMP_BASE = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
+const FMP_LEGACY = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
 
 function apiKey(): string {
   return process.env.FMP_API_KEY || "";
@@ -32,8 +32,8 @@ const ENDPOINT_TTL: Record<string, number> = {
   "/earnings-surprises": TTL_FUNDAMENTALS,
   "/historical-price-eod/full": TTL_QUOTE,
   "/search-name": TTL_SEARCH,
-  "/stock-screener": TTL_SEARCH,
-  "/earning-calendar": TTL_FUNDAMENTALS,
+  "/company-screener": TTL_SEARCH,
+  "/earnings-calendar": TTL_FUNDAMENTALS,
   "/insider-trading": TTL_FUNDAMENTALS,
   "/stock-news": TTL_QUOTE,
   "/senate-latest": TTL_SIGNAL,
@@ -49,6 +49,7 @@ const ENDPOINT_TTL: Record<string, number> = {
   "/news/stock-latest": TTL_QUOTE,
   "/news/crypto-latest": TTL_QUOTE,
   "/insider-trading/latest": TTL_SIGNAL,
+  "/insider-trading/search": TTL_SIGNAL,
   "/insider-trading/statistics": TTL_SIGNAL,
   "/sector-performance-snapshot": TTL_QUOTE,
   "/industry-performance-snapshot": TTL_QUOTE,
@@ -98,7 +99,7 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 /* ── Core fetch with cache ───────────────────────────── */
 
 const FMP_STABLE = "https://financialmodelingprep.com/stable";
-const FMP_FALLBACK = FMP_STABLE;
+const FMP_FALLBACK = FMP_LEGACY;
 
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
@@ -108,7 +109,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
-  const bases = [FMP_BASE, FMP_FALLBACK];
+  const bases = [FMP_STABLE, FMP_FALLBACK];
   let lastError = "";
 
   for (const base of bases) {
@@ -137,6 +138,11 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
       if (res.status === 404 || res.status === 403) {
         lastError = `${res.status} from ${base}`;
         continue;
+      }
+
+      if (res.status === 402) {
+        console.warn(`[FMP] ${endpoint} returned 402 (plan limitation) — returning empty`);
+        return [] as unknown as T;
       }
 
       if (!res.ok) {
@@ -185,6 +191,11 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
     const json = await retry.json();
     setCache(cacheKey, json, getCacheTTL(endpoint));
     return json;
+  }
+
+  if (res.status === 402 || res.status === 403) {
+    console.warn(`[FMP/stable] ${endpoint} returned ${res.status} (plan limitation) — returning empty`);
+    return [] as unknown as T;
   }
 
   if (!res.ok) {
@@ -249,18 +260,18 @@ export async function searchTicker(query: string) {
 }
 
 export async function getStockScreener(params: Record<string, string>) {
-  return fmpFetch<any[]>("/stock-screener", params);
+  return fmpFetch<any[]>("/company-screener", params);
 }
 
 export async function getEarningsCalendar(from?: string, to?: string) {
   const params: Record<string, string> = {};
   if (from) params.from = from;
   if (to) params.to = to;
-  return fmpFetch<any[]>("/earning-calendar", params);
+  return fmpFetch<any[]>("/earnings-calendar", params);
 }
 
 export async function getInsiderTrading(ticker: string, limit = 20) {
-  return fmpFetch<any[]>("/insider-trading", { symbol: ticker.toUpperCase(), limit: String(limit) });
+  return stableFetch<any[]>("/insider-trading/search", { symbol: ticker.toUpperCase(), limit: String(limit) });
 }
 
 export async function getEarnings(ticker: string) {
@@ -272,27 +283,27 @@ export async function getEarningsSurprises(ticker: string) {
 }
 
 export async function getStockNews(ticker: string, limit = 10) {
-  return fmpFetch<any[]>("/stock-news", { symbol: ticker.toUpperCase(), limit: String(limit) });
+  return stableFetch<any[]>("/news/stock-latest", { tickers: ticker.toUpperCase(), limit: String(limit) });
 }
 
 export async function getMarketNews(limit = 30) {
-  return fmpFetch<any[]>("/stock-news", { limit: String(limit) });
+  return stableFetch<any[]>("/news/stock-latest", { limit: String(limit) });
 }
 
 export async function getBulkInsiderTrading(limit = 50) {
-  return fmpFetch<any[]>("/insider-trading", { limit: String(limit) });
+  return stableFetch<any[]>("/insider-trading/latest", { limit: String(limit) });
 }
 
 export async function getTopGainersLosers() {
   const [gainers, losers] = await Promise.all([
-    fmpFetch<any[]>("/stock-screener", {
+    fmpFetch<any[]>("/company-screener", {
       marketCapMoreThan: "500000000",
       volumeMoreThan: "2000000",
       changeMoreThan: "3",
       limit: "15",
       exchange: "NYSE,NASDAQ",
     }),
-    fmpFetch<any[]>("/stock-screener", {
+    fmpFetch<any[]>("/company-screener", {
       marketCapMoreThan: "500000000",
       volumeMoreThan: "2000000",
       changeLessThan: "-4",
@@ -372,7 +383,8 @@ export async function getInsiderStats(ticker: string) {
 /* ── Sector & industry performance ───────────────────── */
 
 export async function getSectorPerformance() {
-  return stableFetch<any[]>("/sector-performance-snapshot", {});
+  const date = new Date().toISOString().slice(0, 10);
+  return stableFetch<any[]>("/sector-performance-snapshot", { date });
 }
 
 export async function getIndustryPerformance() {

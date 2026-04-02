@@ -290,17 +290,19 @@ async function fetchFundamentals(tickers: string[]): Promise<Map<string, Fundame
 
   const empty = new Map<string, any>();
   const [metricsMap, ratiosMap, incomeMap, balanceMap, dcfMap, targetMap, estimatesMap, surprisesMap, ratingsMap, profileMap] = await Promise.all([
-    batchFetch(tickers, (t) => getKeyMetrics(t, "annual", 2)).catch(() => empty),
-    batchFetch(tickers, (t) => getRatios(t, "annual", 2)).catch(() => empty),
-    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 2)).catch(() => empty),
-    batchFetch(tickers, (t) => getBalanceSheet(t, "annual", 1)).catch(() => empty),
-    batchFetch(tickers, (t) => getDCFValuation(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getPriceTargetConsensus(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getAnalystEstimates(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getEarningsSurprises(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getRatingsSnapshot(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getProfile(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getKeyMetrics(t, "annual", 2)).catch((e) => { console.warn("[Conviction] keyMetrics batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getRatios(t, "annual", 2)).catch((e) => { console.warn("[Conviction] ratios batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 2)).catch((e) => { console.warn("[Conviction] income batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getBalanceSheet(t, "annual", 1)).catch((e) => { console.warn("[Conviction] balance batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getDCFValuation(t)).catch((e) => { console.warn("[Conviction] DCF batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getPriceTargetConsensus(t)).catch((e) => { console.warn("[Conviction] priceTarget batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getAnalystEstimates(t)).catch((e) => { console.warn("[Conviction] estimates batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getEarningsSurprises(t)).catch((e) => { console.warn("[Conviction] surprises batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getRatingsSnapshot(t)).catch((e) => { console.warn("[Conviction] ratings batch failed:", e.message); return empty; }),
+    batchFetch(tickers, (t) => getProfile(t)).catch((e) => { console.warn("[Conviction] profile batch failed:", e.message); return empty; }),
   ]);
+
+  console.log(`[Conviction] Fundamentals data coverage: metrics=${metricsMap.size}/${tickers.length} ratios=${ratiosMap.size}/${tickers.length} income=${incomeMap.size}/${tickers.length} balance=${balanceMap.size}/${tickers.length} dcf=${dcfMap.size}/${tickers.length} targets=${targetMap.size}/${tickers.length} estimates=${estimatesMap.size}/${tickers.length} surprises=${surprisesMap.size}/${tickers.length} ratings=${ratingsMap.size}/${tickers.length} profiles=${profileMap.size}/${tickers.length}`);
 
   for (const ticker of tickers) {
     const metrics = metricsMap.get(ticker);
