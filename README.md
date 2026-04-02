@@ -122,17 +122,49 @@ For the final picks:
 - **Blended Target Price** — Weighted average of DCF intrinsic value (35%), analyst consensus target (40%), and technical target (25%)
 - **Hold Period** — Determined by ATR% and Beta: low volatility → LONG (6-12mo), moderate → MEDIUM (1-3mo), high → SHORT (1-4wk)
 - **AI Thesis** — Claude generates a structured investment thesis: bull case, key evidence, primary risk, and catalyst timeline
-- **Confidence Band** — Composite score maps to VERY HIGH (70+), HIGH (55-69), or MODERATE (30-54)
+- **Confidence Band** — Composite score maps to VERY HIGH (45+), HIGH (25-44), or MODERATE (<25)
+- **Kosh Confidence Score** — Weight-adjusted coverage metric: which of the 7 dimensions had real data vs gaps
 
-### Performance Tracking
+### Kosh Confidence Score
+
+Each pick carries a **Kosh Confidence Score (0-100%)** — distinct from the conviction score. It measures how much underlying data was available to score the pick:
+
+- If all 7 dimensions returned real data → **100%** confidence
+- If valuation and smart money had no data (API gaps) → confidence drops proportionally by weight
+- Prevents users from treating a "high conviction on thin data" pick the same as one backed by full coverage
+
+The score is weight-aware: dimensions with higher algorithmic weight (fundamental, valuation) impact confidence more than lighter ones (risk-adjusted).
+
+### Performance & Outcome Tracking
 
 Every pick is tracked daily against its entry price:
 
 - **Current return** — live P&L since pick date
 - **Peak return** — maximum gain reached (the "perfect profit")
 - **Target hit** — whether the blended target price was reached
-- **Max drawdown** — worst peak-to-trough decline
-- **Risk-adjusted return** — return relative to drawdown
+- **Timeline accuracy** — did it hit target within the predicted hold period (+60 day grace)
+
+Outcomes are classified automatically:
+
+| Outcome | Meaning |
+|---------|---------|
+| **BULLSEYE** | Hit target within predicted timeline |
+| **LATE_HIT** | Hit target but after the predicted window |
+| **WINNER** | Positive return but didn't reach full target |
+| **MISS** | Negative return or flat after hold period |
+| **TRACKING** | Still within hold period, not yet classified |
+
+### Algorithm Performance Dashboard
+
+Aggregate stats across all historical picks:
+
+- **Win Rate** — % of picks with positive return
+- **Target Hit Rate** — % of picks that reached their blended target price
+- **Timeline Accuracy** — % of target hits that occurred within the predicted window
+- **Average Return / Peak Return** — mean performance across all tracked picks
+- **Outcome Breakdown** — visual distribution of BULLSEYE / LATE_HIT / WINNER / MISS
+- **Notable Calls** — top picks that hit their targets with the highest returns
+- **Notable Misses** — worst misses for transparency and algorithm improvement
 
 ---
 
@@ -142,9 +174,17 @@ Every pick is tracked daily against its entry price:
 
 The flagship feature. Runs the full conviction pipeline and surfaces the 10 best opportunities in the market right now.
 
-Each pick includes: conviction score, confidence band, target price, hold period, sector, and a Claude-generated thesis explaining why.
+Each pick includes:
+- **Conviction Score** — composite score from the 7-dimension scoring engine
+- **Kosh Confidence Score** — transparency metric showing data completeness (0-100%)
+- **Target Price** — blended from DCF, analyst consensus, and technical targets
+- **Hold Period** — volatility-driven (SHORT 1-4wk / MEDIUM 1-3mo / LONG 3-12mo)
+- **AI Thesis** — Claude-generated investment case with bull case, evidence, risk, and timeline
 
-Historical performance is tracked with a "Track Record" view showing how past picks performed.
+Three views:
+1. **Current Picks** — today's top 10 with live price tracking
+2. **Track Record** — historical batches with outcome badges (BULLSEYE, WINNER, MISS)
+3. **Algorithm Performance** — aggregate stats, win rate, target hit rate, notable calls and misses
 
 **Algorithm:** [The Algorithm →](#the-algorithm)
 
@@ -236,10 +276,10 @@ Platform administration with user management and analytics.
 ├───────────────────────────────┼─────────────────────────────────────┤
 │                        Data Sources                                 │
 │                               │                                     │
-│   ┌──────────┐  ┌──────────┐  │  ┌──────────┐  ┌──────────────┐    │
-│   │   FMP    │  │  Yahoo   │  │  │ Finnhub  │  │  Claude AI   │    │
-│   │  API     │  │ Finance  │  │  │   API    │  │  (Anthropic) │    │
-│   └──────────┘  └──────────┘  │  └──────────┘  └──────────────┘    │
+│   ┌──────────────┐  ┌──────────┐  │  ┌──────────────┐             │
+│   │ FMP Stable   │  │  Yahoo   │  │  │  Claude AI   │             │
+│   │  (20+ endpts)│  │ Finance  │  │  │  (Anthropic) │             │
+│   └──────────────┘  └──────────┘  │  └──────────────┘             │
 │                               │                                     │
 └───────────────────────────────┼─────────────────────────────────────┘
                                 │
@@ -265,7 +305,7 @@ Platform administration with user management and analytics.
 | Backend | Next.js API Routes, TypeScript |
 | Database | PostgreSQL, Prisma ORM |
 | AI | Claude (Anthropic SDK) |
-| Market Data | FMP, Yahoo Finance, Finnhub |
+| Market Data | FMP (Stable API), Yahoo Finance |
 | Auth | NextAuth.js, Argon2 |
 | Payments | Stripe |
 | Infra | Raspberry Pi, PM2, Cron |
