@@ -688,8 +688,8 @@ function determineHoldPeriod(
 /* ── Confidence Band ────────────────────────────────────── */
 
 function confidenceBand(score: number): "VERY_HIGH" | "HIGH" | "MODERATE" {
-  if (score >= 80) return "VERY_HIGH";
-  if (score >= 60) return "HIGH";
+  if (score >= 45) return "VERY_HIGH";
+  if (score >= 25) return "HIGH";
   return "MODERATE";
 }
 
@@ -836,7 +836,7 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
 
   /* ── Layer 3: Score all 7 dimensions ────────── */
 
-  const candidates: ScoredCandidate[] = [];
+  const allScored: ScoredCandidate[] = [];
   for (const ticker of qualifiedTickers) {
     const { score: diversityScore, sources } = scoreSignalDiversity(ticker, bundle, discovered);
     if (sources.length === 0) continue;
@@ -867,9 +867,7 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
       scores.riskAdjusted * WEIGHTS.riskAdjusted
     );
 
-    if (compositeScore < MIN_COMPOSITE_SCORE) continue;
-
-    candidates.push({
+    allScored.push({
       ticker,
       scores,
       compositeScore,
@@ -882,8 +880,22 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
     });
   }
 
-  candidates.sort((a, b) => b.compositeScore - a.compositeScore);
-  console.log(`[Conviction] Scored candidates above threshold: ${candidates.length}`);
+  allScored.sort((a, b) => b.compositeScore - a.compositeScore);
+
+  if (allScored.length > 0) {
+    const top5 = allScored.slice(0, 5);
+    for (const c of top5) {
+      console.log(`[Conviction] ${c.ticker}: composite=${c.compositeScore} div=${c.scores.signalDiversity} tech=${c.scores.technical} fund=${c.scores.fundamental} val=${c.scores.valuation} smart=${c.scores.smartMoney} cat=${c.scores.catalystSentiment} risk=${c.scores.riskAdjusted}`);
+    }
+  }
+
+  const candidates = allScored.length > 10
+    ? allScored.filter((c) => c.compositeScore >= MIN_COMPOSITE_SCORE).length >= 10
+      ? allScored.filter((c) => c.compositeScore >= MIN_COMPOSITE_SCORE)
+      : allScored.slice(0, Math.max(10, allScored.length))
+    : allScored;
+
+  console.log(`[Conviction] Scored candidates: ${allScored.length} total, ${candidates.length} selected (min score in selection: ${candidates.length > 0 ? candidates[candidates.length - 1].compositeScore : 0})`);
 
   /* ── Layer 4: Sector diversification ────────── */
 
