@@ -90,7 +90,7 @@ const WEIGHTS = {
 };
 
 const MAX_PER_SECTOR = 3;
-const MIN_COMPOSITE_SCORE = 45;
+const MIN_COMPOSITE_SCORE = 30;
 
 /* ── Helpers ────────────────────────────────────────────── */
 
@@ -131,8 +131,8 @@ function clamp(val: number, min = 0, max = 100): number {
 interface QualityProfile {
   marketCap: number;
   avgVolume: number;
-  revenue: number;
-  debtToEquity: number;
+  revenue: number | null;
+  debtToEquity: number | null;
   price: number;
   sector: string;
   companyName: string;
@@ -142,11 +142,14 @@ interface QualityProfile {
 async function fetchQualityProfiles(tickers: string[]): Promise<Map<string, QualityProfile>> {
   const profiles = new Map<string, QualityProfile>();
 
-  const [profileMap, quoteMap, incomeMap, balanceMap] = await Promise.all([
+  const [profileMap, quoteMap] = await Promise.all([
     batchFetch(tickers, async (t) => getProfile(t)),
     batchFetch(tickers, async (t) => getQuote(t)),
-    batchFetch(tickers, async (t) => getIncomeStatement(t, "annual", 1)),
-    batchFetch(tickers, async (t) => getBalanceSheet(t, "annual", 1)),
+  ]);
+
+  const [incomeMap, balanceMap] = await Promise.all([
+    batchFetch(tickers, async (t) => getIncomeStatement(t, "annual", 1)).catch(() => new Map<string, any>()),
+    batchFetch(tickers, async (t) => getBalanceSheet(t, "annual", 1)).catch(() => new Map<string, any>()),
   ]);
 
   for (const ticker of tickers) {
@@ -158,10 +161,19 @@ async function fetchQualityProfiles(tickers: string[]): Promise<Map<string, Qual
 
     const marketCap = p?.mktCap || p?.marketCap || q?.marketCap || 0;
     const avgVolume = q?.avgVolume || p?.volAvg || 0;
-    const revenue = Array.isArray(inc) && inc[0] ? (inc[0].revenue || 0) : 0;
-    const totalDebt = Array.isArray(bal) && bal[0] ? (bal[0].totalDebt || bal[0].longTermDebt || 0) : 0;
-    const equity = Array.isArray(bal) && bal[0] ? (bal[0].totalStockholdersEquity || 1) : 1;
-    const debtToEquity = equity > 0 ? totalDebt / equity : 99;
+
+    let revenue: number | null = null;
+    if (Array.isArray(inc) && inc[0] && inc[0].revenue !== undefined) {
+      revenue = inc[0].revenue;
+    }
+
+    let debtToEquity: number | null = null;
+    if (Array.isArray(bal) && bal[0]) {
+      const totalDebt = bal[0].totalDebt || bal[0].longTermDebt || 0;
+      const equity = bal[0].totalStockholdersEquity || 0;
+      if (equity > 0) debtToEquity = totalDebt / equity;
+    }
+
     const price = q?.price || p?.price || 0;
     const sector = p?.sector || "Unknown";
     const companyName = p?.companyName || ticker;
@@ -171,15 +183,6 @@ async function fetchQualityProfiles(tickers: string[]): Promise<Map<string, Qual
   }
 
   return profiles;
-}
-
-function passesQualityGate(qp: QualityProfile): boolean {
-  if (qp.marketCap < 500_000_000) return false;
-  if (qp.avgVolume < 500_000) return false;
-  if (qp.revenue <= 0) return false;
-  if (qp.debtToEquity > 3) return false;
-  if (qp.price < 5) return false;
-  return true;
 }
 
 /* ── Layer 3 Dim 1: Signal Diversity ────────────────────── */
@@ -260,17 +263,18 @@ function scoreTechnical(scan: ScanResult | undefined, signal: TradeSignal | unde
 async function fetchFundamentals(tickers: string[]): Promise<Map<string, FundamentalData>> {
   const fundamentals = new Map<string, FundamentalData>();
 
+  const empty = new Map<string, any>();
   const [metricsMap, ratiosMap, incomeMap, balanceMap, dcfMap, targetMap, estimatesMap, surprisesMap, ratingsMap, profileMap] = await Promise.all([
-    batchFetch(tickers, (t) => getKeyMetrics(t, "annual", 2)),
-    batchFetch(tickers, (t) => getRatios(t, "annual", 2)),
-    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 2)),
-    batchFetch(tickers, (t) => getBalanceSheet(t, "annual", 1)),
-    batchFetch(tickers, (t) => getDCFValuation(t)),
-    batchFetch(tickers, (t) => getPriceTargetConsensus(t)),
-    batchFetch(tickers, (t) => getAnalystEstimates(t)),
-    batchFetch(tickers, (t) => getEarningsSurprises(t)),
-    batchFetch(tickers, (t) => getRatingsSnapshot(t)),
-    batchFetch(tickers, (t) => getProfile(t)),
+    batchFetch(tickers, (t) => getKeyMetrics(t, "annual", 2)).catch(() => empty),
+    batchFetch(tickers, (t) => getRatios(t, "annual", 2)).catch(() => empty),
+    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 2)).catch(() => empty),
+    batchFetch(tickers, (t) => getBalanceSheet(t, "annual", 1)).catch(() => empty),
+    batchFetch(tickers, (t) => getDCFValuation(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getPriceTargetConsensus(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getAnalystEstimates(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getEarningsSurprises(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getRatingsSnapshot(t)).catch(() => empty),
+    batchFetch(tickers, (t) => getProfile(t)).catch(() => empty),
   ]);
 
   for (const ticker of tickers) {
@@ -796,11 +800,21 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
   /* ── Layer 2: Quality Gate ───────────────────── */
 
   const qualityProfiles = await fetchQualityProfiles(rawPool);
-  const qualifiedTickers = rawPool.filter((t) => {
+  const gateStats = { noProfile: 0, pennyStock: 0, lowCap: 0, lowVol: 0, negRevenue: 0, highDebt: 0, passed: 0 };
+  const qualifiedTickers: string[] = [];
+  for (const t of rawPool) {
     const qp = qualityProfiles.get(t);
-    return qp && passesQualityGate(qp);
-  });
+    if (!qp) { gateStats.noProfile++; continue; }
+    if (qp.price < 5) { gateStats.pennyStock++; continue; }
+    if (qp.marketCap > 0 && qp.marketCap < 500_000_000) { gateStats.lowCap++; continue; }
+    if (qp.avgVolume > 0 && qp.avgVolume < 500_000) { gateStats.lowVol++; continue; }
+    if (qp.revenue !== null && qp.revenue <= 0) { gateStats.negRevenue++; continue; }
+    if (qp.debtToEquity !== null && qp.debtToEquity > 3) { gateStats.highDebt++; continue; }
+    gateStats.passed++;
+    qualifiedTickers.push(t);
+  }
   console.log(`[Conviction] After quality gate: ${qualifiedTickers.length}/${rawPool.length} tickers`);
+  console.log(`[Conviction] Gate rejections: ${JSON.stringify(gateStats)}`);
 
   if (qualifiedTickers.length === 0) {
     console.log("[Conviction] No candidates passed quality gate. Returning empty.");
@@ -958,17 +972,17 @@ export async function updatePickPerformance(): Promise<{ updated: number }> {
     select: { id: true, ticker: true, currentPrice: true, peakPrice: true, targetPrice: true, pickedAt: true },
   });
 
-  const uniqueTickers = [...new Set(picks.map((p) => p.ticker))];
+  const uniqueTickers: string[] = [...new Set(picks.map((p: any) => p.ticker as string))];
   const quoteMap = new Map<string, number>();
 
   const batchSize = 5;
   for (let i = 0; i < uniqueTickers.length; i += batchSize) {
     const batch = uniqueTickers.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map((t) => getQuote(t)));
+    const results = await Promise.allSettled(batch.map((t: string) => getQuote(t)));
     for (let j = 0; j < batch.length; j++) {
       const r = results[j];
       if (r.status === "fulfilled" && r.value?.price) {
-        quoteMap.set(batch[j], r.value.price);
+        quoteMap.set(batch[j] as string, r.value.price);
       }
     }
   }
