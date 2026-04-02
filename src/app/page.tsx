@@ -235,6 +235,7 @@ export default function LandingPage() {
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <Logo size="sm" showDomain />
             <div className="flex flex-wrap justify-center gap-6 text-sm text-gray-600">
+              <Link href="/about" className="hover:text-gray-400 transition-colors">About</Link>
               <Link href="/login" className="hover:text-gray-400 transition-colors">Sign In</Link>
               <Link href="/register" className="hover:text-gray-400 transition-colors">Register</Link>
               <Link href="/pricing" className="hover:text-gray-400 transition-colors">Pricing</Link>

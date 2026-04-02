@@ -17,6 +17,12 @@ export default function LandingNav() {
         </Link>
 
         <div className="flex items-center gap-3">
+          <Link
+            href="/about"
+            className="hidden md:inline-flex text-sm text-gray-400 hover:text-white transition-colors font-medium"
+          >
+            About
+          </Link>
           {isLoggedIn ? (
             <Link
               href="/dashboard"

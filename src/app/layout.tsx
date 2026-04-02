@@ -6,8 +6,43 @@ import Providers from "@/components/Providers";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "kosh.trade — US Stock Fundamental Analyser",
-  description: "AI-powered fundamental analysis, portfolio tracking, signals, and auto-investing for long-term US stock investors.",
+  title: "kosh.trade — AI-Powered Stock Analysis & Autonomous Trading",
+  description:
+    "Deep fundamental analysis, real-time signal discovery, portfolio AI summaries, and autonomous trading — built for long-term US stock investors. Created by Shubham Balsaraf.",
+  keywords: [
+    "stock analysis",
+    "fundamental analysis",
+    "AI trading",
+    "autonomous trading",
+    "portfolio tracker",
+    "signal alerts",
+    "kosh",
+    "kosh.trade",
+    "Shubham Balsaraf",
+  ],
+  authors: [{ name: "Shubham Balsaraf", url: "https://github.com/shubham-balsaraf" }],
+  creator: "Shubham Balsaraf",
+  metadataBase: new URL("https://kosh.trade"),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://kosh.trade",
+    siteName: "kosh.trade",
+    title: "kosh.trade — AI-Powered Stock Analysis & Autonomous Trading",
+    description:
+      "Deep fundamental analysis, real-time signal discovery, portfolio AI summaries, and autonomous trading — built for long-term US stock investors.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "kosh.trade — AI-Powered Stock Analysis & Autonomous Trading",
+    description:
+      "Deep fundamental analysis, real-time signal discovery, and autonomous trading for US stock investors.",
+    creator: "@shubhambalsaraf",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
