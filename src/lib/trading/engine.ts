@@ -1,11 +1,12 @@
 import { prisma } from "@/lib/db";
-import { scanMarket } from "./scanner";
-import { rankSignals } from "./signals";
+import { scanMarket, type ScanResult } from "./scanner";
+import { rankSignals, type TradeSignal } from "./signals";
 import { calculatePosition, isMarketHours } from "./risk";
 import { executeEntry, checkExits, getPortfolioSummary } from "./executor";
-import { getAIConvictions, getDailyBriefing } from "./ai-analyst";
+import { getDailyBriefing } from "./ai-analyst";
 import { sendTradeNotification, sendDailySummary } from "./notifications";
-import { discoverOpportunities, type DiscoveredTicker } from "./discovery";
+import { discoverOpportunities, getRawSignals, type DiscoveredTicker } from "./discovery";
+import { scoreForTrading } from "./conviction";
 
 interface EngineResult {
   status: "OK" | "SKIPPED" | "ERROR";
@@ -228,13 +229,39 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       discoveryMap.set(d.ticker, `${d.source}: ${d.reason}`);
     }
 
+    // 7-dimension conviction scoring for top candidates
+    let bundle;
+    try {
+      bundle = await getRawSignals();
+    } catch (e) {
+      console.warn("[Engine] getRawSignals failed (non-fatal):", e);
+    }
+
+    const topCandidateTickers = rankedSignals.slice(0, 15).map((s) => s.ticker);
+    const scanLookup = new Map<string, ScanResult>();
+    for (const sr of scanResults) scanLookup.set(sr.ticker, sr);
+    const signalLookup = new Map<string, TradeSignal>();
+    for (const s of rankedSignals) signalLookup.set(s.ticker, s);
+
+    let convictionScores = new Map<string, { compositeScore: number; dataConfidence: number; scores: Record<string, number> }>();
+    if (bundle && topCandidateTickers.length > 0) {
+      try {
+        convictionScores = await scoreForTrading(topCandidateTickers, scanLookup, signalLookup, bundle, discovered);
+        console.log(`[Engine] Conviction scores: ${[...convictionScores.entries()].map(([t, c]) => `${t}=${c.compositeScore}`).join(", ")}`);
+      } catch (e) {
+        console.warn("[Engine] scoreForTrading failed (non-fatal):", e);
+      }
+    }
+
     const signalMap = new Map<string, any>();
     for (const s of rankedSignals) {
+      const cv = convictionScores.get(s.ticker);
       signalMap.set(s.ticker, {
         ticker: s.ticker,
         action: s.action,
         score: s.score,
         confidence: s.confidence,
+        convictionScore: cv?.compositeScore ?? null,
         strategy: s.strategy,
         price: s.price,
         stopLoss: s.stopLoss,
@@ -251,6 +278,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       });
     }
 
+    const MIN_TRADE_CONVICTION = 20;
     const details: any[] = [...exits];
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - currentOpen);
@@ -318,6 +346,17 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         continue;
       }
 
+      const cv = convictionScores.get(signal.ticker);
+      const convictionScore = cv?.compositeScore ?? 50;
+
+      if (cv && convictionScore < MIN_TRADE_CONVICTION) {
+        const skipReason = `Conviction too low (${convictionScore}/100, need ≥${MIN_TRADE_CONVICTION})`;
+        details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
+        const sm = signalMap.get(signal.ticker);
+        if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
+        continue;
+      }
+
       const positionPctMultiplier = isAddOn ? riskProfile.addOnSizeMultiplier : 1;
       const position = calculatePosition(signal, {
         portfolioValue: currentEquity,
@@ -328,7 +367,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         dayTradesUsed: 0,
         dailyPnl,
         isPaper: true,
-      }, signal.confidence);
+      }, convictionScore);
 
       if (position.rejected) {
         const skipReason = position.rejectReason;
@@ -348,7 +387,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           stopLoss: position.stopLoss,
           takeProfit: position.takeProfit,
           strategy: signal.strategy,
-          aiConfidence: signal.confidence,
+          aiConfidence: convictionScore,
           signalScore: signal.score,
           status: "OPEN",
           mode: "PAPER",
@@ -376,7 +415,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         stopLoss: position.stopLoss,
         takeProfit: position.takeProfit,
         strategy: signal.strategy,
-        confidence: signal.confidence,
+        confidence: convictionScore,
         score: signal.score,
       });
 
@@ -385,7 +424,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         smTraded.decision = isAddOn ? "ADD_ON" : "TRADED";
         smTraded.decisionReason = isAddOn
           ? `Added ${position.qty} shares (now ${held ? held.totalQty : position.qty} total)`
-          : `Bought ${position.qty} shares`;
+          : `Bought ${position.qty} shares @ conviction ${convictionScore}/100`;
       }
 
       if (email) {
@@ -394,7 +433,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           action: actionLabel,
           qty: position.qty,
           price: signal.price,
-          reason: `${isAddOn ? "Add-on: " : ""}${signal.strategy} signal (score: ${signal.score.toFixed(1)})`,
+          reason: `${isAddOn ? "Add-on: " : ""}${signal.strategy} (conviction: ${convictionScore}/100, score: ${signal.score.toFixed(1)})`,
         }).catch(() => {});
       }
     }
@@ -505,26 +544,46 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       }
     }
 
-    const discoveryContext = new Map<string, string>();
     const discoveryMap = new Map<string, string>();
     for (const d of discovered) {
-      discoveryContext.set(d.ticker, d.reason);
       discoveryMap.set(d.ticker, d.reason);
     }
 
-    const aiConvictions = rankedSignals.length > 0
-      ? await getAIConvictions(rankedSignals, discoveryContext)
-      : new Map();
+    // 7-dimension conviction scoring (replaces AI conviction LLM call)
+    let bundleLive;
+    try {
+      bundleLive = await getRawSignals();
+    } catch (e) {
+      console.warn("[Engine] getRawSignals failed (non-fatal):", e);
+    }
+
+    const topCandidateTickersLive = rankedSignals.slice(0, 15).map((s) => s.ticker);
+    const scanLookupLive = new Map<string, ScanResult>();
+    for (const sr of scanResults) scanLookupLive.set(sr.ticker, sr);
+    const signalLookupLive = new Map<string, TradeSignal>();
+    for (const s of rankedSignals) signalLookupLive.set(s.ticker, s);
+
+    let convictionScoresLive = new Map<string, { compositeScore: number; dataConfidence: number; scores: Record<string, number> }>();
+    if (bundleLive && topCandidateTickersLive.length > 0) {
+      try {
+        convictionScoresLive = await scoreForTrading(topCandidateTickersLive, scanLookupLive, signalLookupLive, bundleLive, discovered);
+        console.log(`[Engine] Live conviction scores: ${[...convictionScoresLive.entries()].map(([t, c]) => `${t}=${c.compositeScore}`).join(", ")}`);
+      } catch (e) {
+        console.warn("[Engine] scoreForTrading failed (non-fatal):", e);
+      }
+    }
 
     const portfolio = await getPortfolioSummary(alpacaConfig, userId);
 
     const signalMapLive = new Map<string, any>();
     for (const s of rankedSignals) {
+      const cv = convictionScoresLive.get(s.ticker);
       signalMapLive.set(s.ticker, {
         ticker: s.ticker,
         action: s.action,
         score: s.score,
         confidence: s.confidence,
+        convictionScore: cv?.compositeScore ?? null,
         strategy: s.strategy,
         price: s.price,
         stopLoss: s.stopLoss,
@@ -541,6 +600,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       });
     }
 
+    const MIN_TRADE_CONVICTION_LIVE = 20;
     const details: any[] = [...exits];
     let tradesExecuted = 0;
     const maxNewTrades = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
@@ -601,11 +661,11 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         continue;
       }
 
-      const aiVerdict = aiConvictions.get(signal.ticker);
-      const aiConfidence = aiVerdict?.conviction ? aiVerdict.conviction * 10 : 50;
+      const cvLive = convictionScoresLive.get(signal.ticker);
+      const convictionScore = cvLive?.compositeScore ?? 50;
 
-      if (aiVerdict && aiVerdict.conviction < 4) {
-        const skipR = `AI conviction too low (${aiVerdict.conviction}/10): ${aiVerdict.reasoning}`;
+      if (cvLive && convictionScore < MIN_TRADE_CONVICTION_LIVE) {
+        const skipR = `Conviction too low (${convictionScore}/100, need ≥${MIN_TRADE_CONVICTION_LIVE})`;
         details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
         const sm = signalMapLive.get(signal.ticker);
         if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
@@ -622,14 +682,14 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         dayTradesUsed: portfolio.dayTradesUsed,
         dailyPnl: portfolio.dailyPnl,
         isPaper: alpacaConfig.paper,
-      }, aiConfidence);
+      }, convictionScore);
 
       const result = await executeEntry(
         alpacaConfig,
         position,
         userId,
         signal.strategy,
-        aiConfidence,
+        convictionScore,
         signal.score
       );
 
@@ -652,7 +712,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
           sm.decision = isAddOn ? "ADD_ON" : "TRADED";
           sm.decisionReason = isAddOn
             ? `Added ${result.qty || position.qty} shares (now ${held ? held.totalQty : position.qty} total)`
-            : `Bought ${result.qty || position.qty} shares`;
+            : `Bought ${result.qty || position.qty} shares @ conviction ${convictionScore}/100`;
         }
       }
     }

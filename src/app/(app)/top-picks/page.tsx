@@ -159,16 +159,41 @@ function ConvictionBar({ value }: { value: number }) {
 }
 
 function ConfidenceGauge({ value }: { value: number }) {
+  const [showTip, setShowTip] = useState(false);
   const color = value >= 80 ? "text-emerald-400 border-emerald-500/30" :
     value >= 50 ? "text-blue-400 border-blue-500/30" :
     "text-amber-400 border-amber-500/30";
   const bgColor = value >= 80 ? "bg-emerald-500/10" :
     value >= 50 ? "bg-blue-500/10" :
     "bg-amber-500/10";
+  const label = value >= 80 ? "Excellent" : value >= 50 ? "Good" : "Limited";
   return (
-    <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border ${color} ${bgColor}`}>
-      <Shield size={10} />
-      <span className="text-[10px] font-bold">{value}%</span>
+    <div
+      className="relative inline-block"
+      onMouseEnter={() => setShowTip(true)}
+      onMouseLeave={() => setShowTip(false)}
+    >
+      <div className={`flex items-center gap-1 px-2 py-0.5 rounded-lg border cursor-help ${color} ${bgColor}`}>
+        <Shield size={10} />
+        <span className="text-[10px] font-bold">{value}%</span>
+      </div>
+      {showTip && (
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 rounded-xl border border-white/10 bg-[#0d0f14] shadow-2xl shadow-black/60 animate-fade-slide-up">
+          <p className="text-[11px] font-bold text-white/80 mb-1.5">Kosh Confidence Score — {value}% ({label})</p>
+          <p className="text-[10px] leading-relaxed text-white/40">
+            This measures how much real data was available to score this pick across all 7 dimensions
+            (technical, fundamental, valuation, smart money, catalyst, signal diversity, risk).
+          </p>
+          <p className="text-[10px] leading-relaxed text-white/40 mt-1.5">
+            {value >= 80
+              ? "Almost all scoring dimensions returned real data — this pick is well-supported."
+              : value >= 50
+                ? "Most dimensions had data but some gaps exist (e.g. missing insider trades or analyst estimates)."
+                : "Several data sources were unavailable — treat this pick with more caution."}
+          </p>
+          <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r border-white/10 bg-[#0d0f14] -mt-1" />
+        </div>
+      )}
     </div>
   );
 }

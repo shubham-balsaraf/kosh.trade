@@ -18,6 +18,7 @@ export const metadata: Metadata = {
     "signal alerts",
     "kosh",
     "kosh.trade",
+    "KoshPilot",
     "Shubham Balsaraf",
   ],
   authors: [{ name: "Shubham Balsaraf", url: "https://github.com/shubham-balsaraf" }],

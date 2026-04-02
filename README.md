@@ -34,7 +34,7 @@ Built with Next.js, PostgreSQL, and deployed on a Raspberry Pi.
 
 ## The Algorithm
 
-Every feature on Kosh is powered by the same multi-layered conviction engine. Whether it's picking the Top 10 stocks, deciding what KoshPilot should buy, or ranking signals — the same pipeline runs underneath.
+Every feature on kosh.trade is powered by the same multi-layered conviction engine. Whether it's picking the Top 10 stocks or deciding what KoshPilot should buy — the same 7-dimension scoring pipeline runs underneath.
 
 ### Pipeline Overview
 
@@ -192,13 +192,17 @@ Three views:
 
 Fully autonomous trading engine that runs on a cron schedule (Raspberry Pi). Discovers what to trade from live signals — not from a fixed watchlist.
 
+- Uses the same **7-dimension conviction engine** as Top Picks for trade filtering and position sizing
+- Lightweight `scoreForTrading()` path: fetches fundamentals only for the ~15 tickers that pass the technical filter (not 80+), skips LLM calls
 - Signal-first market scanning using the same discovery pipeline
 - Risk-managed execution with three profiles: Conservative, Moderate, Aggressive
-- Position sizing based on conviction score and risk profile
+- Position sizing scaled by conviction composite score (0-100)
+- Conviction ring gauge and radar chart for visual score breakdown per signal
 - Stop-losses, take-profit targets, and trailing stops
 - Live equity curve with real-time P&L tracking
 - Autopilot health monitoring — cron status, last run, signals scanned
 - Prediction accuracy analytics (win rate, avg return, best/worst picks by strategy)
+- Both paper and live modes use the same conviction scoring — no asymmetry
 
 **Algorithm:** [The Algorithm →](#the-algorithm)
 
@@ -236,6 +240,7 @@ Scans for oversold stocks that are showing reversal signals.
 
 Platform administration with user management and analytics.
 
+- Click any user row to expand full activity profile (logins, feature usage, recent events)
 - User tier management (Pro/Free) with one-click toggle
 - Feature gate controls for Pro features
 - Detailed usage analytics: logins, feature access, time spent

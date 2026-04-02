@@ -9,7 +9,7 @@ import {
   ShieldCheck, Users, Crown, Search, ToggleLeft, ToggleRight,
   RefreshCw, UserCheck, UserX, Loader2, Mail, Calendar, Activity,
   Ban, ShieldOff, Clock, Eye, LogIn, ChevronDown, ChevronUp,
-  BarChart3, MousePointer,
+  BarChart3,
 } from "lucide-react";
 
 interface UserRow {
@@ -600,13 +600,14 @@ export default function AdminPage() {
                 return (
                   <div key={u.id}>
                     <div
-                      className={`flex items-center justify-between p-3 rounded-xl transition-all ${
+                      className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer ${
                         isRestricted
-                          ? "bg-red-500/[0.03] border border-red-500/10"
+                          ? "bg-red-500/[0.03] border border-red-500/10 hover:bg-red-500/[0.06]"
                           : u.role === "ADMIN"
-                            ? "bg-indigo-500/[0.04] border border-indigo-500/10"
-                            : "bg-amber-500/[0.02] border border-amber-500/8"
+                            ? "bg-indigo-500/[0.04] border border-indigo-500/10 hover:bg-indigo-500/[0.07]"
+                            : "bg-amber-500/[0.02] border border-amber-500/8 hover:bg-amber-500/[0.05]"
                       }`}
+                      onClick={() => setExpandedUser(isExpanded ? null : u.id)}
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
@@ -645,17 +646,10 @@ export default function AdminPage() {
                       </div>
 
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          onClick={() => setExpandedUser(isExpanded ? null : u.id)}
-                          className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-[10px] font-semibold text-white/20 hover:text-white/50 hover:bg-white/[0.03] transition-all"
-                          title="View activity"
-                        >
-                          <MousePointer size={11} />
-                          {isExpanded ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                        </button>
+                        {isExpanded ? <ChevronUp size={14} className="text-white/30" /> : <ChevronDown size={14} className="text-white/20" />}
                         {u.role !== "ADMIN" && (
                           <button
-                            onClick={() => toggleRestrict(u.id, u.tier)}
+                            onClick={(e) => { e.stopPropagation(); toggleRestrict(u.id, u.tier); }}
                             disabled={updating === u.id}
                             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                               isRestricted

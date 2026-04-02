@@ -66,21 +66,23 @@ export default function Sidebar() {
         );
       })}
 
+      {isAdmin && (
+        <Link
+          href="/admin"
+          className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300",
+            pathname === "/admin" || pathname.startsWith("/admin/")
+              ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/15"
+              : "text-indigo-400/60 hover:text-indigo-300 hover:bg-indigo-500/[0.06]"
+          )}
+        >
+          <ShieldCheck size={18} />
+          <span className="flex-1">Admin Panel</span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-indigo-500/15 text-indigo-400/80 font-bold">ADM</span>
+        </Link>
+      )}
+
       <div className="mt-auto pt-3 border-t border-white/[0.04] space-y-0.5">
-        {isAdmin && (
-          <Link
-            href="/admin"
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300",
-              pathname === "/admin" || pathname.startsWith("/admin/")
-                ? "bg-indigo-500/10 text-indigo-300 border border-indigo-500/15"
-                : "text-indigo-400/40 hover:text-indigo-300/80 hover:bg-indigo-500/[0.04]"
-            )}
-          >
-            <ShieldCheck size={18} />
-            Admin Panel
-          </Link>
-        )}
         <Link
           href="/pricing"
           className={cn(

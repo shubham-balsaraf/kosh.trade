@@ -36,9 +36,9 @@ export interface ConvictionPickResult {
   sector: string;
 }
 
-/* ── Internal types ─────────────────────────────────────── */
+/* ── Exported types ─────────────────────────────────────── */
 
-interface FundamentalData {
+export interface FundamentalData {
   revenueGrowth: number;
   grossMargin: number;
   operatingMargin: number;
@@ -61,7 +61,7 @@ interface FundamentalData {
   companyName: string;
 }
 
-interface ScoredCandidate {
+export interface ScoredCandidate {
   ticker: string;
   scores: {
     signalDiversity: number;
@@ -82,7 +82,7 @@ interface ScoredCandidate {
   sentimentScore: number;
 }
 
-const WEIGHTS = {
+export const WEIGHTS = {
   signalDiversity: 0.15,
   technical: 0.15,
   fundamental: 0.15,
@@ -97,7 +97,7 @@ const MIN_COMPOSITE_SCORE = 30;
 
 const HOLD_PERIOD_DAYS: Record<string, number> = { SHORT: 21, MEDIUM: 60, LONG: 180 };
 
-function computeDataConfidence(scores: ScoredCandidate["scores"]): number {
+export function computeDataConfidence(scores: ScoredCandidate["scores"]): number {
   const dims = [
     { key: "signalDiversity", w: WEIGHTS.signalDiversity },
     { key: "technical", w: WEIGHTS.technical },
@@ -212,7 +212,7 @@ async function fetchQualityProfiles(tickers: string[]): Promise<Map<string, Qual
 
 /* ── Layer 3 Dim 1: Signal Diversity ────────────────────── */
 
-function scoreSignalDiversity(
+export function scoreSignalDiversity(
   ticker: string,
   bundle: RawSignalBundle,
   discovered: DiscoveredTicker[],
@@ -243,7 +243,7 @@ function scoreSignalDiversity(
 
 /* ── Layer 3 Dim 2: Technical Strength ──────────────────── */
 
-function scoreTechnical(scan: ScanResult | undefined, signal: TradeSignal | undefined): number {
+export function scoreTechnical(scan: ScanResult | undefined, signal: TradeSignal | undefined): number {
   if (!scan || !signal) return 0;
 
   let score = 0;
@@ -285,7 +285,7 @@ function scoreTechnical(scan: ScanResult | undefined, signal: TradeSignal | unde
 
 /* ── Layer 3 Dim 3: Fundamental Quality ─────────────────── */
 
-async function fetchFundamentals(tickers: string[]): Promise<Map<string, FundamentalData>> {
+export async function fetchFundamentals(tickers: string[]): Promise<Map<string, FundamentalData>> {
   const fundamentals = new Map<string, FundamentalData>();
 
   const empty = new Map<string, any>();
@@ -390,7 +390,7 @@ async function fetchFundamentals(tickers: string[]): Promise<Map<string, Fundame
   return fundamentals;
 }
 
-function scoreFundamental(fd: FundamentalData | undefined): number {
+export function scoreFundamental(fd: FundamentalData | undefined): number {
   if (!fd) return 0;
   let score = 0;
 
@@ -431,7 +431,7 @@ function scoreFundamental(fd: FundamentalData | undefined): number {
 
 /* ── Layer 3 Dim 4: Valuation Attractiveness ────────────── */
 
-function scoreValuation(fd: FundamentalData | undefined, currentPrice: number): number {
+export function scoreValuation(fd: FundamentalData | undefined, currentPrice: number): number {
   if (!fd) return 0;
   let score = 0;
 
@@ -465,7 +465,7 @@ function scoreValuation(fd: FundamentalData | undefined, currentPrice: number): 
 
 /* ── Layer 3 Dim 5: Smart Money Flow ────────────────────── */
 
-function scoreSmartMoney(ticker: string, bundle: RawSignalBundle): number {
+export function scoreSmartMoney(ticker: string, bundle: RawSignalBundle): number {
   let score = 0;
 
   const insiderBuys = bundle.insiderBuys.filter((i) => i.ticker === ticker);
@@ -513,7 +513,7 @@ const CATALYST_TIER: Record<string, number> = {
   "Energy catalyst": 8, "Geopolitical/trade policy": 8,
 };
 
-function scoreCatalyst(ticker: string, bundle: RawSignalBundle): number {
+export function scoreCatalyst(ticker: string, bundle: RawSignalBundle): number {
   let score = 0;
 
   const news = bundle.news.filter((n) => n.ticker === ticker && n.catalyst);
@@ -589,7 +589,7 @@ async function batchSentimentAnalysis(
 
 /* ── Layer 3 Dim 7: Risk-Adjusted Return ────────────────── */
 
-function scoreRiskAdjusted(
+export function scoreRiskAdjusted(
   scan: ScanResult | undefined,
   fd: FundamentalData | undefined,
   currentPrice: number,
@@ -801,6 +801,74 @@ Be specific with numbers. Return a JSON array: [{"ticker": "X", "thesis": "..."}
 }
 
 /* ── Main Generation Pipeline ───────────────────────────── */
+
+/* ── Lightweight scorer for KoshPilot trading engine ────── */
+
+export interface TradingConviction {
+  compositeScore: number;
+  dataConfidence: number;
+  scores: Record<string, number>;
+}
+
+export async function scoreForTrading(
+  tickers: string[],
+  scanMap: Map<string, ScanResult>,
+  signalMap: Map<string, TradeSignal>,
+  bundle: RawSignalBundle,
+  discovered: DiscoveredTicker[],
+): Promise<Map<string, TradingConviction>> {
+  const results = new Map<string, TradingConviction>();
+  if (tickers.length === 0) return results;
+
+  console.log(`[Conviction/Trading] Scoring ${tickers.length} tickers for KoshPilot...`);
+
+  const fundamentals = await fetchFundamentals(tickers);
+
+  for (const ticker of tickers) {
+    const scan = scanMap.get(ticker);
+    const signal = signalMap.get(ticker);
+    const fd = fundamentals.get(ticker);
+    const currentPrice = scan?.price || fd?.marketCap || 0;
+
+    const { score: sigDiversityScore } = scoreSignalDiversity(ticker, bundle, discovered);
+    const techScore = scoreTechnical(scan, signal);
+    const fundScore = scoreFundamental(fd);
+    const valScore = scoreValuation(fd, currentPrice);
+    const smartScore = scoreSmartMoney(ticker, bundle);
+    const catScore = scoreCatalyst(ticker, bundle);
+    const riskScore = scoreRiskAdjusted(scan, fd, currentPrice);
+
+    const scores = {
+      signalDiversity: sigDiversityScore,
+      technical: techScore,
+      fundamental: fundScore,
+      valuation: valScore,
+      smartMoney: smartScore,
+      catalystSentiment: catScore,
+      riskAdjusted: riskScore,
+    };
+
+    const composite = Math.round(
+      scores.signalDiversity * WEIGHTS.signalDiversity +
+      scores.technical * WEIGHTS.technical +
+      scores.fundamental * WEIGHTS.fundamental +
+      scores.valuation * WEIGHTS.valuation +
+      scores.smartMoney * WEIGHTS.smartMoney +
+      scores.catalystSentiment * WEIGHTS.catalystSentiment +
+      scores.riskAdjusted * WEIGHTS.riskAdjusted
+    );
+
+    const confidence = computeDataConfidence(scores);
+
+    console.log(`[Conviction/Trading] ${ticker}: composite=${composite} confidence=${confidence}% | sig=${sigDiversityScore} tech=${techScore} fund=${fundScore} val=${valScore} smart=${smartScore} cat=${catScore} risk=${riskScore}`);
+
+    results.set(ticker, { compositeScore: composite, dataConfidence: confidence, scores });
+  }
+
+  return results;
+}
+
+/* ── Full conviction pipeline for Top 10 Picks ─────────── */
 
 export async function generateConvictionPicks(): Promise<ConvictionPickResult[]> {
   console.log("[Conviction] Starting best-in-market pick generation...");

@@ -84,6 +84,7 @@ interface ScannedSignal {
   action: string;
   score: number;
   confidence: number;
+  convictionScore: number | null;
   strategy: string;
   price: number;
   stopLoss: number;
@@ -126,10 +127,10 @@ const DEFAULT_WATCHLIST = [
 ];
 
 const HOW_IT_WORKS = [
-  { icon: Search, title: "Scans Markets", desc: "Scans 10+ stocks for RSI, MACD, Bollinger, VWAP signals every hour" },
-  { icon: Brain, title: "AI Analysis", desc: "Claude AI scores each opportunity with conviction rating (0-100%)" },
+  { icon: Search, title: "Scans Markets", desc: "Scans 10+ stocks for RSI, MACD, Bollinger, VWAP, Stochastic, ADX every cycle" },
+  { icon: Brain, title: "7-Dim Conviction", desc: "Scores each stock across technical, fundamental, valuation, smart money, catalysts, signals & risk" },
   { icon: Zap, title: "Auto Executes", desc: "Places trades automatically with stop-losses and take-profits" },
-  { icon: ShieldCheck, title: "Risk Shield", desc: "Position limits, daily loss caps, PDT compliance built in" },
+  { icon: ShieldCheck, title: "Risk Shield", desc: "Position limits, daily loss caps, conviction gates, PDT compliance built in" },
 ];
 
 const BALANCE_OPTIONS = [
@@ -893,6 +894,86 @@ function PilotSplash({ onDone }: { onDone: () => void }) {
   );
 }
 
+function ConvictionRing({ score, size = 36 }: { score: number; size?: number }) {
+  const r = (size - 4) / 2;
+  const circ = 2 * Math.PI * r;
+  const pct = Math.max(0, Math.min(100, score));
+  const offset = circ - (pct / 100) * circ;
+  const color = pct >= 60 ? "#34d399" : pct >= 35 ? "#fbbf24" : "#f87171";
+
+  return (
+    <div className="relative flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={3} />
+        <circle
+          cx={size / 2} cy={size / 2} r={r} fill="none"
+          stroke={color} strokeWidth={3} strokeLinecap="round"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 0.8s ease" }}
+        />
+      </svg>
+      <span className="absolute text-[9px] font-bold tabular-nums" style={{ color }}>{pct}</span>
+    </div>
+  );
+}
+
+function MiniRadar({ indicators }: { indicators: SignalIndicator[] }) {
+  const dims = indicators.slice(0, 7);
+  if (dims.length < 3) return null;
+
+  const size = 120;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxR = 48;
+  const levels = 3;
+
+  const angleStep = (2 * Math.PI) / dims.length;
+
+  const gridPoints = (level: number) =>
+    dims.map((_, i) => {
+      const r = (maxR / levels) * (level + 1);
+      const angle = i * angleStep - Math.PI / 2;
+      return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
+    }).join(" ");
+
+  const dataPoints = dims.map((d, i) => {
+    const val = Math.max(0, Math.min(100, Math.abs(d.score)));
+    const r = (val / 100) * maxR;
+    const angle = i * angleStep - Math.PI / 2;
+    return `${cx + r * Math.cos(angle)},${cy + r * Math.sin(angle)}`;
+  }).join(" ");
+
+  const labelPositions = dims.map((d, i) => {
+    const r = maxR + 14;
+    const angle = i * angleStep - Math.PI / 2;
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle), label: d.name };
+  });
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="mx-auto">
+      {Array.from({ length: levels }).map((_, l) => (
+        <polygon key={l} points={gridPoints(l)} fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+      ))}
+      {dims.map((_, i) => {
+        const angle = i * angleStep - Math.PI / 2;
+        return (
+          <line key={i} x1={cx} y1={cy}
+            x2={cx + maxR * Math.cos(angle)} y2={cy + maxR * Math.sin(angle)}
+            stroke="rgba(255,255,255,0.04)" strokeWidth={0.5}
+          />
+        );
+      })}
+      <polygon points={dataPoints} fill="rgba(52,211,153,0.08)" stroke="rgba(52,211,153,0.5)" strokeWidth={1.5} />
+      {labelPositions.map((lp, i) => (
+        <text key={i} x={lp.x} y={lp.y} textAnchor="middle" dominantBaseline="central"
+          fill="rgba(255,255,255,0.25)" fontSize={7} fontWeight={500}>
+          {lp.label.length > 6 ? lp.label.slice(0, 6) : lp.label}
+        </text>
+      ))}
+    </svg>
+  );
+}
+
 function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal; defaultExpanded?: boolean }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const isPositive = signal.score > 0;
@@ -900,6 +981,7 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
   const isTraded = signal.decision === "TRADED";
   const isAddOn = signal.decision === "ADD_ON";
   const isSkipped = signal.decision === "SKIPPED";
+  const hasConviction = signal.convictionScore != null && signal.convictionScore > 0;
 
   return (
     <div
@@ -943,8 +1025,6 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
           </div>
           <div className="flex items-center gap-3 mt-0.5 text-[10px] text-white/25">
             <span>${signal.price.toFixed(2)}</span>
-            <span>Score: <span className={isPositive ? "text-emerald-400/70" : "text-red-400/70"}>{signal.score.toFixed(1)}</span></span>
-            <span>Conf: {signal.confidence}%</span>
             <span>{signal.strategy}</span>
           </div>
           {isSkipped && signal.decisionReason && (
@@ -958,18 +1038,22 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
           )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
-          <div className="flex items-center gap-0.5">
-            {Array.from({ length: 5 }).map((_, j) => (
-              <div
-                key={j}
-                className={`w-1 h-3 rounded-sm ${
-                  j < Math.ceil(Math.abs(signal.score) / 10)
-                    ? isPositive ? "bg-emerald-400/60" : "bg-red-400/60"
-                    : "bg-white/[0.06]"
-                }`}
-              />
-            ))}
-          </div>
+          {hasConviction ? (
+            <ConvictionRing score={signal.convictionScore!} />
+          ) : (
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: 5 }).map((_, j) => (
+                <div
+                  key={j}
+                  className={`w-1 h-3 rounded-sm ${
+                    j < Math.ceil(Math.abs(signal.score) / 10)
+                      ? isPositive ? "bg-emerald-400/60" : "bg-red-400/60"
+                      : "bg-white/[0.06]"
+                  }`}
+                />
+              ))}
+            </div>
+          )}
           {expanded ? <ChevronUp size={12} className="text-white/20" /> : <ChevronDown size={12} className="text-white/20" />}
         </div>
       </div>
@@ -983,27 +1067,35 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
             </div>
           )}
 
-          <div className="mt-3 space-y-1.5">
-            <p className="text-[10px] text-white/25 uppercase tracking-wider font-semibold">Signal Breakdown</p>
-            {signal.indicators.map((ind) => {
-              const pct = Math.min(100, Math.abs(ind.score));
-              return (
-                <div key={ind.name} className="flex items-center gap-2">
-                  <span className="text-[10px] text-white/30 w-16 shrink-0 text-right font-medium">{ind.name}</span>
-                  <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-500 ${
-                        ind.score > 20 ? "bg-emerald-400/60" : ind.score > 0 ? "bg-emerald-400/30" : ind.score > -20 ? "bg-red-400/30" : "bg-red-400/60"
-                      }`}
-                      style={{ width: `${pct}%` }}
-                    />
+          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-white/25 uppercase tracking-wider font-semibold">Signal Breakdown</p>
+              {signal.indicators.map((ind) => {
+                const pct = Math.min(100, Math.abs(ind.score));
+                return (
+                  <div key={ind.name} className="flex items-center gap-2">
+                    <span className="text-[10px] text-white/30 w-16 shrink-0 text-right font-medium">{ind.name}</span>
+                    <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          ind.score > 20 ? "bg-emerald-400/60" : ind.score > 0 ? "bg-emerald-400/30" : ind.score > -20 ? "bg-red-400/30" : "bg-red-400/60"
+                        }`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className={`text-[10px] w-8 text-right font-mono ${ind.score > 0 ? "text-emerald-400/50" : ind.score < 0 ? "text-red-400/50" : "text-white/20"}`}>
+                      {ind.score > 0 ? "+" : ""}{ind.score.toFixed(0)}
+                    </span>
                   </div>
-                  <span className={`text-[10px] w-8 text-right font-mono ${ind.score > 0 ? "text-emerald-400/50" : ind.score < 0 ? "text-red-400/50" : "text-white/20"}`}>
-                    {ind.score > 0 ? "+" : ""}{ind.score.toFixed(0)}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {signal.indicators.length >= 3 && (
+              <div className="flex flex-col items-center justify-center">
+                <MiniRadar indicators={signal.indicators} />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4 text-[10px] text-white/20 pt-1">
@@ -1019,6 +1111,16 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
               <span className="text-white/15">→</span>
               <span className="text-emerald-400/40">TP ${signal.takeProfit.toFixed(2)}</span>
               <span className="text-white/15">R:R {((signal.takeProfit - signal.price) / (signal.price - signal.stopLoss)).toFixed(1)}x</span>
+            </div>
+          )}
+
+          {hasConviction && (
+            <div className="pt-2 border-t border-white/[0.04] flex items-center gap-3">
+              <ConvictionRing score={signal.convictionScore!} size={28} />
+              <div>
+                <p className="text-[10px] font-semibold text-white/40">Kosh Conviction</p>
+                <p className="text-[9px] text-white/20">7-dimension score: signal diversity, technical, fundamental, valuation, smart money, catalyst, risk</p>
+              </div>
             </div>
           )}
         </div>
