@@ -606,65 +606,37 @@ export default function TopPicksPage() {
   useTrackView("Top Picks");
   const [picks, setPicks] = useState<Pick[]>([]);
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [expandedPick, setExpandedPick] = useState<number | null>(null);
   const [history, setHistory] = useState<HistoryBatch[]>([]);
   const [algoStats, setAlgoStats] = useState<AlgoStats | null>(null);
   const [tab, setTab] = useState<"picks" | "history" | "algo">("picks");
 
-  const loadCachedPicks = useCallback(() => {
-    try {
-      const cached = sessionStorage.getItem(CACHE_KEY);
-      if (cached) {
-        const data = JSON.parse(cached);
-        setPicks(data.picks || []);
-        setGeneratedAt(data.generatedAt || null);
-        return true;
-      }
-    } catch {}
-    return false;
-  }, []);
-
-  const loadCachedHistory = useCallback(() => {
-    try {
-      const cached = sessionStorage.getItem(HISTORY_CACHE_KEY);
-      if (cached) {
-        setHistory(JSON.parse(cached));
-        return true;
-      }
-    } catch {}
-    return false;
-  }, []);
-
-  useEffect(() => {
-    const hadCache = loadCachedPicks();
-    loadCachedHistory();
-    if (!hadCache) {
-      fetchLatestPicks();
-    }
-    fetchHistory();
-    fetchAlgoStats();
-  }, [loadCachedPicks, loadCachedHistory]);
-
-  async function fetchLatestPicks() {
+  async function fetchLatestPicks(): Promise<boolean> {
     try {
       const res = await fetch("/api/top-picks");
+      if (!res.ok) return false;
       const data = await res.json();
       if (data.picks?.length > 0) {
         setPicks(data.picks);
         setGeneratedAt(data.generatedAt);
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch {}
+        return true;
       }
     } catch {}
+    return false;
   }
 
   async function fetchHistory() {
     try {
       const res = await fetch("/api/top-picks?action=history");
+      if (!res.ok) return;
       const data = await res.json();
       if (data.history) {
         setHistory(data.history);
-        sessionStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(data.history));
+        try { sessionStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(data.history)); } catch {}
       }
     } catch {}
   }
@@ -672,18 +644,48 @@ export default function TopPicksPage() {
   async function fetchAlgoStats() {
     try {
       const res = await fetch("/api/top-picks?action=algo-stats");
+      if (!res.ok) return;
       const data = await res.json();
-      if (data.totalPicks !== undefined) {
-        setAlgoStats(data);
-      }
+      if (data.totalPicks !== undefined) setAlgoStats(data);
     } catch {}
   }
 
+  useEffect(() => {
+    let cancelled = false;
+    async function init() {
+      try {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (cached) {
+          const data = JSON.parse(cached);
+          if (data.picks?.length > 0) {
+            setPicks(data.picks);
+            setGeneratedAt(data.generatedAt || null);
+          }
+        }
+      } catch {}
+
+      try {
+        const cached = sessionStorage.getItem(HISTORY_CACHE_KEY);
+        if (cached) setHistory(JSON.parse(cached));
+      } catch {}
+
+      const found = await fetchLatestPicks();
+      if (!cancelled) setLoading(false);
+      if (!found && !cancelled) setError(null);
+
+      fetchHistory();
+      fetchAlgoStats();
+    }
+    init();
+    return () => { cancelled = true; };
+  }, []);
+
   async function generatePicks() {
-    setLoading(true);
-    setPicks([]);
-    setGeneratedAt(null);
-    sessionStorage.removeItem(CACHE_KEY);
+    setGenerating(true);
+    setError(null);
+    const savedPicks = [...picks];
+    const savedAt = generatedAt;
+
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 150000);
@@ -692,19 +694,44 @@ export default function TopPicksPage() {
         signal: controller.signal,
       });
       clearTimeout(timeout);
-      const data = await res.json();
-      if (data.picks?.length > 0) {
-        setPicks(data.picks);
-        setGeneratedAt(data.generatedAt);
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.picks?.length > 0) {
+          setPicks(data.picks);
+          setGeneratedAt(data.generatedAt);
+          try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(data)); } catch {}
+          setGenerating(false);
+          fetchHistory();
+          fetchAlgoStats();
+          return;
+        }
       }
     } catch {
-      // POST may timeout but picks are persisted server-side
+      // POST may have timed out — picks are still persisted server-side
     }
-    await fetchLatestPicks();
+
+    // POST response didn't come through — poll the GET endpoint
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise((r) => setTimeout(r, 3000));
+      const found = await fetchLatestPicks();
+      if (found) {
+        setGenerating(false);
+        fetchHistory();
+        fetchAlgoStats();
+        return;
+      }
+    }
+
+    // Nothing worked — restore previous picks if any
+    if (savedPicks.length > 0) {
+      setPicks(savedPicks);
+      setGeneratedAt(savedAt);
+    }
+    setError("Generation may still be processing. Refresh the page in a minute.");
+    setGenerating(false);
     fetchHistory();
     fetchAlgoStats();
-    setLoading(false);
   }
 
   async function updatePerformance() {
@@ -730,11 +757,11 @@ export default function TopPicksPage() {
         </div>
         <button
           onClick={generatePicks}
-          disabled={loading}
+          disabled={generating}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:hover:scale-100"
         >
-          {loading ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {loading ? "Generating..." : picks.length > 0 ? "Regenerate Picks" : "Generate Picks"}
+          {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+          {generating ? "Generating..." : picks.length > 0 ? "Regenerate Picks" : "Generate Picks"}
         </button>
       </div>
 
@@ -771,9 +798,22 @@ export default function TopPicksPage() {
 
       {tab === "picks" && (
         <>
-          {loading && <AnalysisLoader />}
+          {generating && <AnalysisLoader />}
 
-          {!loading && picks.length === 0 && (
+          {!generating && loading && (
+            <Card className="text-center py-16">
+              <RefreshCw size={24} className="mx-auto text-white/20 animate-spin mb-3" />
+              <p className="text-white/30 text-sm">Loading picks...</p>
+            </Card>
+          )}
+
+          {error && (
+            <Card className="!p-4 border-amber-500/20">
+              <p className="text-amber-400 text-sm">{error}</p>
+            </Card>
+          )}
+
+          {!generating && !loading && picks.length === 0 && (
             <Card className="text-center py-16">
               <div className="w-16 h-16 rounded-full bg-indigo-500/10 flex items-center justify-center mx-auto mb-4">
                 <Target size={28} className="text-indigo-400/50" />
@@ -786,7 +826,7 @@ export default function TopPicksPage() {
             </Card>
           )}
 
-          {!loading && picks.length > 0 && (
+          {!generating && picks.length > 0 && (
             <div className="space-y-3">
               {generatedAt && (
                 <p className="text-[10px] text-white/20">
@@ -804,7 +844,7 @@ export default function TopPicksPage() {
             </div>
           )}
 
-          {!loading && picks.length > 0 && (
+          {!generating && picks.length > 0 && (
             <Card className="!p-4">
               <div className="flex items-center gap-2 mb-3">
                 <Info size={14} className="text-white/20" />
