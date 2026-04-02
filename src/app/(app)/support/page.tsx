@@ -5,7 +5,7 @@ import { useSession } from "next-auth/react";
 import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
-import { Mail, MessageSquare, Send, CheckCircle } from "lucide-react";
+import { MessageSquare, Send, CheckCircle } from "lucide-react";
 
 const CATEGORIES = [
   "General Question",
@@ -62,27 +62,6 @@ export default function SupportPage() {
           Have a question, found a bug, or want to request a feature? We&apos;re here to help.
         </p>
       </div>
-
-      <Card className="!bg-gradient-to-br from-indigo-950/30 to-gray-900 !border-indigo-500/15">
-        <div className="flex items-start gap-4">
-          <div className="p-3 rounded-xl bg-indigo-500/10 shrink-0">
-            <Mail size={24} className="text-indigo-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-white">Email Us Directly</h3>
-            <p className="text-sm text-gray-400 mt-1">
-              For quick inquiries, reach out directly at
-            </p>
-            <a
-              href="mailto:shubhambalsaraf73@gmail.com"
-              className="inline-flex items-center gap-2 mt-2 text-indigo-400 hover:text-indigo-300 font-medium text-sm transition-colors"
-            >
-              <Mail size={14} />
-              shubhambalsaraf73@gmail.com
-            </a>
-          </div>
-        </div>
-      </Card>
 
       {sent ? (
         <Card className="text-center py-12">
