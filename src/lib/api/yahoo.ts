@@ -9,6 +9,9 @@ interface YFChartResult {
   changePercent: number;
   timestamps: number[];
   closes: number[];
+  highs: number[];
+  lows: number[];
+  volumes: number[];
   currency: string;
 }
 
@@ -33,13 +36,20 @@ export async function getChart(
     const meta = result.meta || {};
     const price = meta.regularMarketPrice || 0;
     const timestamps = result.timestamp || [];
-    const closes: number[] = (result.indicators?.quote?.[0]?.close || []).filter(
+    const quote = result.indicators?.quote?.[0] || {};
+    const closes: number[] = (quote.close || []).filter(
       (c: any) => c !== null && c !== undefined
     );
+    const highs: number[] = (quote.high || []).filter(
+      (h: any) => h !== null && h !== undefined
+    );
+    const lows: number[] = (quote.low || []).filter(
+      (l: any) => l !== null && l !== undefined
+    );
+    const volumes: number[] = (quote.volume || []).filter(
+      (v: any) => v !== null && v !== undefined
+    );
 
-    // For multi-day ranges (5d, 1mo, 1y), chartPreviousClose = start of range (useless for daily change).
-    // Use second-to-last close for the actual previous trading day.
-    // For 1d range, there's only 1 data point, so chartPreviousClose IS yesterday's close.
     const previousClose =
       closes.length >= 2
         ? closes[closes.length - 2]
@@ -55,6 +65,9 @@ export async function getChart(
       changePercent,
       timestamps,
       closes,
+      highs,
+      lows,
+      volumes,
       currency: meta.currency || "USD",
     };
   } catch (e) {

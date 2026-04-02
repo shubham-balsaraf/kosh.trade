@@ -9,6 +9,10 @@ import {
   atr,
   priceChangePercent,
   vwap,
+  stochastic,
+  adx,
+  maxDrawdown,
+  realizedVolatility,
 } from "./indicators";
 
 export const DEFAULT_WATCHLIST = [
@@ -39,6 +43,10 @@ export interface ScanResult {
   low20: number;
   weekReturn: number;
   monthReturn: number;
+  stoch: { k: number; d: number };
+  adx: { adx: number; plusDI: number; minusDI: number };
+  volatility: number;
+  drawdown3m: number;
 }
 
 export async function scanStock(ticker: string): Promise<ScanResult | null> {
@@ -47,33 +55,24 @@ export async function scanStock(ticker: string): Promise<ScanResult | null> {
     if (!data || data.closes.length < 50) return null;
 
     const closes = data.closes;
+    const highs = data.highs.length === closes.length ? data.highs : closes.map((c) => c * 1.005);
+    const lows = data.lows.length === closes.length ? data.lows : closes.map((c) => c * 0.995);
+    const volumes = data.volumes.length >= closes.length ? data.volumes : [];
+
     const rsiResult = rsi(closes);
     const macdResult = macd(closes);
     const bbResult = bollingerBands(closes);
     const sma20 = sma(closes, 20);
     const sma50 = sma(closes, 50);
     const ema9 = ema(closes, 9);
-
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=6mo&interval=1d&includePrePost=false`;
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; KoshApp/1.0)" },
-      next: { revalidate: 900 },
-    });
-    let volumes: number[] = [];
-    if (res.ok) {
-      const json = await res.json();
-      const result = json?.chart?.result?.[0];
-      volumes = result?.indicators?.quote?.[0]?.volume?.filter((v: any) => v != null) || [];
-    }
-
     const volRatio = volumes.length > 20 ? volumeSpike(volumes) : 1;
-
-    const highs = closes.map((c) => c * 1.005);
-    const lows = closes.map((c) => c * 0.995);
     const atrVal = atr(highs, lows, closes);
-
     const vwapVols = volumes.length >= closes.length ? volumes : closes.map(() => 1);
     const vwapResult = vwap(closes, highs, lows, vwapVols);
+    const stochResult = stochastic(highs, lows, closes);
+    const adxResult = adx(highs, lows, closes);
+    const vol = realizedVolatility(closes);
+    const dd3m = maxDrawdown(closes, 63);
 
     const recent20 = closes.slice(-20);
     const high20 = Math.max(...recent20);
@@ -97,6 +96,10 @@ export async function scanStock(ticker: string): Promise<ScanResult | null> {
       low20,
       weekReturn: priceChangePercent(closes, 5),
       monthReturn: priceChangePercent(closes, 21),
+      stoch: stochResult,
+      adx: adxResult,
+      volatility: vol,
+      drawdown3m: dd3m,
     };
   } catch (e) {
     console.error(`[Scanner] Failed to scan ${ticker}:`, e);

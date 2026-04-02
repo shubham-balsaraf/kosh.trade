@@ -412,3 +412,9 @@ export async function getLatest8KFilings(limit = 30) {
 export async function getStockPeers(ticker: string) {
   return stableFetch<any[]>("/stock-peers", { symbol: ticker.toUpperCase() });
 }
+
+/* ── DCF Valuation ──────────────────────────────────── */
+
+export async function getDCFValuation(ticker: string) {
+  return stableFetch<any[]>("/discounted-cash-flow", { symbol: ticker.toUpperCase() });
+}

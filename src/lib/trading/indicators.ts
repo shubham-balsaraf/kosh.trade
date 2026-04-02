@@ -248,3 +248,134 @@ export function priceChangePercent(closes: number[], period: number): number {
   const current = closes[closes.length - 1];
   return old === 0 ? 0 : ((current - old) / old) * 100;
 }
+
+export interface StochasticResult {
+  k: number;
+  d: number;
+}
+
+export function stochastic(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  kPeriod = 14,
+  dPeriod = 3
+): StochasticResult {
+  if (closes.length < kPeriod) return { k: NaN, d: NaN };
+
+  const kValues: number[] = [];
+  for (let i = kPeriod - 1; i < closes.length; i++) {
+    let highestHigh = -Infinity;
+    let lowestLow = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) {
+      if (highs[j] > highestHigh) highestHigh = highs[j];
+      if (lows[j] < lowestLow) lowestLow = lows[j];
+    }
+    const range = highestHigh - lowestLow;
+    kValues.push(range === 0 ? 50 : ((closes[i] - lowestLow) / range) * 100);
+  }
+
+  if (kValues.length < dPeriod) return { k: kValues[kValues.length - 1] || NaN, d: NaN };
+
+  let dSum = 0;
+  for (let i = kValues.length - dPeriod; i < kValues.length; i++) dSum += kValues[i];
+
+  return { k: kValues[kValues.length - 1], d: dSum / dPeriod };
+}
+
+export interface ADXResult {
+  adx: number;
+  plusDI: number;
+  minusDI: number;
+}
+
+export function adx(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 14
+): ADXResult {
+  if (closes.length < period * 2 + 1) return { adx: NaN, plusDI: NaN, minusDI: NaN };
+
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+  const tr: number[] = [];
+
+  for (let i = 1; i < closes.length; i++) {
+    const upMove = highs[i] - highs[i - 1];
+    const downMove = lows[i - 1] - lows[i];
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+    tr.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    ));
+  }
+
+  const smooth = (arr: number[]): number[] => {
+    const result: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += arr[i];
+    result.push(sum);
+    for (let i = period; i < arr.length; i++) {
+      result.push(result[result.length - 1] - result[result.length - 1] / period + arr[i]);
+    }
+    return result;
+  };
+
+  const smoothTR = smooth(tr);
+  const smoothPlusDM = smooth(plusDM);
+  const smoothMinusDM = smooth(minusDM);
+
+  const dx: number[] = [];
+  for (let i = 0; i < smoothTR.length; i++) {
+    if (smoothTR[i] === 0) { dx.push(0); continue; }
+    const pdi = (smoothPlusDM[i] / smoothTR[i]) * 100;
+    const mdi = (smoothMinusDM[i] / smoothTR[i]) * 100;
+    const diSum = pdi + mdi;
+    dx.push(diSum === 0 ? 0 : (Math.abs(pdi - mdi) / diSum) * 100);
+  }
+
+  if (dx.length < period) return { adx: NaN, plusDI: NaN, minusDI: NaN };
+
+  let adxSum = 0;
+  for (let i = 0; i < period; i++) adxSum += dx[i];
+  let adxVal = adxSum / period;
+  for (let i = period; i < dx.length; i++) {
+    adxVal = (adxVal * (period - 1) + dx[i]) / period;
+  }
+
+  const lastIdx = smoothTR.length - 1;
+  const plusDI = smoothTR[lastIdx] === 0 ? 0 : (smoothPlusDM[lastIdx] / smoothTR[lastIdx]) * 100;
+  const minusDI = smoothTR[lastIdx] === 0 ? 0 : (smoothMinusDM[lastIdx] / smoothTR[lastIdx]) * 100;
+
+  return { adx: adxVal, plusDI, minusDI };
+}
+
+export function maxDrawdown(closes: number[], period: number): number {
+  const slice = closes.slice(-period);
+  if (slice.length < 2) return 0;
+  let peak = slice[0];
+  let maxDd = 0;
+  for (const price of slice) {
+    if (price > peak) peak = price;
+    const dd = ((peak - price) / peak) * 100;
+    if (dd > maxDd) maxDd = dd;
+  }
+  return maxDd;
+}
+
+export function realizedVolatility(closes: number[], period = 20): number {
+  if (closes.length < period + 1) return NaN;
+  const returns: number[] = [];
+  const start = closes.length - period;
+  for (let i = start; i < closes.length; i++) {
+    if (closes[i - 1] === 0) continue;
+    returns.push(Math.log(closes[i] / closes[i - 1]));
+  }
+  if (returns.length < 2) return NaN;
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (returns.length - 1);
+  return Math.sqrt(variance * 252) * 100;
+}
