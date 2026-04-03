@@ -8,6 +8,7 @@ import { scanStock, scanMarket, DEFAULT_WATCHLIST } from "@/lib/trading/scanner"
 import { generateSignals, rankSignals } from "@/lib/trading/signals";
 import { discoverOpportunities, getRawSignals } from "@/lib/trading/discovery";
 import { generateMarketNarratives } from "@/lib/trading/ai-analyst";
+import { generateOraclePicks } from "@/lib/trading/buffett";
 import type { ScanResult } from "@/lib/trading/scanner";
 import type { TradeSignal } from "@/lib/trading/signals";
 
@@ -486,6 +487,22 @@ export async function GET(req: NextRequest) {
         discovered: discoveredNotScanned,
         scanned: scanResults.length,
         total: ranked.length,
+      });
+    }
+
+    if (mode === "oracle-picks") {
+      let rawSignals = null;
+      try {
+        rawSignals = await getRawSignals();
+      } catch (e) {
+        console.warn("[Signals/Oracle] getRawSignals failed:", (e as Error).message);
+      }
+
+      const picks = await generateOraclePicks(rawSignals);
+      return NextResponse.json({
+        picks,
+        total: picks.length,
+        generatedAt: new Date().toISOString(),
       });
     }
 

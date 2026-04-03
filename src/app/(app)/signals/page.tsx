@@ -792,12 +792,134 @@ function SignalBreakdownCard({ signal, defaultExpanded = false }: { signal: Tech
   );
 }
 
+/* ── Oracle Pick Card ────────────────────────────────── */
+
+const MOAT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  Wide: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Wide Moat" },
+  Narrow: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Narrow Moat" },
+  None: { bg: "bg-red-500/20", text: "text-red-400", label: "No Moat" },
+};
+
+function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const moat = MOAT_STYLE[pick.moatRating];
+  const scoreColor = pick.buffettScore >= 70 ? "text-emerald-400" : pick.buffettScore >= 50 ? "text-amber-400" : "text-red-400";
+  const ringColor = pick.buffettScore >= 70 ? "border-emerald-500" : pick.buffettScore >= 50 ? "border-amber-500" : "border-red-500";
+
+  const dimensions = [
+    { label: "Cash Flow", value: pick.scores.cashFlowQuality, max: 25, color: "bg-emerald-500" },
+    { label: "Earnings & SBC", value: pick.scores.earningsQuality, max: 20, color: "bg-blue-500" },
+    { label: "Moat", value: pick.scores.moatStrength, max: 20, color: "bg-purple-500" },
+    { label: "Balance Sheet", value: pick.scores.balanceSheetFortress, max: 15, color: "bg-cyan-500" },
+    { label: "Valuation", value: pick.scores.valuationSafety, max: 10, color: "bg-amber-500" },
+    { label: "Macro", value: pick.scores.macroOverlay, max: 10, color: "bg-orange-500" },
+  ];
+
+  const metrics = [
+    { label: "FCF Margin", value: `${pick.keyMetrics.fcfMargin}%`, good: pick.keyMetrics.fcfMargin > 10 },
+    { label: "FCF Yield", value: `${pick.keyMetrics.fcfYield}%`, good: pick.keyMetrics.fcfYield > 3 },
+    { label: "SBC/Rev", value: `${pick.keyMetrics.sbcToRevenue}%`, good: pick.keyMetrics.sbcToRevenue < 5 },
+    { label: "D/E", value: `${pick.keyMetrics.debtToEquity}`, good: pick.keyMetrics.debtToEquity < 1 },
+    { label: "ROE", value: `${pick.keyMetrics.roe}%`, good: pick.keyMetrics.roe > 15 },
+    { label: "Gross Margin", value: `${pick.keyMetrics.grossMargin}%`, good: pick.keyMetrics.grossMargin > 40 },
+  ];
+
+  return (
+    <div
+      className="bg-white/[0.02] border border-white/[0.06] rounded-xl p-4 hover:border-amber-500/20 transition-all cursor-pointer"
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 rounded-full border-2 ${ringColor} flex items-center justify-center`}>
+          <span className={`text-sm font-bold ${scoreColor}`}>{pick.buffettScore}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <StockLogo ticker={pick.ticker} size={28} />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">{pick.ticker}</span>
+              <span className="text-[10px] text-white/30">{pick.companyName}</span>
+              <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${moat.bg} ${moat.text} font-semibold`}>
+                {moat.label}
+              </span>
+            </div>
+            <p className="text-[10px] text-white/25">{pick.sector} · ${(pick.marketCap / 1e9).toFixed(0)}B market cap</p>
+          </div>
+        </div>
+        <div className="ml-auto text-right flex items-center gap-4">
+          <div>
+            <p className="text-sm font-semibold text-white">${pick.price.toFixed(2)}</p>
+            {pick.marginOfSafety > 0 && (
+              <p className="text-[10px] text-emerald-400">+{pick.marginOfSafety.toFixed(0)}% DCF upside</p>
+            )}
+          </div>
+          {expanded ? <ChevronUp size={14} className="text-white/30" /> : <ChevronDown size={14} className="text-white/30" />}
+        </div>
+      </div>
+
+      <p className="text-[11px] text-white/40 mt-2 italic">{pick.thesis}</p>
+
+      {expanded && (
+        <div className="mt-4 space-y-4">
+          <div className="space-y-2">
+            <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Dimension Breakdown</p>
+            {dimensions.map((d) => (
+              <div key={d.label} className="flex items-center gap-2">
+                <span className="text-[10px] text-white/30 w-24 shrink-0">{d.label}</span>
+                <div className="flex-1 h-1.5 bg-white/[0.05] rounded-full overflow-hidden">
+                  <div className={`h-full ${d.color} rounded-full transition-all`} style={{ width: `${(d.value / d.max) * 100}%` }} />
+                </div>
+                <span className="text-[10px] text-white/50 w-10 text-right">{d.value}/{d.max}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {metrics.map((m) => (
+              <div key={m.label} className="bg-white/[0.03] rounded-lg p-2 text-center">
+                <p className="text-[9px] text-white/25 mb-0.5">{m.label}</p>
+                <p className={`text-xs font-bold ${m.good ? "text-emerald-400" : "text-white/50"}`}>{m.value}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+              <p className="text-[9px] text-white/25 mb-0.5">Revenue Growth (5yr CAGR)</p>
+              <p className={`text-xs font-bold ${pick.keyMetrics.revenueGrowthCAGR > 8 ? "text-emerald-400" : "text-white/50"}`}>{pick.keyMetrics.revenueGrowthCAGR}%</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+              <p className="text-[9px] text-white/25 mb-0.5">FCF Growth (5yr CAGR)</p>
+              <p className={`text-xs font-bold ${pick.keyMetrics.fcfGrowthCAGR > 8 ? "text-emerald-400" : "text-white/50"}`}>{pick.keyMetrics.fcfGrowthCAGR}%</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Session cache helpers ───────────────────────────── */
+interface OraclePickData {
+  ticker: string;
+  companyName: string;
+  sector: string;
+  price: number;
+  marketCap: number;
+  buffettScore: number;
+  scores: { cashFlowQuality: number; earningsQuality: number; moatStrength: number; balanceSheetFortress: number; valuationSafety: number; macroOverlay: number; total: number };
+  moatRating: "Wide" | "Narrow" | "None";
+  marginOfSafety: number;
+  keyMetrics: { fcfMargin: number; fcfYield: number; sbcToRevenue: number; debtToEquity: number; roe: number; grossMargin: number; revenueGrowthCAGR: number; fcfGrowthCAGR: number };
+  thesis: string;
+}
+
 const CACHE_KEYS = {
   market: "kosh:signals:market",
   bestPicks: "kosh:signals:bestPicks",
   intel: "kosh:signals:intel",
   deepDive: "kosh:signals:deepDive",
+  oracle: "kosh:signals:oracle",
 } as const;
 
 function saveToSession(key: string, data: unknown) {
@@ -833,6 +955,9 @@ export default function SignalsPage() {
   const [intelLoading, setIntelLoading] = useState(false);
   const [intelStats, setIntelStats] = useState<{ totalSignals: number; totalTickers: number; signalCounts: Record<string, number> } | null>(null);
 
+  const [oraclePicks, setOraclePicks] = useState<OraclePickData[]>([]);
+  const [oracleLoading, setOracleLoading] = useState(false);
+
   // Hydrate from session cache on mount
   useEffect(() => {
     const cached = {
@@ -859,6 +984,8 @@ export default function SignalsPage() {
       setData(cached.deepDive.data || null);
       if (cached.deepDive.ticker) setTicker(cached.deepDive.ticker);
     }
+    const cachedOracle = loadFromSession<{ picks: OraclePickData[] }>(CACHE_KEYS.oracle);
+    if (cachedOracle) setOraclePicks(cachedOracle.picks || []);
   }, []);
 
   useEffect(() => {
@@ -945,6 +1072,22 @@ export default function SignalsPage() {
       setNarratives([]);
     }
     setIntelLoading(false);
+  };
+
+  const runOraclePicks = async () => {
+    setOracleLoading(true);
+    try {
+      const res = await fetch("/api/signals?mode=oracle-picks");
+      const json = await res.json();
+      if (json.picks) {
+        setOraclePicks(json.picks);
+        saveToSession(CACHE_KEYS.oracle, { picks: json.picks });
+      }
+    } catch (e) {
+      console.error("[Oracle] Fetch failed:", e);
+      setOraclePicks([]);
+    }
+    setOracleLoading(false);
   };
 
   const regimeColors: Record<string, "green" | "yellow" | "red" | "blue"> = {
@@ -1152,6 +1295,57 @@ export default function SignalsPage() {
             <Flame size={24} className="mx-auto mb-2 text-orange-400/30" />
             <p>Click &quot;Find Best Picks&quot; to discover stocks from live signals</p>
             <p className="text-[10px] text-white/15 mt-1">Signal-first: reads news, insider buys, congress trades → derives which stocks to analyze → categorizes by holding period</p>
+          </div>
+        ) : null}
+      </Card>
+
+      {/* Oracle Picks — Buffett-style long-term conviction */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Landmark size={18} className="text-amber-400" />
+            <h2 className="text-sm font-semibold text-amber-300/80">Oracle Picks — Buy Like Buffett</h2>
+            {oraclePicks.length > 0 && (
+              <span className="text-[10px] text-white/20 ml-2">{oraclePicks.length} picks scored</span>
+            )}
+          </div>
+          <Button onClick={runOraclePicks} loading={oracleLoading} className="text-xs">
+            <Scale size={14} className="mr-1" /> Find Oracle Picks
+          </Button>
+        </div>
+
+        <p className="text-[10px] text-white/20 mb-4 -mt-2">
+          Stocks worth holding forever — scored on 6 dimensions: Cash Flow Quality, Earnings & SBC, Moat Strength, Balance Sheet Fortress, Valuation, and Macro Overlay.
+        </p>
+
+        {oracleLoading && <ScanLoadingAnimation type="picks" />}
+
+        {!oracleLoading && oraclePicks.length > 0 ? (
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2 mb-2">
+              {[
+                { icon: Landmark, val: oraclePicks.filter((p) => p.moatRating === "Wide").length, label: "wide moat", cls: "text-emerald-400/70" },
+                { icon: Shield, val: oraclePicks.filter((p) => p.moatRating === "Narrow").length, label: "narrow moat", cls: "text-amber-400/70" },
+                { icon: Coins, val: oraclePicks.filter((p) => p.keyMetrics.fcfYield > 3).length, label: "strong FCF yield", cls: "text-blue-400/70" },
+                { icon: Scale, val: oraclePicks.filter((p) => p.marginOfSafety > 10).length, label: "margin of safety", cls: "text-purple-400/70" },
+              ].map(({ icon: Ic, val, label, cls }) => (
+                <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
+                  <Ic size={12} className={cls} />
+                  <span className="text-white/80 font-semibold">{val}</span>
+                  <span className="text-white/25">{label}</span>
+                </span>
+              ))}
+            </div>
+
+            {oraclePicks.map((pick, i) => (
+              <OraclePickCard key={pick.ticker} pick={pick} rank={i + 1} />
+            ))}
+          </div>
+        ) : !oracleLoading ? (
+          <div className="text-center py-8 text-white/20 text-sm">
+            <Landmark size={24} className="mx-auto mb-2 text-amber-400/30" />
+            <p>Click &quot;Find Oracle Picks&quot; to discover long-term compounders</p>
+            <p className="text-[10px] text-white/15 mt-1">Fundamentals-first: 5-year cash flow, SBC dilution, moat durability, balance sheet strength — the Buffett criteria</p>
           </div>
         ) : null}
       </Card>
