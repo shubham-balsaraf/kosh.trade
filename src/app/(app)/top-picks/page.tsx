@@ -3,10 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import Card from "@/components/ui/Card";
 import StockLogo from "@/components/ui/StockLogo";
+import Badge from "@/components/ui/Badge";
 import {
-  Trophy, Target, RefreshCw, ChevronDown, Sparkles,
+  Trophy, Target, RefreshCw, ChevronDown, ChevronUp, Sparkles,
   Info, History, Radar, BarChart3,
   TrendingUp, TrendingDown, Shield, Crosshair, Clock,
+  Flame, Search, Zap, Gem, Brain, Loader2,
+  Activity, Gauge, BarChart2, Waves, Newspaper, Landmark,
 } from "lucide-react";
 import ProGate from "@/components/ui/ProGate";
 import { useTrackView } from "@/hooks/useTrackView";
@@ -628,6 +631,156 @@ function AlgoPerformance({ stats }: { stats: AlgoStats | null }) {
   );
 }
 
+/* ── Signal-Driven Best Picks (moved from Signals page) ── */
+
+interface SignalIndicator { name: string; score: number; reason: string }
+interface HorizonInfo { horizon: "sprint" | "marathon" | "legacy"; reason: string; score: number }
+
+interface BestPick {
+  ticker: string;
+  price: number;
+  action: string;
+  score: number;
+  confidence: number;
+  strategy: string;
+  stopLoss: number;
+  takeProfit: number;
+  indicators: SignalIndicator[];
+  horizons: HorizonInfo[];
+  discoveryInfo: { source: string; reason: string } | null;
+  raw: { rsi: number; weekReturn: number; monthReturn: number; volumeRatio: number; changePercent: number };
+}
+
+const HORIZON_META = {
+  sprint: { label: "Sprint", sub: "< 1 Year", icon: Zap, color: "amber", gradient: "from-amber-500/10 to-orange-500/5", border: "border-amber-500/20" },
+  marathon: { label: "Marathon", sub: "1 – 3 Years", icon: TrendingUp, color: "blue", gradient: "from-blue-500/10 to-cyan-500/5", border: "border-blue-500/20" },
+  legacy: { label: "Legacy", sub: "3 – 10 Years", icon: Gem, color: "emerald", gradient: "from-emerald-500/10 to-teal-500/5", border: "border-emerald-500/20" },
+} as const;
+
+function BestPickCard({ pick, horizon }: { pick: BestPick; horizon: "sprint" | "marathon" | "legacy" }) {
+  const [expanded, setExpanded] = useState(false);
+  const meta = HORIZON_META[horizon];
+  const horizonInfo = pick.horizons.find((h) => h.horizon === horizon);
+
+  return (
+    <div
+      className={`rounded-xl border transition-all duration-300 cursor-pointer ${
+        expanded ? `${meta.border} bg-white/[0.03]` : "border-white/[0.04] bg-white/[0.015] hover:border-white/[0.08]"
+      }`}
+      onClick={() => setExpanded(!expanded)}
+    >
+      <div className="p-3 sm:p-4 flex items-center gap-3">
+        <StockLogo ticker={pick.ticker} size={32} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-white/90 font-bold text-sm">{pick.ticker}</span>
+            <Badge variant="green">{pick.action}</Badge>
+            {pick.horizons.map((h) => {
+              const m = HORIZON_META[h.horizon];
+              const HIcon = m.icon;
+              return (
+                <span key={h.horizon} className={`text-[9px] px-1.5 py-0.5 rounded-full border ${m.border} flex items-center gap-1 ${
+                  h.horizon === "sprint" ? "text-amber-400/70" : h.horizon === "marathon" ? "text-blue-400/70" : "text-emerald-400/70"
+                }`}>
+                  <HIcon size={8} />
+                  {m.label}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-white/25 mt-0.5 truncate">{horizonInfo?.reason || pick.strategy}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm text-white/80 font-semibold">${pick.price.toFixed(2)}</p>
+          <p className="text-[10px] text-white/25">Signal Strength: {pick.confidence}%</p>
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-3 sm:px-4 pb-3 sm:pb-4 space-y-2 border-t border-white/[0.04] pt-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[10px]">
+            <div className="bg-white/[0.03] rounded-lg p-2">
+              <p className="text-white/25">Stop Loss</p>
+              <p className="text-red-400 font-bold">${pick.stopLoss.toFixed(2)}</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2">
+              <p className="text-white/25">Take Profit</p>
+              <p className="text-emerald-400 font-bold">${pick.takeProfit.toFixed(2)}</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2">
+              <p className="text-white/25">RSI</p>
+              <p className={`font-bold ${pick.raw.rsi < 30 ? "text-emerald-400" : pick.raw.rsi > 70 ? "text-red-400" : "text-white/50"}`}>{pick.raw.rsi.toFixed(0)}</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2">
+              <p className="text-white/25">Volume</p>
+              <p className={`font-bold ${pick.raw.volumeRatio > 1.5 ? "text-amber-400" : "text-white/50"}`}>{pick.raw.volumeRatio.toFixed(1)}x</p>
+            </div>
+          </div>
+          {pick.discoveryInfo && (
+            <p className="text-[10px] text-white/20">Source: {pick.discoveryInfo.source} — {pick.discoveryInfo.reason}</p>
+          )}
+          {pick.indicators.length > 0 && (
+            <div className="space-y-1">
+              {pick.indicators.slice(0, 4).map((ind) => (
+                <div key={ind.name} className="flex items-center gap-2 text-[10px]">
+                  <span className={`w-1.5 h-1.5 rounded-full ${ind.score > 0 ? "bg-emerald-500" : "bg-red-500"}`} />
+                  <span className="text-white/40">{ind.name}</span>
+                  <span className="text-white/20 truncate">{ind.reason}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BestPickHorizonSection({ title, subtitle, icon: Icon, gradient, border, picks, horizon }: {
+  title: string; subtitle: string; icon: typeof Zap; gradient: string; border: string; picks: BestPick[]; horizon: "sprint" | "marathon" | "legacy";
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const shown = showAll ? picks : picks.slice(0, 5);
+  if (picks.length === 0) return null;
+
+  return (
+    <div className="space-y-3">
+      <div className={`flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r ${gradient} border ${border}`}>
+        <Icon size={20} className={
+          horizon === "sprint" ? "text-amber-400/80" : horizon === "marathon" ? "text-blue-400/80" : "text-emerald-400/80"
+        } />
+        <div>
+          <h3 className={`text-sm font-bold ${
+            horizon === "sprint" ? "text-amber-300/90" : horizon === "marathon" ? "text-blue-300/90" : "text-emerald-300/90"
+          }`}>{title}</h3>
+          <p className="text-[10px] text-white/25">{subtitle}</p>
+        </div>
+        <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded ${
+          horizon === "sprint" ? "text-amber-400/60 bg-amber-500/10"
+          : horizon === "marathon" ? "text-blue-400/60 bg-blue-500/10"
+          : "text-emerald-400/60 bg-emerald-500/10"
+        }`}>
+          {picks.length} pick{picks.length !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <div className="space-y-2">
+        {shown.map((pick) => (
+          <BestPickCard key={pick.ticker} pick={pick} horizon={horizon} />
+        ))}
+      </div>
+      {picks.length > 5 && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="text-xs text-white/25 hover:text-white/50 transition-colors flex items-center gap-1 mx-auto"
+        >
+          {showAll ? <><ChevronUp size={12} /> Show less</> : <><ChevronDown size={12} /> Show all {picks.length}</>}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const BEST_PICKS_CACHE = "kosh:topPicks:bestPicks";
+
 export default function TopPicksPage() {
   useTrackView("Top Picks");
   const [picks, setPicks] = useState<Pick[]>([]);
@@ -639,6 +792,10 @@ export default function TopPicksPage() {
   const [history, setHistory] = useState<HistoryBatch[]>([]);
   const [algoStats, setAlgoStats] = useState<AlgoStats | null>(null);
   const [tab, setTab] = useState<"picks" | "history" | "algo">("picks");
+
+  const [bestPicks, setBestPicks] = useState<{ sprint: BestPick[]; marathon: BestPick[]; legacy: BestPick[] } | null>(null);
+  const [bestPicksLoading, setBestPicksLoading] = useState(false);
+  const [bestPicksStats, setBestPicksStats] = useState<{ scanned: number; totalBuySignals: number; totalPicks: number; signalDerived?: number } | null>(null);
 
   async function fetchLatestPicks(): Promise<boolean> {
     try {
@@ -676,6 +833,28 @@ export default function TopPicksPage() {
     } catch {}
   }
 
+  async function runBestPicks() {
+    setBestPicksLoading(true);
+    try {
+      const res = await fetch("/api/signals?mode=best-picks");
+      const json = await res.json();
+      if (json.error) {
+        console.error("[BestPicks] API error:", json.error);
+        setBestPicks(null);
+      } else {
+        const bp = { sprint: json.sprint || [], marathon: json.marathon || [], legacy: json.legacy || [] };
+        const stats = { scanned: json.scanned || 0, totalBuySignals: json.totalBuySignals || 0, totalPicks: json.totalPicks || 0, signalDerived: json.signalDerived || 0 };
+        setBestPicks(bp);
+        setBestPicksStats(stats);
+        try { sessionStorage.setItem(BEST_PICKS_CACHE, JSON.stringify({ ...bp, stats })); } catch {}
+      }
+    } catch (e) {
+      console.error("[BestPicks] Fetch failed:", e);
+      setBestPicks(null);
+    }
+    setBestPicksLoading(false);
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function init() {
@@ -693,6 +872,15 @@ export default function TopPicksPage() {
       try {
         const cached = sessionStorage.getItem(HISTORY_CACHE_KEY);
         if (cached) setHistory(JSON.parse(cached));
+      } catch {}
+
+      try {
+        const cached = sessionStorage.getItem(BEST_PICKS_CACHE);
+        if (cached) {
+          const data = JSON.parse(cached);
+          setBestPicks({ sprint: data.sprint || [], marathon: data.marathon || [], legacy: data.legacy || [] });
+          setBestPicksStats(data.stats || null);
+        }
       } catch {}
 
       const found = await fetchLatestPicks();
@@ -902,6 +1090,99 @@ export default function TopPicksPage() {
       {tab === "algo" && (
         <AlgoPerformance stats={algoStats} />
       )}
+
+      {/* Other Picks Worth a Look — signal-driven Best Buys */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Flame size={18} className="text-orange-400" />
+            <h2 className="text-sm font-semibold text-orange-300/80">Other Picks Worth a Look</h2>
+            {bestPicksStats && (
+              <span className="text-[10px] text-white/20 ml-2">
+                {bestPicksStats.scanned} scanned · {bestPicksStats.totalPicks} picks
+              </span>
+            )}
+          </div>
+          <button
+            onClick={runBestPicks}
+            disabled={bestPicksLoading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-orange-600/80 hover:bg-orange-500/80 disabled:opacity-40 text-white text-xs font-semibold rounded-xl transition-all"
+          >
+            {bestPicksLoading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            {bestPicksLoading ? "Scanning..." : "Find Picks"}
+          </button>
+        </div>
+
+        <p className="text-[10px] text-white/20 mb-4 -mt-2">
+          Signal-first discovery: reads live news, insider buys, congress trades, then runs technicals to categorize by holding period.
+        </p>
+
+        {bestPicksLoading && (
+          <div className="py-8 flex flex-col items-center gap-3">
+            <Loader2 size={18} className="text-orange-400 animate-spin" />
+            <span className="text-sm font-semibold text-orange-400">Finding Best Picks...</span>
+          </div>
+        )}
+
+        {!bestPicksLoading && bestPicks && (bestPicks.sprint.length > 0 || bestPicks.marathon.length > 0 || bestPicks.legacy.length > 0) ? (
+          <div className="space-y-6">
+            {bestPicksStats && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {[
+                  ...(bestPicksStats.signalDerived ? [{ icon: Radar, val: bestPicksStats.signalDerived, label: "from signals", cls: "text-purple-400/70" }] : []),
+                  { icon: Search, val: bestPicksStats.scanned, label: "scanned", cls: "text-orange-400/70" },
+                  { icon: Brain, val: bestPicksStats.totalBuySignals, label: "buy signals", cls: "text-emerald-400/70" },
+                  { icon: Zap, val: bestPicks.sprint.length, label: "sprint", cls: "text-amber-400/70" },
+                  { icon: TrendingUp, val: bestPicks.marathon.length, label: "marathon", cls: "text-blue-400/70" },
+                  { icon: Gem, val: bestPicks.legacy.length, label: "legacy", cls: "text-emerald-400/70" },
+                ].map(({ icon: Ic, val, label, cls }) => (
+                  <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
+                    <Ic size={12} className={cls} />
+                    <span className="text-white/80 font-semibold">{val}</span>
+                    <span className="text-white/25">{label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            <BestPickHorizonSection
+              title="Sprint Picks"
+              subtitle="Short-term opportunities — hold period under 1 year. Momentum plays, oversold bounces, and catalyst-driven moves."
+              icon={Zap}
+              gradient="from-amber-500/10 to-orange-500/5"
+              border="border-amber-500/20"
+              picks={bestPicks.sprint}
+              horizon="sprint"
+            />
+
+            <BestPickHorizonSection
+              title="Marathon Picks"
+              subtitle="Medium-term growth — hold period 1 to 3 years. Strong uptrends, golden crosses, and steady compounders."
+              icon={TrendingUp}
+              gradient="from-blue-500/10 to-cyan-500/5"
+              border="border-blue-500/20"
+              picks={bestPicks.marathon}
+              horizon="marathon"
+            />
+
+            <BestPickHorizonSection
+              title="Legacy Picks"
+              subtitle="Long-term value — hold period 3 to 10 years. Beaten-down quality names, accumulation zones, and deep discounts."
+              icon={Gem}
+              gradient="from-emerald-500/10 to-teal-500/5"
+              border="border-emerald-500/20"
+              picks={bestPicks.legacy}
+              horizon="legacy"
+            />
+          </div>
+        ) : !bestPicksLoading ? (
+          <div className="text-center py-8 text-white/20 text-sm">
+            <Flame size={24} className="mx-auto mb-2 text-orange-400/30" />
+            <p>Click &quot;Find Picks&quot; to discover signal-driven stocks</p>
+            <p className="text-[10px] text-white/15 mt-1">Scans news, insider buys, congress trades → derives which stocks to analyze → categorizes by holding period</p>
+          </div>
+        ) : null}
+      </Card>
     </div>
     </ProGate>
   );
