@@ -725,6 +725,7 @@ export default function SignalsPage() {
 
   const [oraclePicks, setOraclePicks] = useState<OraclePickData[]>([]);
   const [oracleLoading, setOracleLoading] = useState(false);
+  const [oracleError, setOracleError] = useState<string | null>(null);
 
   // Hydrate from session cache on mount
   useEffect(() => {
@@ -817,15 +818,23 @@ export default function SignalsPage() {
 
   const runOraclePicks = async () => {
     setOracleLoading(true);
+    setOracleError(null);
     try {
       const res = await fetch("/api/signals?mode=oracle-picks");
       const json = await res.json();
-      if (json.picks) {
+      if (json.error) {
+        setOracleError(json.error);
+        console.error("[Oracle] API error:", json.error);
+      }
+      if (json.picks && json.picks.length > 0) {
         setOraclePicks(json.picks);
         saveToSession(CACHE_KEYS.oracle, { picks: json.picks });
+      } else if (!json.error) {
+        setOracleError("No picks returned — FMP API may be rate-limiting. Try again in a minute.");
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("[Oracle] Fetch failed:", e);
+      setOracleError(e.message || "Network error");
       setOraclePicks([]);
     }
     setOracleLoading(false);
@@ -979,6 +988,12 @@ export default function SignalsPage() {
         </p>
 
         {oracleLoading && <ScanLoadingAnimation type="picks" />}
+
+        {oracleError && !oracleLoading && (
+          <div className="rounded-xl bg-red-500/5 border border-red-500/15 p-3 mb-3">
+            <p className="text-xs text-red-400/80">{oracleError}</p>
+          </div>
+        )}
 
         {!oracleLoading && oraclePicks.length > 0 ? (
           <div className="space-y-3">

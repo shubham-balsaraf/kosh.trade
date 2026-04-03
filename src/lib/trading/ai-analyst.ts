@@ -95,15 +95,21 @@ ${top
 export async function getDailyBriefing(
   signals: TradeSignal[],
   portfolioValue: number,
-  openPositions: string[]
+  openPositions: string[],
+  marketSentiment?: { score: number; rating: string; brief: string },
 ): Promise<string> {
   const top = signals.slice(0, 5);
+
+  const sentimentBlock = marketSentiment
+    ? `\nMarket Sentiment: ${marketSentiment.rating} (${marketSentiment.score}/100)${marketSentiment.brief ? `\nAI Market Analysis: ${marketSentiment.brief}` : ""}
+KoshPilot Adjustment: ${marketSentiment.score < 35 ? "Reducing trade capacity due to fearful conditions. Raising minimum score thresholds." : marketSentiment.score > 80 ? "Slightly reducing exposure — markets overheated." : "Normal trading capacity."}\n`
+    : "";
 
   const prompt = `You are a trading AI providing a pre-market briefing.
 
 Portfolio: $${portfolioValue.toFixed(2)}
 Open positions: ${openPositions.length > 0 ? openPositions.join(", ") : "None"}
-
+${sentimentBlock}
 Top signals today:
 ${top
   .map(
@@ -113,11 +119,11 @@ ${top
   )
   .join("\n")}
 
-Provide a 3-4 sentence market briefing and top 2 trade ideas with reasoning. Be concise and actionable.`;
+Provide a 3-4 sentence market briefing that starts with the current market mood and its impact on today's trading plan. Then give top 2 trade ideas with reasoning. Be concise and actionable.`;
 
   try {
     return await generateCompletion(
-      "You are a concise trading briefing assistant. No disclaimers needed — the user understands risks.",
+      "You are a concise trading briefing assistant. No disclaimers needed — the user understands risks. Always open with market conditions and how they affect trade decisions today.",
       prompt,
       512
     );

@@ -1196,11 +1196,29 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
         ))}
       </div>
 
+      {/* Sentiment context */}
+      {result.details?.find((d: any) => d.action === "SENTIMENT") && (() => {
+        const sd = result.details.find((d: any) => d.action === "SENTIMENT");
+        const sentimentScore = sd?.score ?? 50;
+        const sentimentColor = sentimentScore <= 20 ? "text-red-400" : sentimentScore <= 40 ? "text-orange-400" : sentimentScore <= 60 ? "text-yellow-400" : sentimentScore <= 80 ? "text-lime-400" : "text-emerald-400";
+        const sentimentBg = sentimentScore <= 20 ? "bg-red-500/8 border-red-500/15" : sentimentScore <= 40 ? "bg-orange-500/8 border-orange-500/15" : sentimentScore <= 60 ? "bg-yellow-500/8 border-yellow-500/15" : sentimentScore <= 80 ? "bg-lime-500/8 border-lime-500/15" : "bg-emerald-500/8 border-emerald-500/15";
+        return (
+          <div className={`rounded-xl p-3 border ${sentimentBg}`}>
+            <div className="flex items-center gap-2 mb-1">
+              <Activity size={12} className={sentimentColor} />
+              <span className={`text-xs font-semibold ${sentimentColor}`}>Market Conditions</span>
+              <span className="text-xs text-white/40 font-mono">{sentimentScore}/100</span>
+            </div>
+            <p className="text-[11px] text-white/40 leading-relaxed">{sd?.reason}</p>
+          </div>
+        );
+      })()}
+
       {/* Trade actions summary */}
-      {result.details && result.details.length > 0 && (
+      {result.details && result.details.filter((d: any) => d.action !== "SENTIMENT").length > 0 && (
         <div className="space-y-1 pt-1 border-t border-white/[0.04]">
           <p className="text-[10px] text-white/20 uppercase tracking-wider font-semibold pt-2">Actions Taken</p>
-          {result.details.map((d: any, i: number) => (
+          {result.details.filter((d: any) => d.action !== "SENTIMENT").map((d: any, i: number) => (
             <div key={i} className="text-xs text-white/30 flex items-center gap-2">
               <Badge variant={d.action === "BUY" || d.action === "ADD_ON" ? "green" : d.action === "SELL" ? "red" : "gray"}>
                 {d.action}
@@ -1920,6 +1938,7 @@ export default function AutoTradingPage() {
   const [equityHistory, setEquityHistory] = useState<EquityPoint[]>([]);
   const [discoveries, setDiscoveries] = useState<DiscoveredTicker[]>([]);
   const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
+  const [marketSentiment, setMarketSentiment] = useState<{ score: number; rating: string; brief: string } | null>(null);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -1976,7 +1995,14 @@ export default function AutoTradingPage() {
     } catch {} finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(); fetchCronStatus(); }, [fetchData, fetchCronStatus]);
+  useEffect(() => {
+    fetchData();
+    fetchCronStatus();
+    fetch("/api/market/fear-greed")
+      .then((r) => r.json())
+      .then((d) => setMarketSentiment({ score: d.score ?? 50, rating: d.rating ?? "Neutral", brief: d.brief ?? "" }))
+      .catch(() => {});
+  }, [fetchData, fetchCronStatus]);
 
   useEffect(() => {
     const interval = setInterval(fetchCronStatus, 60000);
@@ -2432,6 +2458,38 @@ export default function AutoTradingPage() {
           </div>
         </div>
       )}
+
+      {/* ─── Market Conditions ─── */}
+      {marketSentiment && (() => {
+        const s = marketSentiment.score;
+        const sentColor = s <= 20 ? "text-red-400" : s <= 40 ? "text-orange-400" : s <= 60 ? "text-yellow-400" : s <= 80 ? "text-lime-400" : "text-emerald-400";
+        const sentBorder = s <= 20 ? "border-red-500/15" : s <= 40 ? "border-orange-500/15" : s <= 60 ? "border-yellow-500/15" : s <= 80 ? "border-lime-500/15" : "border-emerald-500/15";
+        const multiplier = s <= 20 ? 0.3 : s <= 35 ? 0.5 : s <= 50 ? 0.7 : s <= 65 ? 1.0 : s <= 80 ? 1.0 : 0.8;
+        const maxBase = config?.maxOpenPositions || 10;
+        const adjusted = Math.max(1, Math.floor(maxBase * multiplier));
+        return (
+          <div className={`glass-card p-5 space-y-3 animate-fade-slide-up-2 border ${sentBorder}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity size={14} className={sentColor} />
+                <h3 className="text-xs font-semibold text-white/40 uppercase tracking-wider">Market Conditions</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`text-lg font-black ${sentColor}`}>{s}</span>
+                <span className={`text-xs font-semibold ${sentColor}`}>{marketSentiment.rating}</span>
+              </div>
+            </div>
+            {marketSentiment.brief && (
+              <p className="text-sm text-white/50 leading-relaxed">{marketSentiment.brief}</p>
+            )}
+            <div className={`rounded-lg px-3 py-2 bg-white/[0.03] border border-white/[0.06]`}>
+              <p className="text-[11px] text-white/30">
+                <span className={`font-semibold ${sentColor}`}>Trade Impact:</span> KoshPilot will limit new entries to <span className="text-white/70 font-semibold">{adjusted}</span> of {maxBase} positions today ({(multiplier * 100).toFixed(0)}% capacity)
+              </p>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ─── AI Briefing ─── */}
       <div className="glass-card p-5 space-y-3 animate-fade-slide-up-2">

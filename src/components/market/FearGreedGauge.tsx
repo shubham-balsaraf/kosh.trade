@@ -16,6 +16,7 @@ interface FearGreedData {
   spyPrice: number | null;
   spyChange: number;
   vix: number | null;
+  brief: string;
   updatedAt: string;
 }
 
@@ -222,6 +223,13 @@ export default function FearGreedGauge() {
           {data.signals.map((sig) => (
             <SignalBar key={sig.name} signal={sig} />
           ))}
+        </div>
+      )}
+
+      {data.brief && (
+        <div className={`mt-3 pt-3 border-t border-gray-800`}>
+          <p className="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1.5">Daily Market Brief</p>
+          <p className="text-xs leading-relaxed text-white/50">{data.brief}</p>
         </div>
       )}
     </div>

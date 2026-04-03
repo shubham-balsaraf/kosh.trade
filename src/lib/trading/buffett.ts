@@ -7,7 +7,6 @@ import {
   getDCFValuation,
   getProfile,
   getEarningsSurprises,
-  getStockScreener,
 } from "@/lib/api/fmp";
 import { type RawSignalBundle } from "./discovery";
 
@@ -134,105 +133,119 @@ function coefficientOfVariation(values: number[]): number {
   return Math.sqrt(variance) / Math.abs(mean);
 }
 
-async function batchFetch<T>(
-  tickers: string[],
-  fetcher: (t: string) => Promise<T>,
-  batchSize = 3,
-  delayMs = 800,
-): Promise<Map<string, T>> {
-  const map = new Map<string, T>();
-  for (let i = 0; i < tickers.length; i += batchSize) {
-    const batch = tickers.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map(fetcher));
-    for (let j = 0; j < batch.length; j++) {
-      const r = results[j];
-      if (r.status === "fulfilled" && r.value != null) map.set(batch[j], r.value);
-    }
-    if (i + batchSize < tickers.length) await new Promise((r) => setTimeout(r, delayMs));
-  }
-  return map;
+async function delay(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
-/* ── Universe Selection ──────────────────────────────────── */
+async function batchFetchWithRetry<T>(
+  tickers: string[],
+  fetcher: (t: string) => Promise<T>,
+  label: string,
+  batchSize = 2,
+  batchDelay = 600,
+): Promise<Map<string, T>> {
+  const map = new Map<string, T>();
+  const failed: string[] = [];
 
-const BUFFETT_UNIVERSE = [
-  "AAPL", "MSFT", "GOOGL", "AMZN", "META", "JNJ", "UNH", "V", "MA",
-  "PG", "HD", "KO", "PEP", "COST", "MRK", "ABBV", "LLY", "AVGO",
-  "MCD", "TXN", "UNP", "HON", "AMGN", "ADP", "ISRG", "ACN",
-  "SPGI", "MCO", "SHW", "WMT", "CAT", "DE", "NVDA", "INTU",
-  "NOW", "ADBE", "CRM", "ORCL", "WM", "CME",
-];
-
-async function selectUniverse(bundle: RawSignalBundle | null): Promise<string[]> {
-  const candidates = new Set<string>(BUFFETT_UNIVERSE);
-
-  if (bundle) {
-    for (const ib of bundle.insiderBuys) if (ib.ticker.length <= 5) candidates.add(ib.ticker);
-    for (const cb of bundle.congressBuys) if (cb.ticker.length <= 5) candidates.add(cb.ticker);
-    for (const inst of bundle.institutional) if (inst.ticker.length <= 5) candidates.add(inst.ticker);
-  }
-
-  try {
-    const screened = await getStockScreener({
-      marketCapMoreThan: "5000000000",
-      betaLowerThan: "1.5",
-      isActivelyTrading: "true",
-      limit: "50",
-    });
-    if (Array.isArray(screened)) {
-      for (const s of screened) {
-        if (s.symbol && s.symbol.length <= 5 && !s.symbol.includes("-")) {
-          candidates.add(s.symbol);
+  for (let i = 0; i < tickers.length; i += batchSize) {
+    const batch = tickers.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map((t) => fetcher(t)));
+    for (let j = 0; j < batch.length; j++) {
+      const r = results[j];
+      if (r.status === "fulfilled" && r.value != null) {
+        map.set(batch[j], r.value);
+      } else {
+        failed.push(batch[j]);
+        if (r.status === "rejected") {
+          console.warn(`[Oracle] ${label}(${batch[j]}) failed: ${r.reason?.message || r.reason}`);
         }
       }
     }
-  } catch (e) {
-    console.warn("[Oracle] Screener enrichment failed:", (e as Error).message);
+    if (i + batchSize < tickers.length) await delay(batchDelay);
   }
 
-  return [...candidates].filter((t) => !t.includes("-") && t.length <= 5);
+  if (failed.length > 0) {
+    console.log(`[Oracle] ${label}: retrying ${failed.length} failed tickers...`);
+    await delay(2000);
+    for (const t of failed) {
+      try {
+        const result = await fetcher(t);
+        if (result != null) map.set(t, result);
+      } catch (e: any) {
+        console.warn(`[Oracle] ${label}(${t}) retry failed: ${e.message}`);
+      }
+      await delay(500);
+    }
+  }
+
+  return map;
 }
+
+/* ── Universe — hardcoded quality names only ──────────── */
+
+const ORACLE_UNIVERSE = [
+  "AAPL", "MSFT", "GOOGL", "AMZN", "JNJ", "UNH", "V", "MA",
+  "PG", "HD", "KO", "PEP", "COST", "MRK", "ABBV", "LLY",
+  "MCD", "TXN", "HON", "SPGI", "WMT", "CAT", "NVDA",
+  "INTU", "ADBE", "ACN", "WM", "CME",
+];
 
 /* ── Deep Fundamental Fetch ──────────────────────────────── */
 
 export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<string, BuffettFundamentals>> {
   const result = new Map<string, BuffettFundamentals>();
-  const empty = new Map<string, any>();
 
-  console.log(`[Oracle] Phase 1: fetching core data (CF, IS, Profile) for ${tickers.length} tickers...`);
+  console.log(`[Oracle] Phase 1: fetching core data for ${tickers.length} tickers...`);
 
-  const cfMap = await batchFetch(tickers, (t) => getCashFlow(t, "annual", 5)).catch(() => empty);
-  const isMap = await batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 5)).catch(() => empty);
-  const profMap = await batchFetch(tickers, (t) => getProfile(t)).catch(() => empty);
+  const cfMap = await batchFetchWithRetry(tickers, (t) => getCashFlow(t, "annual", 5), "CF");
+  await delay(800);
+  const isMap = await batchFetchWithRetry(tickers, (t) => getIncomeStatement(t, "annual", 5), "IS");
+  await delay(800);
+  const profMap = await batchFetchWithRetry(tickers, (t) => getProfile(t), "Profile");
 
-  console.log(`[Oracle] Phase 1 results: CF=${cfMap.size} IS=${isMap.size} Prof=${profMap.size}`);
+  console.log(`[Oracle] Phase 1 results: CF=${cfMap.size}/${tickers.length} IS=${isMap.size}/${tickers.length} Prof=${profMap.size}/${tickers.length}`);
 
-  const phase1Survivors = tickers.filter((t) => {
+  const phase1Survivors: string[] = [];
+  for (const t of tickers) {
     const cf = cfMap.get(t);
     const is_ = isMap.get(t);
     const prof = profMap.get(t);
     const p = Array.isArray(prof) ? prof[0] : prof;
     const mktCap = p?.mktCap || 0;
-    if (!Array.isArray(cf) || cf.length < 2) return false;
-    if (!Array.isArray(is_) || is_.length < 2) return false;
-    if (mktCap < 5_000_000_000) return false;
-    return true;
-  });
 
-  console.log(`[Oracle] Phase 1 gate: ${phase1Survivors.length}/${tickers.length} tickers survived (CF>=2, IS>=2, mktCap>=$5B)`);
+    if (!Array.isArray(cf) || cf.length < 2) {
+      console.log(`[Oracle] SKIP ${t}: CF missing or < 2 years (got ${Array.isArray(cf) ? cf.length : "null"})`);
+      continue;
+    }
+    if (!Array.isArray(is_) || is_.length < 2) {
+      console.log(`[Oracle] SKIP ${t}: IS missing or < 2 years (got ${Array.isArray(is_) ? is_.length : "null"})`);
+      continue;
+    }
+    if (mktCap < 5_000_000_000) {
+      console.log(`[Oracle] SKIP ${t}: mktCap $${(mktCap / 1e9).toFixed(1)}B < $5B threshold`);
+      continue;
+    }
+    phase1Survivors.push(t);
+  }
+
+  console.log(`[Oracle] Phase 1 gate: ${phase1Survivors.length}/${tickers.length} survived`);
 
   if (phase1Survivors.length === 0) {
-    console.error("[Oracle] No tickers passed Phase 1 quality gate — check FMP API key and connectivity");
+    console.error("[Oracle] CRITICAL: No tickers passed Phase 1 — FMP API may be down or key invalid");
     return result;
   }
 
-  console.log(`[Oracle] Phase 2: fetching supplementary data (BS, KM, Ratios, DCF, Surprises) for ${phase1Survivors.length} tickers...`);
+  console.log(`[Oracle] Phase 2: fetching supplementary data for ${phase1Survivors.length} tickers...`);
 
-  const bsMap = await batchFetch(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5)).catch(() => empty);
-  const kmMap = await batchFetch(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5)).catch(() => empty);
-  const rtMap = await batchFetch(phase1Survivors, (t) => getRatios(t, "annual", 5)).catch(() => empty);
-  const dcfMap = await batchFetch(phase1Survivors, (t) => getDCFValuation(t)).catch(() => empty);
-  const surpriseMap = await batchFetch(phase1Survivors, (t) => getEarningsSurprises(t)).catch(() => empty);
+  const bsMap = await batchFetchWithRetry(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5), "BS");
+  await delay(500);
+  const kmMap = await batchFetchWithRetry(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5), "KM");
+  await delay(500);
+  const rtMap = await batchFetchWithRetry(phase1Survivors, (t) => getRatios(t, "annual", 5), "Ratios");
+  await delay(500);
+  const dcfMap = await batchFetchWithRetry(phase1Survivors, (t) => getDCFValuation(t), "DCF");
+  await delay(500);
+  const surpriseMap = await batchFetchWithRetry(phase1Survivors, (t) => getEarningsSurprises(t), "Surprises");
 
   console.log(`[Oracle] Phase 2 results: BS=${bsMap.size} KM=${kmMap.size} RT=${rtMap.size} DCF=${dcfMap.size} Surp=${surpriseMap.size}`);
 
@@ -333,7 +346,7 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     });
   }
 
-  console.log(`[Oracle] ${result.size}/${tickers.length} tickers passed fundamental quality gate`);
+  console.log(`[Oracle] Final: ${result.size}/${tickers.length} tickers have complete fundamentals`);
   return result;
 }
 
@@ -416,7 +429,6 @@ export function scoreBuffettDimensions(
     for (let i = 1; i < revenues.length; i++) {
       if (revenues[i] > revenues[i - 1]) growingYears++;
     }
-    const revYears = revenues.length - 1;
     if (growingYears >= 4) pts += 4;
     else if (growingYears >= 3) pts += 3;
     else if (growingYears >= 2) pts += 1;
@@ -438,7 +450,6 @@ export function scoreBuffettDimensions(
     let pts = 0;
     const margins = fd.ratios.map((r) => r.grossProfitMargin).reverse();
     const latestGM = margins.length > 0 ? margins[margins.length - 1] : 0;
-    const avgGM = margins.length > 0 ? margins.reduce((s, v) => s + v, 0) / margins.length : 0;
     const gmTrending = margins.length >= 3 && margins[margins.length - 1] >= margins[0];
 
     if (latestGM > 0.50 && gmTrending) pts += 6;
@@ -715,11 +726,30 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
   console.log("[Oracle] Starting Buffett-style long-term analysis...");
   const startTime = Date.now();
 
-  const universe = await selectUniverse(bundle);
+  const universe = [...ORACLE_UNIVERSE];
+
+  if (bundle) {
+    const extras = new Set<string>();
+    for (const ib of bundle.insiderBuys) {
+      if (ib.ticker.length <= 5 && !ib.ticker.includes("-") && !universe.includes(ib.ticker)) extras.add(ib.ticker);
+    }
+    for (const cb of bundle.congressBuys) {
+      if (cb.ticker.length <= 5 && !cb.ticker.includes("-") && !universe.includes(cb.ticker)) extras.add(cb.ticker);
+    }
+    const extraList = [...extras].slice(0, 5);
+    universe.push(...extraList);
+    if (extraList.length > 0) console.log(`[Oracle] Added ${extraList.length} signal-driven tickers: ${extraList.join(", ")}`);
+  }
+
   console.log(`[Oracle] Universe: ${universe.length} candidates`);
 
   const fundamentals = await fetchBuffettFundamentals(universe);
   console.log(`[Oracle] ${fundamentals.size} tickers with deep fundamentals`);
+
+  if (fundamentals.size === 0) {
+    console.error("[Oracle] FAILED: Zero tickers with fundamentals — returning empty");
+    return [];
+  }
 
   const scored: OraclePick[] = [];
   for (const [ticker, fd] of fundamentals) {
@@ -814,7 +844,7 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
 
   const topPicks = scored.slice(0, 15);
   const elapsed = Date.now() - startTime;
-  console.log(`[Oracle] Complete in ${elapsed}ms — ${scored.length} scored → top ${topPicks.length} picks`);
+  console.log(`[Oracle] Complete in ${(elapsed / 1000).toFixed(1)}s — ${scored.length} scored → top ${topPicks.length} picks`);
   if (topPicks.length > 0) {
     console.log(`[Oracle] Top 5: ${topPicks.slice(0, 5).map((p) => `${p.ticker}(${p.buffettScore},${p.moatRating})`).join(" | ")}`);
   }

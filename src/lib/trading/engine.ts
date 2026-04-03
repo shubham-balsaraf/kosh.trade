@@ -109,6 +109,38 @@ function getAlpacaConfig(user: any) {
   };
 }
 
+interface MarketSentiment {
+  score: number;
+  rating: string;
+  brief: string;
+}
+
+function getSentimentMultiplier(score: number): number {
+  if (score <= 20) return 0.3;
+  if (score <= 35) return 0.5;
+  if (score <= 50) return 0.7;
+  if (score <= 65) return 1.0;
+  if (score <= 80) return 1.0;
+  return 0.8;
+}
+
+async function fetchMarketSentiment(): Promise<MarketSentiment> {
+  const defaultSentiment: MarketSentiment = { score: 50, rating: "Neutral", brief: "" };
+  try {
+    const baseUrl = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const res = await fetch(`${baseUrl}/api/market/fear-greed`, { cache: "no-store" });
+    if (!res.ok) return defaultSentiment;
+    const data = await res.json();
+    return {
+      score: data.score ?? 50,
+      rating: data.rating ?? "Neutral",
+      brief: data.brief ?? "",
+    };
+  } catch {
+    return defaultSentiment;
+  }
+}
+
 async function getFullWatchlist(userId: string, configWatchlist: string[]): Promise<string[]> {
   const userWatchlist = await prisma.watchlistItem.findMany({
     where: { userId },
@@ -278,10 +310,22 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       });
     }
 
+    const sentiment = await fetchMarketSentiment();
+    const sentimentMultiplier = getSentimentMultiplier(sentiment.score);
+    const effectiveMinScore = riskProfile.minScore + (sentiment.score < 35 ? 5 : 0);
+
     const MIN_TRADE_CONVICTION = 20;
     const details: any[] = [...exits];
     let tradesExecuted = 0;
-    const maxNewTrades = Math.max(0, config.maxOpenPositions - currentOpen);
+    const rawMaxNew = Math.max(0, config.maxOpenPositions - currentOpen);
+    const maxNewTrades = Math.max(1, Math.floor(rawMaxNew * sentimentMultiplier));
+
+    details.unshift({
+      ticker: "MARKET",
+      action: "SENTIMENT",
+      reason: `Market sentiment: ${sentiment.rating} (${sentiment.score}/100). Trade capacity adjusted to ${maxNewTrades}/${rawMaxNew} (${(sentimentMultiplier * 100).toFixed(0)}%).${sentiment.brief ? " " + sentiment.brief : ""}`,
+      score: sentiment.score,
+    });
 
     for (const signal of rankedSignals.slice(0, maxNewTrades + riskProfile.maxPositionsPerTicker)) {
       let isAddOn = false;
@@ -338,8 +382,8 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         console.log(`[Engine] ADD-ON eligible: ${signal.ticker} | held ${held.count}x, avg $${held.avgEntry.toFixed(2)}, P&L ${gainPct >= 0 ? "+" : ""}${gainPct.toFixed(1)}% | ${isWinner ? "pyramiding winner" : "averaging dip"}`);
       }
 
-      if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
-        const skipReason = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
+      if (signal.score < effectiveMinScore || signal.confidence < riskProfile.minConfidence) {
+        const skipReason = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${effectiveMinScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
         details.push({ ticker: signal.ticker, action: "SKIP", reason: skipReason, score: signal.score });
         const sm = signalMap.get(signal.ticker);
         if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipReason; }
@@ -600,10 +644,22 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       });
     }
 
+    const sentimentLive = await fetchMarketSentiment();
+    const sentimentMultiplierLive = getSentimentMultiplier(sentimentLive.score);
+    const effectiveMinScoreLive = riskProfile.minScore + (sentimentLive.score < 35 ? 5 : 0);
+
     const MIN_TRADE_CONVICTION_LIVE = 20;
     const details: any[] = [...exits];
     let tradesExecuted = 0;
-    const maxNewTrades = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
+    const rawMaxNewLive = Math.max(0, config.maxOpenPositions - portfolio.openPositions);
+    const maxNewTrades = Math.max(1, Math.floor(rawMaxNewLive * sentimentMultiplierLive));
+
+    details.unshift({
+      ticker: "MARKET",
+      action: "SENTIMENT",
+      reason: `Market sentiment: ${sentimentLive.rating} (${sentimentLive.score}/100). Trade capacity adjusted to ${maxNewTrades}/${rawMaxNewLive} (${(sentimentMultiplierLive * 100).toFixed(0)}%).${sentimentLive.brief ? " " + sentimentLive.brief : ""}`,
+      score: sentimentLive.score,
+    });
 
     for (const signal of rankedSignals.slice(0, maxNewTrades + riskProfile.maxPositionsPerTicker)) {
       let isAddOn = false;
@@ -653,8 +709,8 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         isAddOn = true;
       }
 
-      if (signal.score < riskProfile.minScore || signal.confidence < riskProfile.minConfidence) {
-        const skipR = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${riskProfile.minScore}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
+      if (signal.score < effectiveMinScoreLive || signal.confidence < riskProfile.minConfidence) {
+        const skipR = `Below ${config.riskProfile || "MODERATE"} threshold (score ${signal.score.toFixed(1)} < ${effectiveMinScoreLive}, conf ${signal.confidence}% < ${riskProfile.minConfidence}%)`;
         details.push({ ticker: signal.ticker, action: "SKIP", reason: skipR });
         const sm = signalMapLive.get(signal.ticker);
         if (sm) { sm.decision = "SKIPPED"; sm.decisionReason = skipR; }
@@ -773,10 +829,13 @@ export async function runDailyBriefing(userId: string): Promise<string> {
     select: { ticker: true },
   });
 
+  const sentiment = await fetchMarketSentiment();
+
   const briefing = await getDailyBriefing(
     signals,
     equity,
-    openTrades.map((t) => t.ticker)
+    openTrades.map((t) => t.ticker),
+    { score: sentiment.score, rating: sentiment.rating, brief: sentiment.brief },
   );
 
   return briefing;

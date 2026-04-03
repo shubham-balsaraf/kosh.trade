@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getChart } from "@/lib/api/yahoo";
+import { getFearGreedIndex } from "@/lib/api/feargreed";
+import { getMacroSnapshot } from "@/lib/signals/macroRegime";
+import { generateCompletion } from "@/lib/ai/claude";
 
 function clamp(val: number, min: number, max: number) {
   return Math.max(min, Math.min(max, val));
@@ -13,11 +16,71 @@ function ratingFromScore(score: number): string {
   return "Extreme Greed";
 }
 
+let briefCache: { brief: string; generatedAt: number } | null = null;
+const BRIEF_TTL = 4 * 60 * 60 * 1000;
+
+async function generateMarketBrief(
+  score: number,
+  rating: string,
+  signals: Array<{ name: string; score: number; signal: string }>,
+  vix: number,
+  spyChange: number,
+): Promise<string> {
+  if (briefCache && Date.now() - briefCache.generatedAt < BRIEF_TTL) {
+    return briefCache.brief;
+  }
+
+  const signalSummary = signals.map((s) => `${s.name}: ${s.score}/100 (${s.signal})`).join("\n");
+
+  const prompt = `Market Sentiment Score: ${score}/100 — ${rating}
+VIX: ${vix.toFixed(1)}
+SPY Daily Change: ${spyChange >= 0 ? "+" : ""}${spyChange.toFixed(2)}%
+
+Indicator Breakdown:
+${signalSummary}
+
+Write a 3-4 sentence daily market brief for a trader. Explain the current market mood, the key drivers behind today's sentiment reading, and what it means for trading today. Be specific about numbers. No disclaimers.`;
+
+  try {
+    const brief = await generateCompletion(
+      "You are a concise market analyst. Write punchy, data-driven market briefs. No fluff, no disclaimers.",
+      prompt,
+      300,
+    );
+    briefCache = { brief, generatedAt: Date.now() };
+    return brief;
+  } catch (e: any) {
+    console.error("[Fear&Greed] AI brief generation failed:", e.message);
+    return "";
+  }
+}
+
+async function fetchWarnCount(): Promise<number> {
+  const key = process.env.WARN_FIREHOSE_API_KEY;
+  if (!key) return 0;
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const res = await fetch(`https://warnfirehose.com/api/records?date_from=${thirtyDaysAgo}&limit=30`, {
+      headers: { "X-API-Key": key },
+      cache: "no-store",
+    });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    const records = Array.isArray(data) ? data : data?.records || data?.data || [];
+    return records.length;
+  } catch {
+    return 0;
+  }
+}
+
 export async function GET() {
   try {
-    const [spy, vixData] = await Promise.all([
+    const [spy, vixData, cnnFg, macro, warnCount] = await Promise.all([
       getChart("SPY", "1y", "1d"),
       getChart("^VIX", "6mo", "1d"),
+      getFearGreedIndex().catch(() => null),
+      getMacroSnapshot().catch(() => null),
+      fetchWarnCount().catch(() => 0),
     ]);
 
     const signals: { name: string; score: number; signal: string; weight: number }[] = [];
@@ -29,8 +92,6 @@ export async function GET() {
     const vixCloses = vixData?.closes || [];
     const vixPrice = vixData?.price || 20;
 
-    // 1. VIX Level — THE primary fear gauge (heavy weight)
-    // VIX 12→100, 18→73, 22→55, 26→37, 30→19, 35→0
     const vixScore = clamp(100 - (vixPrice - 12) * 4.5, 0, 100);
     signals.push({
       name: "VIX Level",
@@ -39,11 +100,9 @@ export async function GET() {
       weight: 2.5,
     });
 
-    // 2. VIX vs its 50-day average — is fear rising or falling?
     if (vixCloses.length >= 50) {
       const vixSma50 = vixCloses.slice(-50).reduce((s, c) => s + c, 0) / 50;
       const vixPctAbove = ((vixPrice - vixSma50) / vixSma50) * 100;
-      // VIX above its average = more fear than usual
       const vixTrendScore = clamp(50 - vixPctAbove * 2, 0, 100);
       signals.push({
         name: "VIX Trend",
@@ -53,7 +112,6 @@ export async function GET() {
       });
     }
 
-    // 3. Market Momentum (daily change)
     const momScore = clamp(50 + dailyChange * 20, 0, 100);
     signals.push({
       name: "Market Momentum",
@@ -62,7 +120,6 @@ export async function GET() {
       weight: 1,
     });
 
-    // 4. 1-Week Performance
     if (closes.length >= 5) {
       const weekAgo = closes[closes.length - 5] || 1;
       const current = closes[closes.length - 1] || 1;
@@ -76,7 +133,6 @@ export async function GET() {
       });
     }
 
-    // 5. 1-Month Performance
     if (closes.length >= 22) {
       const monthAgo = closes[closes.length - 22] || 1;
       const current = closes[closes.length - 1] || 1;
@@ -90,7 +146,6 @@ export async function GET() {
       });
     }
 
-    // 6. Price vs 50-day SMA
     if (closes.length >= 50 && spyPrice) {
       const sma50 = closes.slice(-50).reduce((s, c) => s + c, 0) / 50;
       const pctAbove = ((spyPrice - sma50) / sma50) * 100;
@@ -103,7 +158,6 @@ export async function GET() {
       });
     }
 
-    // 7. 30-Day Volatility (rolling std)
     if (closes.length >= 30) {
       const last30 = closes.slice(-30);
       const returns = [];
@@ -114,7 +168,6 @@ export async function GET() {
         const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
         const variance = returns.reduce((s, r) => s + (r - mean) ** 2, 0) / returns.length;
         const vol = Math.sqrt(variance);
-        // High vol = fear. Scale: 0.5% → 100, 1.0% → 80, 1.5% → 60, 2.0% → 40, 2.5% → 20
         const volScore = clamp(100 - (vol - 0.5) * 40, 0, 100);
         signals.push({
           name: "Volatility",
@@ -125,24 +178,61 @@ export async function GET() {
       }
     }
 
-    // Weighted average
+    if (cnnFg && typeof cnnFg.score === "number") {
+      signals.push({
+        name: "CNN Fear & Greed",
+        score: Math.round(cnnFg.score),
+        signal: cnnFg.label || ratingFromScore(cnnFg.score),
+        weight: 2.0,
+      });
+    }
+
+    if (macro) {
+      const regimeScores: Record<string, number> = {
+        EXPANSION: 80, PEAK: 60, TROUGH: 40, CONTRACTION: 20,
+      };
+      const macroScore = regimeScores[macro.regime] ?? 50;
+      signals.push({
+        name: "Macro Regime",
+        score: macroScore,
+        signal: macro.regime.charAt(0) + macro.regime.slice(1).toLowerCase(),
+        weight: 1.5,
+      });
+    }
+
+    if (typeof warnCount === "number") {
+      const warnScore = warnCount === 0 ? 60 : warnCount <= 5 ? 50 : warnCount <= 15 ? 35 : 20;
+      signals.push({
+        name: "Layoff Activity",
+        score: warnScore,
+        signal: warnCount === 0 ? "None" : warnCount <= 5 ? "Low" : warnCount <= 15 ? "Moderate" : "High",
+        weight: 0.5,
+      });
+    }
+
     const totalWeight = signals.reduce((s, sig) => s + sig.weight, 0);
     const overallScore =
       totalWeight > 0
         ? Math.round(signals.reduce((s, sig) => s + sig.score * sig.weight, 0) / totalWeight)
         : 50;
 
+    const rating = ratingFromScore(overallScore);
+    const signalOutput = signals.map(({ name, score, signal }) => ({ name, score, signal }));
+
+    const brief = await generateMarketBrief(overallScore, rating, signalOutput, vixPrice, dailyChange);
+
     return NextResponse.json({
       score: overallScore,
-      rating: ratingFromScore(overallScore),
-      signals: signals.map(({ name, score, signal }) => ({ name, score, signal })),
+      rating,
+      signals: signalOutput,
       spyPrice,
       spyChange: dailyChange,
       vix: vixPrice,
+      brief,
       updatedAt: new Date().toISOString(),
     });
   } catch (e: any) {
     console.error("[Fear&Greed]", e.message);
-    return NextResponse.json({ score: 50, rating: "Neutral", signals: [], error: e.message });
+    return NextResponse.json({ score: 50, rating: "Neutral", signals: [], brief: "", error: e.message });
   }
 }

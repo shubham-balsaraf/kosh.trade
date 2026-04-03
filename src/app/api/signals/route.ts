@@ -12,6 +12,8 @@ import { generateOraclePicks } from "@/lib/trading/buffett";
 import type { ScanResult } from "@/lib/trading/scanner";
 import type { TradeSignal } from "@/lib/trading/signals";
 
+export const maxDuration = 120;
+
 const CORE_BASELINE = [
   "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",
   "JPM", "BRK-B", "UNH", "XOM", "SPY", "QQQ",
@@ -500,12 +502,22 @@ export async function GET(req: NextRequest) {
         console.warn("[Signals/Oracle] getRawSignals failed:", (e as Error).message);
       }
 
-      const picks = await generateOraclePicks(rawSignals);
-      return NextResponse.json({
-        picks,
-        total: picks.length,
-        generatedAt: new Date().toISOString(),
-      });
+      try {
+        const picks = await generateOraclePicks(rawSignals);
+        return NextResponse.json({
+          picks,
+          total: picks.length,
+          generatedAt: new Date().toISOString(),
+        });
+      } catch (e: any) {
+        console.error("[Signals/Oracle] generateOraclePicks FAILED:", e.message, e.stack);
+        return NextResponse.json({
+          picks: [],
+          total: 0,
+          error: e.message,
+          generatedAt: new Date().toISOString(),
+        });
+      }
     }
 
     const [macro] = await Promise.all([
