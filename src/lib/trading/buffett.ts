@@ -60,6 +60,9 @@ export interface BuffettFundamentals {
     currentRatio: number;
   }>;
 
+  historicalPE: number[];
+  historicalEvEbitda: number[];
+
   dcfValue: number | null;
   analystTarget: number | null;
   earningsSurprises: Array<{ actual: number; estimate: number }>;
@@ -71,13 +74,16 @@ export interface BuffettFundamentals {
 }
 
 export interface BuffettScores {
-  cashFlowQuality: number;     // 0-25
-  earningsQuality: number;     // 0-20
-  moatStrength: number;        // 0-20
-  balanceSheetFortress: number; // 0-15
-  valuationSafety: number;     // 0-10
-  macroOverlay: number;        // 0-10
-  total: number;               // 0-100
+  cashFlowQuality: number;       // 0-25
+  earningsQuality: number;       // 0-20
+  moatStrength: number;          // 0-20
+  balanceSheetFortress: number;  // 0-15
+  valuationSafety: number;       // 0-10
+  macroOverlay: number;          // 0-10
+  historicalValuation: number;   // 0-10
+  moatErosion: number;           // 0-10
+  capitalAllocation: number;     // 0-10
+  total: number;                 // 0-130
 }
 
 export interface OraclePick {
@@ -87,8 +93,9 @@ export interface OraclePick {
   price: number;
   marketCap: number;
   buffettScore: number;
+  weightedRank: number;
   scores: BuffettScores;
-  moatRating: "Wide" | "Narrow" | "None";
+  moatRating: "Wide" | "Narrow" | "None" | "Eroding";
   marginOfSafety: number;
   keyMetrics: {
     fcfMargin: number;
@@ -99,6 +106,11 @@ export interface OraclePick {
     grossMargin: number;
     revenueGrowthCAGR: number;
     fcfGrowthCAGR: number;
+    peDiscount: number;
+    evEbitdaDiscount: number;
+    shareholderYield: number;
+    goodwillRatio: number;
+    buybackYears: number;
   };
   thesis: string;
 }
@@ -262,9 +274,17 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
       currentRatio: r.currentRatio || 0,
     }));
 
-    const km0 = Array.isArray(km) ? km[0] : null;
+    const kmArr = Array.isArray(km) ? km.slice(0, 5) : [];
+    const km0 = kmArr[0] || null;
     const dcfArr = Array.isArray(dcf) ? dcf : [];
     const surprises = Array.isArray(surp) ? surp.slice(0, 8) : [];
+
+    const historicalPE = kmArr
+      .map((k: any) => k.peRatio as number)
+      .filter((v: number) => v > 0 && v < 500);
+    const historicalEvEbitda = kmArr
+      .map((k: any) => (k.enterpriseValueOverEBITDA || k.evToEbitda) as number)
+      .filter((v: number) => v > 0 && v < 200);
 
     const latestFCF = cashFlows[0]?.freeCashFlow || 0;
 
@@ -278,6 +298,8 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
       incomeStatements,
       balanceSheets,
       ratios,
+      historicalPE,
+      historicalEvEbitda,
       dcfValue: dcfArr[0]?.dcf || null,
       analystTarget: null,
       earningsSurprises: surprises.map((s: any) => ({
@@ -309,6 +331,9 @@ export function scoreBuffettDimensions(
     balanceSheetFortress: 0,
     valuationSafety: 0,
     macroOverlay: 0,
+    historicalValuation: 0,
+    moatErosion: 0,
+    capitalAllocation: 0,
     total: 0,
   };
 
@@ -510,15 +535,120 @@ export function scoreBuffettDimensions(
     scores.macroOverlay = Math.min(10, pts);
   }
 
+  /* ── 7. Historical Valuation Attractiveness (0-10 pts) ── */
+  {
+    let pts = 0;
+
+    if (fd.historicalPE.length >= 2 && fd.pe > 0) {
+      const avgPE = fd.historicalPE.reduce((s, v) => s + v, 0) / fd.historicalPE.length;
+      const peRatio = fd.pe / avgPE;
+      if (peRatio < 0.70) pts += 4;
+      else if (peRatio < 0.85) pts += 2;
+    }
+
+    if (fd.historicalEvEbitda.length >= 2) {
+      const currentEV = fd.historicalEvEbitda[0] || 0;
+      const avgEV = fd.historicalEvEbitda.reduce((s, v) => s + v, 0) / fd.historicalEvEbitda.length;
+      if (currentEV > 0 && avgEV > 0) {
+        const evRatio = currentEV / avgEV;
+        if (evRatio < 0.75) pts += 3;
+        else if (evRatio < 0.90) pts += 2;
+      }
+    }
+
+    if (fd.forwardPe > 0 && fd.pe > 0) {
+      const fwdRatio = fd.forwardPe / fd.pe;
+      if (fwdRatio < 0.80) pts += 3;
+      else if (fwdRatio < 0.90) pts += 2;
+    }
+
+    scores.historicalValuation = Math.min(10, pts);
+  }
+
+  /* ── 8. Moat Erosion Risk (0-10 pts, base 5) ──────────── */
+  {
+    let pts = 5;
+    const gms = fd.ratios.map((r) => r.grossProfitMargin).reverse();
+    if (gms.length >= 3) {
+      const gmDelta = (gms[gms.length - 1] - gms[0]) * 100;
+      if (gmDelta < -3) pts -= 3;
+      else if (gmDelta < -1) pts -= 1;
+      else pts += 2;
+    }
+
+    const roes = fd.ratios.map((r) => r.returnOnEquity).reverse();
+    if (roes.length >= 3) {
+      const roeDelta = roes[roes.length - 1] - roes[0];
+      if (roeDelta < -0.03) pts -= 2;
+      else if (roeDelta >= 0) pts += 2;
+    }
+
+    const rdRatios = fd.incomeStatements.map((i) =>
+      i.revenue > 0 ? i.researchAndDevelopment / i.revenue : 0,
+    ).reverse();
+    if (rdRatios.length >= 3 && rdRatios[0] > 0) {
+      const rdDelta = rdRatios[rdRatios.length - 1] - rdRatios[0];
+      if (rdDelta >= 0) pts += 2;
+      else pts -= 1;
+    }
+
+    const opMs = fd.ratios.map((r) => r.operatingProfitMargin).reverse();
+    if (opMs.length >= 4) {
+      const firstHalf = (opMs[1] - opMs[0]);
+      const secondHalf = (opMs[opMs.length - 1] - opMs[opMs.length - 2]);
+      if (secondHalf > firstHalf && secondHalf > 0) pts += 2;
+    }
+
+    scores.moatErosion = clamp(pts, 0, 10);
+  }
+
+  /* ── 9. Capital Allocation Quality (0-10 pts) ──────────── */
+  {
+    let pts = 0;
+
+    const latestCF = fd.cashFlows[0];
+    if (latestCF && fd.marketCap > 0) {
+      const netReturn = (latestCF.dividendsPaid + latestCF.shareRepurchases - latestCF.stockBasedCompensation);
+      const shareholderYield = (netReturn / fd.marketCap) * 100;
+      if (shareholderYield > 5) pts += 4;
+      else if (shareholderYield > 3) pts += 3;
+      else if (shareholderYield > 1) pts += 2;
+    }
+
+    const buybackYears = fd.cashFlows.filter((c) => c.shareRepurchases > c.stockBasedCompensation).length;
+    if (buybackYears >= 5) pts += 3;
+    else if (buybackYears >= 3) pts += 2;
+    else if (buybackYears >= 1) pts += 1;
+
+    const bs0 = fd.balanceSheets[0];
+    if (bs0 && bs0.totalAssets > 0) {
+      const gwRatio = bs0.goodwill / bs0.totalAssets;
+      if (gwRatio < 0.10) pts += 2;
+      else if (gwRatio < 0.20) pts += 1;
+      else if (gwRatio > 0.40) pts -= 1;
+    }
+
+    const divYears = fd.cashFlows.filter((c) => c.dividendsPaid > 0).length;
+    if (divYears >= 5) {
+      const divs = fd.cashFlows.map((c) => c.dividendsPaid).reverse();
+      const growing = divs.length >= 2 && divs[divs.length - 1] >= divs[0];
+      if (growing) pts += 1;
+    }
+
+    scores.capitalAllocation = clamp(pts, 0, 10);
+  }
+
   scores.total = scores.cashFlowQuality + scores.earningsQuality + scores.moatStrength +
-    scores.balanceSheetFortress + scores.valuationSafety + scores.macroOverlay;
+    scores.balanceSheetFortress + scores.valuationSafety + scores.macroOverlay +
+    scores.historicalValuation + scores.moatErosion + scores.capitalAllocation;
 
   return scores;
 }
 
 /* ── Moat Rating ─────────────────────────────────────────── */
 
-function classifyMoat(scores: BuffettScores): "Wide" | "Narrow" | "None" {
+function classifyMoat(scores: BuffettScores): "Wide" | "Narrow" | "None" | "Eroding" {
+  if (scores.moatErosion <= 2) return "Eroding";
   if (scores.moatStrength >= 15 && scores.cashFlowQuality >= 18) return "Wide";
   if (scores.moatStrength >= 10 || scores.cashFlowQuality >= 15) return "Narrow";
   return "None";
@@ -534,7 +664,8 @@ function generateThesis(fd: BuffettFundamentals, scores: BuffettScores, moat: st
   const sbcPct = cf0 ? ((cf0.stockBasedCompensation / rev0) * 100).toFixed(1) : "0";
   const gm = fd.ratios[0]?.grossProfitMargin ? (fd.ratios[0].grossProfitMargin * 100).toFixed(0) : "?";
 
-  if (moat === "Wide") parts.push(`${moat} moat with ${gm}% gross margins`);
+  if (moat === "Eroding") parts.push(`Moat under pressure — ${gm}% gross margins but declining`);
+  else if (moat === "Wide") parts.push(`${moat} moat with ${gm}% gross margins`);
   else parts.push(`${moat} moat — ${gm}% gross margins`);
 
   parts.push(`${fcfMargin}% FCF margin`);
@@ -544,6 +675,12 @@ function generateThesis(fd: BuffettFundamentals, scores: BuffettScores, moat: st
 
   if (scores.balanceSheetFortress >= 12) parts.push("fortress balance sheet");
   else if (scores.balanceSheetFortress >= 8) parts.push("solid balance sheet");
+
+  if (scores.historicalValuation >= 7) parts.push("trading well below historical valuation");
+  else if (scores.historicalValuation >= 4) parts.push("reasonably priced vs history");
+
+  if (scores.capitalAllocation >= 7) parts.push("excellent capital allocation");
+  else if (scores.capitalAllocation >= 4) parts.push("solid shareholder returns");
 
   if (fd.dcfValue && fd.price > 0) {
     const upside = ((fd.dcfValue - fd.price) / fd.price) * 100;
@@ -595,6 +732,35 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
       marginOfSafety = ((fd.dcfValue - fd.price) / fd.price) * 100;
     }
 
+    let peDiscount = 0;
+    if (fd.historicalPE.length >= 2 && fd.pe > 0) {
+      const avgPE = fd.historicalPE.reduce((s, v) => s + v, 0) / fd.historicalPE.length;
+      peDiscount = Math.round((1 - fd.pe / avgPE) * 1000) / 10;
+    }
+    let evEbitdaDiscount = 0;
+    if (fd.historicalEvEbitda.length >= 2) {
+      const cur = fd.historicalEvEbitda[0] || 0;
+      const avg = fd.historicalEvEbitda.reduce((s, v) => s + v, 0) / fd.historicalEvEbitda.length;
+      if (cur > 0 && avg > 0) evEbitdaDiscount = Math.round((1 - cur / avg) * 1000) / 10;
+    }
+
+    let shareholderYield = 0;
+    if (cf0 && fd.marketCap > 0) {
+      const netReturn = cf0.dividendsPaid + cf0.shareRepurchases - cf0.stockBasedCompensation;
+      shareholderYield = Math.round((netReturn / fd.marketCap) * 1000) / 10;
+    }
+
+    const gwRatio = fd.balanceSheets[0] && fd.balanceSheets[0].totalAssets > 0
+      ? Math.round((fd.balanceSheets[0].goodwill / fd.balanceSheets[0].totalAssets) * 1000) / 10
+      : 0;
+
+    const buybackYears = fd.cashFlows.filter((c) => c.shareRepurchases > c.stockBasedCompensation).length;
+
+    const weightedRank = scores.total * 0.70
+      + scores.historicalValuation * 1.5
+      + scores.capitalAllocation * 1.2
+      - (10 - scores.moatErosion) * 1.0;
+
     scored.push({
       ticker,
       companyName: fd.companyName,
@@ -602,6 +768,7 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
       price: fd.price,
       marketCap: fd.marketCap,
       buffettScore: scores.total,
+      weightedRank: Math.round(weightedRank * 10) / 10,
       scores,
       moatRating: moat,
       marginOfSafety: Math.round(marginOfSafety * 10) / 10,
@@ -614,12 +781,17 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
         grossMargin: Math.round(gm * 10) / 10,
         revenueGrowthCAGR: Math.round(revCAGR * 10) / 10,
         fcfGrowthCAGR: Math.round(fcfCAGR * 10) / 10,
+        peDiscount: peDiscount,
+        evEbitdaDiscount: evEbitdaDiscount,
+        shareholderYield: shareholderYield,
+        goodwillRatio: gwRatio,
+        buybackYears: buybackYears,
       },
       thesis: generateThesis(fd, scores, moat),
     });
   }
 
-  scored.sort((a, b) => b.buffettScore - a.buffettScore);
+  scored.sort((a, b) => b.weightedRank - a.weightedRank);
 
   const topPicks = scored.slice(0, 15);
   const elapsed = Date.now() - startTime;

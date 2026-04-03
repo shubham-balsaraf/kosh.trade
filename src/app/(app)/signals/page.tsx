@@ -798,13 +798,14 @@ const MOAT_STYLE: Record<string, { bg: string; text: string; label: string }> = 
   Wide: { bg: "bg-emerald-500/20", text: "text-emerald-400", label: "Wide Moat" },
   Narrow: { bg: "bg-amber-500/20", text: "text-amber-400", label: "Narrow Moat" },
   None: { bg: "bg-red-500/20", text: "text-red-400", label: "No Moat" },
+  Eroding: { bg: "bg-orange-500/20", text: "text-orange-400", label: "Eroding Moat" },
 };
 
 function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) {
   const [expanded, setExpanded] = useState(false);
-  const moat = MOAT_STYLE[pick.moatRating];
-  const scoreColor = pick.buffettScore >= 70 ? "text-emerald-400" : pick.buffettScore >= 50 ? "text-amber-400" : "text-red-400";
-  const ringColor = pick.buffettScore >= 70 ? "border-emerald-500" : pick.buffettScore >= 50 ? "border-amber-500" : "border-red-500";
+  const moat = MOAT_STYLE[pick.moatRating] || MOAT_STYLE.None;
+  const scoreColor = pick.buffettScore >= 85 ? "text-emerald-400" : pick.buffettScore >= 60 ? "text-amber-400" : "text-red-400";
+  const ringColor = pick.buffettScore >= 85 ? "border-emerald-500" : pick.buffettScore >= 60 ? "border-amber-500" : "border-red-500";
 
   const dimensions = [
     { label: "Cash Flow", value: pick.scores.cashFlowQuality, max: 25, color: "bg-emerald-500" },
@@ -813,6 +814,9 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
     { label: "Balance Sheet", value: pick.scores.balanceSheetFortress, max: 15, color: "bg-cyan-500" },
     { label: "Valuation", value: pick.scores.valuationSafety, max: 10, color: "bg-amber-500" },
     { label: "Macro", value: pick.scores.macroOverlay, max: 10, color: "bg-orange-500" },
+    { label: "Hist. Valuation", value: pick.scores.historicalValuation, max: 10, color: "bg-indigo-500" },
+    { label: "Moat Health", value: pick.scores.moatErosion, max: 10, color: pick.scores.moatErosion <= 3 ? "bg-red-500" : "bg-teal-500" },
+    { label: "Capital Alloc.", value: pick.scores.capitalAllocation, max: 10, color: "bg-pink-500" },
   ];
 
   const metrics = [
@@ -822,6 +826,8 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
     { label: "D/E", value: `${pick.keyMetrics.debtToEquity}`, good: pick.keyMetrics.debtToEquity < 1 },
     { label: "ROE", value: `${pick.keyMetrics.roe}%`, good: pick.keyMetrics.roe > 15 },
     { label: "Gross Margin", value: `${pick.keyMetrics.grossMargin}%`, good: pick.keyMetrics.grossMargin > 40 },
+    { label: "PE Discount", value: `${pick.keyMetrics.peDiscount > 0 ? "-" : "+"}${Math.abs(pick.keyMetrics.peDiscount)}%`, good: pick.keyMetrics.peDiscount > 10 },
+    { label: "Sh. Yield", value: `${pick.keyMetrics.shareholderYield}%`, good: pick.keyMetrics.shareholderYield > 2 },
   ];
 
   return (
@@ -842,6 +848,11 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
               <span className={`text-[9px] px-1.5 py-0.5 rounded-full ${moat.bg} ${moat.text} font-semibold`}>
                 {moat.label}
               </span>
+              {pick.keyMetrics.peDiscount > 15 && (
+                <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-semibold">
+                  Historically Cheap
+                </span>
+              )}
             </div>
             <p className="text-[10px] text-white/25">{pick.sector} · ${(pick.marketCap / 1e9).toFixed(0)}B market cap</p>
           </div>
@@ -862,7 +873,7 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
       {expanded && (
         <div className="mt-4 space-y-4">
           <div className="space-y-2">
-            <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Dimension Breakdown</p>
+            <p className="text-[10px] text-white/40 font-semibold uppercase tracking-wider">Dimension Breakdown (130 pts total)</p>
             {dimensions.map((d) => (
               <div key={d.label} className="flex items-center gap-2">
                 <span className="text-[10px] text-white/30 w-24 shrink-0">{d.label}</span>
@@ -874,7 +885,7 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
             ))}
           </div>
 
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+          <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
             {metrics.map((m) => (
               <div key={m.label} className="bg-white/[0.03] rounded-lg p-2 text-center">
                 <p className="text-[9px] text-white/25 mb-0.5">{m.label}</p>
@@ -883,7 +894,7 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <div className="bg-white/[0.03] rounded-lg p-2 text-center">
               <p className="text-[9px] text-white/25 mb-0.5">Revenue Growth (5yr CAGR)</p>
               <p className={`text-xs font-bold ${pick.keyMetrics.revenueGrowthCAGR > 8 ? "text-emerald-400" : "text-white/50"}`}>{pick.keyMetrics.revenueGrowthCAGR}%</p>
@@ -891,6 +902,14 @@ function OraclePickCard({ pick, rank }: { pick: OraclePickData; rank: number }) 
             <div className="bg-white/[0.03] rounded-lg p-2 text-center">
               <p className="text-[9px] text-white/25 mb-0.5">FCF Growth (5yr CAGR)</p>
               <p className={`text-xs font-bold ${pick.keyMetrics.fcfGrowthCAGR > 8 ? "text-emerald-400" : "text-white/50"}`}>{pick.keyMetrics.fcfGrowthCAGR}%</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+              <p className="text-[9px] text-white/25 mb-0.5">Goodwill / Assets</p>
+              <p className={`text-xs font-bold ${pick.keyMetrics.goodwillRatio < 15 ? "text-emerald-400" : pick.keyMetrics.goodwillRatio > 35 ? "text-red-400" : "text-white/50"}`}>{pick.keyMetrics.goodwillRatio}%</p>
+            </div>
+            <div className="bg-white/[0.03] rounded-lg p-2 text-center">
+              <p className="text-[9px] text-white/25 mb-0.5">Net Buyback Years</p>
+              <p className={`text-xs font-bold ${pick.keyMetrics.buybackYears >= 3 ? "text-emerald-400" : "text-white/50"}`}>{pick.keyMetrics.buybackYears}/5</p>
             </div>
           </div>
         </div>
@@ -907,10 +926,11 @@ interface OraclePickData {
   price: number;
   marketCap: number;
   buffettScore: number;
-  scores: { cashFlowQuality: number; earningsQuality: number; moatStrength: number; balanceSheetFortress: number; valuationSafety: number; macroOverlay: number; total: number };
-  moatRating: "Wide" | "Narrow" | "None";
+  weightedRank: number;
+  scores: { cashFlowQuality: number; earningsQuality: number; moatStrength: number; balanceSheetFortress: number; valuationSafety: number; macroOverlay: number; historicalValuation: number; moatErosion: number; capitalAllocation: number; total: number };
+  moatRating: "Wide" | "Narrow" | "None" | "Eroding";
   marginOfSafety: number;
-  keyMetrics: { fcfMargin: number; fcfYield: number; sbcToRevenue: number; debtToEquity: number; roe: number; grossMargin: number; revenueGrowthCAGR: number; fcfGrowthCAGR: number };
+  keyMetrics: { fcfMargin: number; fcfYield: number; sbcToRevenue: number; debtToEquity: number; roe: number; grossMargin: number; revenueGrowthCAGR: number; fcfGrowthCAGR: number; peDiscount: number; evEbitdaDiscount: number; shareholderYield: number; goodwillRatio: number; buybackYears: number };
   thesis: string;
 }
 
@@ -1326,8 +1346,9 @@ export default function SignalsPage() {
               {[
                 { icon: Landmark, val: oraclePicks.filter((p) => p.moatRating === "Wide").length, label: "wide moat", cls: "text-emerald-400/70" },
                 { icon: Shield, val: oraclePicks.filter((p) => p.moatRating === "Narrow").length, label: "narrow moat", cls: "text-amber-400/70" },
-                { icon: Coins, val: oraclePicks.filter((p) => p.keyMetrics.fcfYield > 3).length, label: "strong FCF yield", cls: "text-blue-400/70" },
-                { icon: Scale, val: oraclePicks.filter((p) => p.marginOfSafety > 10).length, label: "margin of safety", cls: "text-purple-400/70" },
+                { icon: AlertTriangle, val: oraclePicks.filter((p) => p.moatRating === "Eroding").length, label: "eroding moat", cls: "text-orange-400/70" },
+                { icon: Coins, val: oraclePicks.filter((p) => p.keyMetrics.shareholderYield > 2).length, label: "strong sh. yield", cls: "text-blue-400/70" },
+                { icon: Scale, val: oraclePicks.filter((p) => p.keyMetrics.peDiscount > 10).length, label: "historically cheap", cls: "text-indigo-400/70" },
               ].map(({ icon: Ic, val, label, cls }) => (
                 <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
                   <Ic size={12} className={cls} />
