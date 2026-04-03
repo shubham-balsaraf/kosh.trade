@@ -207,6 +207,9 @@ export function computeDataConfidence(
   /* ── 8. Market context — Fear & Greed (0-3 pts) ─────── */
   if (bundle?.fearGreed) earned += 3;
 
+  /* ── 8b. WARN Act layoff data (0-4 pts) ────────────── */
+  if (bundle?.warnLayoffs?.some((w) => w.ticker === ticker)) earned += 4;
+
   /* ── 9. Risk data completeness (0-10 pts) ─────────────── */
   if (scan && fd) earned += 10;
   else if (scan || fd) earned += 5;
@@ -675,6 +678,23 @@ export function scoreCatalyst(ticker: string, bundle: RawSignalBundle): number {
     if (stSentiment.totalMessages >= 20) score += 3;
   }
   if (bundle.trendingStocktwits?.includes(ticker)) score += 4;
+
+  const warnFilings = bundle.warnLayoffs?.filter((w) => w.ticker === ticker) || [];
+  if (warnFilings.length > 0) {
+    const hasInsiderBuys = bundle.insiderBuys.some((i) => i.ticker === ticker);
+    const hasDowngrades = bundle.grades.some((g) =>
+      g.ticker === ticker && (g.action.toLowerCase().includes("downgrade") || g.newGrade.toLowerCase().includes("sell")),
+    );
+    const totalAffected = warnFilings.reduce((s, w) => s + w.employeesAffected, 0);
+
+    if (warnFilings.length >= 2 || totalAffected > 1000 || hasDowngrades) {
+      score -= totalAffected > 2000 ? 15 : 8;
+    } else if (hasInsiderBuys) {
+      score += 8;
+    } else {
+      score += 2;
+    }
+  }
 
   return clamp(score);
 }

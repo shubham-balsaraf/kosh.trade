@@ -182,6 +182,7 @@ export async function GET(req: NextRequest) {
           grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
           institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
           socialSentiment: new Map(), finvizSnapshots: new Map(), fearGreed: null, trendingStocktwits: [],
+          warnLayoffs: [],
         };
       }
 
@@ -282,6 +283,7 @@ export async function GET(req: NextRequest) {
         institutional: rawSignals.institutional.length,
         filings: rawSignals.filings8k.length,
         crypto: rawSignals.cryptoNews?.length || 0,
+        warnLayoffs: rawSignals.warnLayoffs?.length || 0,
       };
 
       const totalTickers = new Set([

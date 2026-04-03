@@ -455,6 +455,39 @@ async function discoverFrom8K(): Promise<DiscoveredTicker[]> {
   }
 }
 
+/* ── WARN Act Layoff Filings ────────────────────────── */
+
+async function fetchWarnLayoffs(): Promise<Array<{ company: string; ticker: string | null; state: string; employeesAffected: number; date: string; noticeType: string }>> {
+  const key = process.env.WARN_FIREHOSE_API_KEY;
+  if (!key) return [];
+
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const url = `https://warnfirehose.com/api/records?date_from=${thirtyDaysAgo}&limit=30`;
+    const res = await fetch(url, {
+      headers: { "X-API-Key": key },
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      console.warn(`[WARN] API returned ${res.status}`);
+      return [];
+    }
+    const data = await res.json();
+    const records = Array.isArray(data) ? data : data?.records || data?.data || [];
+    return records.slice(0, 30).map((r: any) => ({
+      company: r.company_name || r.company || "",
+      ticker: r.ticker || r.symbol || null,
+      state: r.state || "",
+      employeesAffected: parseInt(r.number_of_workers || r.employees_affected || r.num_affected || "0", 10) || 0,
+      date: r.notice_date || r.received_date || r.date || "",
+      noticeType: r.notice_type || r.layoff_type || r.type || "Layoff",
+    }));
+  } catch (e) {
+    console.warn("[WARN] Fetch failed:", (e as Error).message);
+    return [];
+  }
+}
+
 /* ── Enhanced RawSignalBundle with all sources ───────── */
 
 export interface RawSignalBundle {
@@ -475,6 +508,7 @@ export interface RawSignalBundle {
   finvizSnapshots: Map<string, FinvizSnapshot>;
   fearGreed: FearGreedData | null;
   trendingStocktwits: string[];
+  warnLayoffs: Array<{ company: string; ticker: string | null; state: string; employeesAffected: number; date: string; noticeType: string }>;
 }
 
 export async function getRawSignals(): Promise<RawSignalBundle> {
@@ -483,6 +517,7 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
     institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
     socialSentiment: new Map(), finvizSnapshots: new Map(), fearGreed: null, trendingStocktwits: [],
+    warnLayoffs: [],
   };
 
   const results = await Promise.allSettled([
@@ -510,13 +545,14 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     getMarketauxTrending(20),          // 16 (MarketAux trending news with sentiment)
     getTrendingSymbols(),              // 17 (Stocktwits trending)
     getFearGreedIndex(),               // 18 (CNN/Alternative.me Fear & Greed)
+    fetchWarnLayoffs(),                // 19 (WARN Act mass layoff filings)
   ]);
 
   const sourceNames = [
     "StockNews", "Insider", "Senate", "House", "Gainers", "Losers", "Active",
     "Earnings", "Grades", "PressReleases", "SectorPerf", "Mergers",
     "Institutional", "8K-Filings", "CryptoNews", "MarketNews", "MarketAux",
-    "StocktwitsTrending", "FearGreed",
+    "StocktwitsTrending", "FearGreed", "WarnLayoffs",
   ];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
@@ -744,12 +780,20 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     console.log(`[RawSignals] Fear & Greed: ${bundle.fearGreed.score} (${bundle.fearGreed.label})`);
   }
 
+  // WARN Act layoff filings (index 19)
+  if (results[19].status === "fulfilled" && Array.isArray(results[19].value)) {
+    bundle.warnLayoffs = results[19].value;
+    if (bundle.warnLayoffs.length > 0) {
+      console.log(`[RawSignals] WARN layoffs: ${bundle.warnLayoffs.length} filings`);
+    }
+  }
+
   const totalSignals =
     bundle.news.length + bundle.insiderBuys.length + bundle.congressBuys.length +
     bundle.screenerMoves.length + bundle.earnings.length + bundle.grades.length +
     bundle.pressReleases.length + bundle.mergers.length + bundle.institutional.length +
     bundle.filings8k.length + bundle.cryptoNews.length + bundle.edgarFilings.length +
-    bundle.trendingStocktwits.length;
+    bundle.trendingStocktwits.length + bundle.warnLayoffs.length;
   console.log(`[RawSignals] Total signals collected: ${totalSignals} across ${sourceNames.length} sources`);
 
   return bundle;

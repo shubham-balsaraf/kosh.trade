@@ -929,6 +929,7 @@ export default function SignalsPage() {
                   { icon: FileText, val: intelStats.signalCounts.press || 0, label: "press", cls: "text-teal-400/70" },
                   { icon: Clock, val: intelStats.signalCounts.earnings || 0, label: "earnings", cls: "text-pink-400/70" },
                   { icon: Coins, val: intelStats.signalCounts.crypto || 0, label: "crypto", cls: "text-yellow-400/70" },
+                  { icon: AlertTriangle, val: intelStats.signalCounts.warnLayoffs || 0, label: "layoffs", cls: "text-red-400/70" },
                 ].filter(({ val }) => val > 0).map(({ icon: Ic, val, label, cls }) => (
                   <span key={label} className="flex items-center gap-1.5 bg-white/[0.03] rounded-lg px-3 py-1.5 text-xs">
                     <Ic size={12} className={cls} />

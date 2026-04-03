@@ -198,7 +198,7 @@ export async function expandWithPeers(tickers: string[], maxPeers = 3): Promise<
 
 const NARRATIVE_SYSTEM = `You are a market intelligence analyst who identifies actionable trading narratives from raw market signals.
 
-You receive a RICH signal bundle from 12+ data sources: news, insider trades, congressional purchases, analyst upgrades/downgrades, press releases, M&A activity, sector performance, institutional (13F) moves, 8-K SEC filings, market movers, crypto news, and upcoming earnings.
+You receive a RICH signal bundle from 13+ data sources: news, insider trades, congressional purchases, analyst upgrades/downgrades, press releases, M&A activity, sector performance, institutional (13F) moves, 8-K SEC filings, market movers, crypto news, upcoming earnings, and WARN Act mass layoff filings.
 
 Your job:
 1. Identify 4-8 distinct NARRATIVES — each connecting events, signals, or price action to sector/stock impact
@@ -324,6 +324,13 @@ export async function generateMarketNarratives(signals: RawSignalBundle): Promis
       .slice(0, 10)
       .map((n) => `- "${n.title}"${n.ticker ? ` (${n.ticker})` : ""}${n.catalyst ? ` [${n.catalyst}]` : ""}`);
     sections.push(`CRYPTO NEWS:\n${cryptoLines.join("\n")}`);
+  }
+
+  if (signals.warnLayoffs && signals.warnLayoffs.length > 0) {
+    const warnLines = signals.warnLayoffs
+      .slice(0, 15)
+      .map((w) => `- ${w.company}${w.ticker ? ` (${w.ticker})` : ""}: ${w.employeesAffected} employees, ${w.state} (${w.date})${w.noticeType ? ` [${w.noticeType}]` : ""}`);
+    sections.push(`WARN ACT LAYOFF FILINGS (mass layoff notices — can be bullish cost-cutting or bearish distress depending on company health):\n${warnLines.join("\n")}`);
   }
 
   if (sections.length === 0) return [];

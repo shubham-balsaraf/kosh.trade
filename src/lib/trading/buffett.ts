@@ -137,8 +137,8 @@ function coefficientOfVariation(values: number[]): number {
 async function batchFetch<T>(
   tickers: string[],
   fetcher: (t: string) => Promise<T>,
-  batchSize = 4,
-  delayMs = 400,
+  batchSize = 3,
+  delayMs = 800,
 ): Promise<Map<string, T>> {
   const map = new Map<string, T>();
   for (let i = 0; i < tickers.length; i += batchSize) {
@@ -156,16 +156,11 @@ async function batchFetch<T>(
 /* ── Universe Selection ──────────────────────────────────── */
 
 const BUFFETT_UNIVERSE = [
-  "AAPL", "MSFT", "GOOGL", "AMZN", "META", "BRK-B", "JNJ", "UNH", "V", "MA",
-  "PG", "HD", "KO", "PEP", "COST", "MRK", "ABBV", "LLY", "TMO", "ABT",
-  "AVGO", "CRM", "ACN", "MCD", "CSCO", "TXN", "NEE", "UNP", "HON", "LOW",
-  "AMGN", "ADP", "ISRG", "MDLZ", "GILD", "ADI", "VRTX", "REGN", "BKNG", "SYK",
-  "ZTS", "CME", "ITW", "ANET", "KLAC", "MCHP", "SNPS", "CDNS", "CTAS", "MSCI",
-  "IDXX", "ODFL", "FAST", "CPRT", "WST", "POOL", "ROP", "SHW", "ECL", "APD",
-  "MCO", "SPGI", "ICE", "CB", "AJG", "WM", "RSG", "CHD", "BRO", "VRSK",
-  "FICO", "LRCX", "ASML", "NOW", "INTU", "ADBE", "PANW", "FTNT", "DDOG", "TTD",
-  "MMM", "CAT", "DE", "WMT", "TGT", "DG", "DLTR", "NKE", "SBUX", "YUM",
-  "ORCL", "IBM", "QCOM", "AMD", "NVDA", "TSM", "MU", "INTC", "PLTR", "SNOW",
+  "AAPL", "MSFT", "GOOGL", "AMZN", "META", "JNJ", "UNH", "V", "MA",
+  "PG", "HD", "KO", "PEP", "COST", "MRK", "ABBV", "LLY", "AVGO",
+  "MCD", "TXN", "UNP", "HON", "AMGN", "ADP", "ISRG", "ACN",
+  "SPGI", "MCO", "SHW", "WMT", "CAT", "DE", "NVDA", "INTU",
+  "NOW", "ADBE", "CRM", "ORCL", "WM", "CME",
 ];
 
 async function selectUniverse(bundle: RawSignalBundle | null): Promise<string[]> {
@@ -204,20 +199,44 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
   const result = new Map<string, BuffettFundamentals>();
   const empty = new Map<string, any>();
 
-  const [cfMap, isMap, bsMap, kmMap, rtMap, dcfMap, profMap, surpriseMap] = await Promise.all([
-    batchFetch(tickers, (t) => getCashFlow(t, "annual", 5)).catch(() => empty),
-    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 5)).catch(() => empty),
-    batchFetch(tickers, (t) => getBalanceSheet(t, "annual", 5)).catch(() => empty),
-    batchFetch(tickers, (t) => getKeyMetrics(t, "annual", 5)).catch(() => empty),
-    batchFetch(tickers, (t) => getRatios(t, "annual", 5)).catch(() => empty),
-    batchFetch(tickers, (t) => getDCFValuation(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getProfile(t)).catch(() => empty),
-    batchFetch(tickers, (t) => getEarningsSurprises(t)).catch(() => empty),
-  ]);
+  console.log(`[Oracle] Phase 1: fetching core data (CF, IS, Profile) for ${tickers.length} tickers...`);
 
-  console.log(`[Oracle] Fundamental coverage: CF=${cfMap.size} IS=${isMap.size} BS=${bsMap.size} KM=${kmMap.size} RT=${rtMap.size} DCF=${dcfMap.size} Prof=${profMap.size}`);
+  const cfMap = await batchFetch(tickers, (t) => getCashFlow(t, "annual", 5)).catch(() => empty);
+  const isMap = await batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 5)).catch(() => empty);
+  const profMap = await batchFetch(tickers, (t) => getProfile(t)).catch(() => empty);
 
-  for (const ticker of tickers) {
+  console.log(`[Oracle] Phase 1 results: CF=${cfMap.size} IS=${isMap.size} Prof=${profMap.size}`);
+
+  const phase1Survivors = tickers.filter((t) => {
+    const cf = cfMap.get(t);
+    const is_ = isMap.get(t);
+    const prof = profMap.get(t);
+    const p = Array.isArray(prof) ? prof[0] : prof;
+    const mktCap = p?.mktCap || 0;
+    if (!Array.isArray(cf) || cf.length < 2) return false;
+    if (!Array.isArray(is_) || is_.length < 2) return false;
+    if (mktCap < 5_000_000_000) return false;
+    return true;
+  });
+
+  console.log(`[Oracle] Phase 1 gate: ${phase1Survivors.length}/${tickers.length} tickers survived (CF>=2, IS>=2, mktCap>=$5B)`);
+
+  if (phase1Survivors.length === 0) {
+    console.error("[Oracle] No tickers passed Phase 1 quality gate — check FMP API key and connectivity");
+    return result;
+  }
+
+  console.log(`[Oracle] Phase 2: fetching supplementary data (BS, KM, Ratios, DCF, Surprises) for ${phase1Survivors.length} tickers...`);
+
+  const bsMap = await batchFetch(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5)).catch(() => empty);
+  const kmMap = await batchFetch(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5)).catch(() => empty);
+  const rtMap = await batchFetch(phase1Survivors, (t) => getRatios(t, "annual", 5)).catch(() => empty);
+  const dcfMap = await batchFetch(phase1Survivors, (t) => getDCFValuation(t)).catch(() => empty);
+  const surpriseMap = await batchFetch(phase1Survivors, (t) => getEarningsSurprises(t)).catch(() => empty);
+
+  console.log(`[Oracle] Phase 2 results: BS=${bsMap.size} KM=${kmMap.size} RT=${rtMap.size} DCF=${dcfMap.size} Surp=${surpriseMap.size}`);
+
+  for (const ticker of phase1Survivors) {
     const cf = cfMap.get(ticker);
     const is_ = isMap.get(ticker);
     const bs = bsMap.get(ticker);
