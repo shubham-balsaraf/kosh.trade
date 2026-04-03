@@ -180,6 +180,7 @@ export async function GET(req: NextRequest) {
           news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
           grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
           institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
+          socialSentiment: new Map(), finvizSnapshots: new Map(), fearGreed: null, trendingStocktwits: [],
         };
       }
 

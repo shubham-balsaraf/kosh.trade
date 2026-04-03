@@ -20,6 +20,9 @@ import {
 } from "@/lib/api/fmp";
 import { getTrendingNews as getMarketauxTrending } from "@/lib/api/marketaux";
 import { batchEdgarFilings, type EdgarFiling } from "@/lib/api/edgar";
+import { getTrendingSymbols, type StocktwitsSentiment } from "@/lib/api/stocktwits";
+import { type FinvizSnapshot } from "@/lib/api/finviz";
+import { getFearGreedIndex, type FearGreedData } from "@/lib/api/feargreed";
 
 export interface DiscoveredTicker {
   ticker: string;
@@ -468,6 +471,10 @@ export interface RawSignalBundle {
   filings8k: Array<{ ticker: string; title: string; date: string }>;
   cryptoNews: Array<{ title: string; ticker: string | null; catalyst: string | null }>;
   edgarFilings: EdgarFiling[];
+  socialSentiment: Map<string, StocktwitsSentiment>;
+  finvizSnapshots: Map<string, FinvizSnapshot>;
+  fearGreed: FearGreedData | null;
+  trendingStocktwits: string[];
 }
 
 export async function getRawSignals(): Promise<RawSignalBundle> {
@@ -475,6 +482,7 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
     grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
     institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
+    socialSentiment: new Map(), finvizSnapshots: new Map(), fearGreed: null, trendingStocktwits: [],
   };
 
   const results = await Promise.allSettled([
@@ -500,12 +508,15 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     getCryptoNews(20),                 // 14
     getMarketNews(40),                 // 15 (backup news source)
     getMarketauxTrending(20),          // 16 (MarketAux trending news with sentiment)
+    getTrendingSymbols(),              // 17 (Stocktwits trending)
+    getFearGreedIndex(),               // 18 (CNN/Alternative.me Fear & Greed)
   ]);
 
   const sourceNames = [
     "StockNews", "Insider", "Senate", "House", "Gainers", "Losers", "Active",
     "Earnings", "Grades", "PressReleases", "SectorPerf", "Mergers",
     "Institutional", "8K-Filings", "CryptoNews", "MarketNews", "MarketAux",
+    "StocktwitsTrending", "FearGreed",
   ];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
@@ -718,11 +729,27 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     }
   }
 
+  // Stocktwits trending (index 17) — capture trending tickers
+  if (results[17].status === "fulfilled" && Array.isArray(results[17].value)) {
+    bundle.trendingStocktwits = results[17].value
+      .map((s: any) => s.ticker)
+      .filter(Boolean)
+      .slice(0, 30);
+    console.log(`[RawSignals] Stocktwits trending: ${bundle.trendingStocktwits.length} tickers`);
+  }
+
+  // Fear & Greed (index 18) — market-wide sentiment context
+  if (results[18].status === "fulfilled" && results[18].value) {
+    bundle.fearGreed = results[18].value as FearGreedData;
+    console.log(`[RawSignals] Fear & Greed: ${bundle.fearGreed.score} (${bundle.fearGreed.label})`);
+  }
+
   const totalSignals =
     bundle.news.length + bundle.insiderBuys.length + bundle.congressBuys.length +
     bundle.screenerMoves.length + bundle.earnings.length + bundle.grades.length +
     bundle.pressReleases.length + bundle.mergers.length + bundle.institutional.length +
-    bundle.filings8k.length + bundle.cryptoNews.length + bundle.edgarFilings.length;
+    bundle.filings8k.length + bundle.cryptoNews.length + bundle.edgarFilings.length +
+    bundle.trendingStocktwits.length;
   console.log(`[RawSignals] Total signals collected: ${totalSignals} across ${sourceNames.length} sources`);
 
   return bundle;

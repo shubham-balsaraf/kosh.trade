@@ -17,6 +17,8 @@ import {
   getRatingsSnapshot,
 } from "@/lib/api/fmp";
 import { getPriceTarget as getFinnhubPriceTarget, getEPSEstimates as getFinnhubEPS } from "@/lib/api/finnhub";
+import { batchStocktwitsSentiment } from "@/lib/api/stocktwits";
+import { batchFinvizSnapshot } from "@/lib/api/finviz";
 import { prisma } from "@/lib/db";
 
 /* ── Public interfaces ──────────────────────────────────── */
@@ -177,7 +179,35 @@ export function computeDataConfidence(
     if (ticker8k.length > 0) earned += Math.min(2, ticker8k.length);
   }
 
-  /* ── 6. Risk data completeness (0-10 pts) ─────────────── */
+  /* ── 6. Social sentiment — Stocktwits buzz (0-8 pts) ──── */
+  if (bundle) {
+    const stSentiment = bundle.socialSentiment?.get(ticker);
+    if (stSentiment) {
+      earned += 3;
+      if (stSentiment.totalMessages >= 10) earned += 2;
+      if (stSentiment.totalMessages >= 20) earned += 1;
+      if (stSentiment.trending) earned += 2;
+    }
+    if (bundle.trendingStocktwits?.includes(ticker)) earned += 2;
+  }
+
+  /* ── 7. Finviz data enrichment (0-8 pts) ─────────────── */
+  if (bundle) {
+    const fv = bundle.finvizSnapshots?.get(ticker);
+    if (fv) {
+      earned += 2;
+      if (fv.analystTarget) earned += 2;
+      if (fv.shortFloat != null) earned += 1;
+      if (fv.insiderOwn != null) earned += 1;
+      if (fv.instOwn != null) earned += 1;
+      if (fv.earningsDate) earned += 1;
+    }
+  }
+
+  /* ── 8. Market context — Fear & Greed (0-3 pts) ─────── */
+  if (bundle?.fearGreed) earned += 3;
+
+  /* ── 9. Risk data completeness (0-10 pts) ─────────────── */
   if (scan && fd) earned += 10;
   else if (scan || fd) earned += 5;
 
@@ -599,6 +629,14 @@ export function scoreSmartMoney(ticker: string, bundle: RawSignalBundle): number
   if (upgrades.length >= 2) score += 15;
   else if (upgrades.length === 1) score += 8;
 
+  const fv = bundle.finvizSnapshots?.get(ticker);
+  if (fv) {
+    if (fv.insiderOwn != null && fv.insiderOwn > 10) score += 8;
+    else if (fv.insiderOwn != null && fv.insiderOwn > 5) score += 4;
+    if (fv.instOwn != null && fv.instOwn > 60) score += 6;
+    if (fv.shortFloat != null && fv.shortFloat > 20) score += 5;
+  }
+
   return clamp(score);
 }
 
@@ -627,6 +665,16 @@ export function scoreCatalyst(ticker: string, bundle: RawSignalBundle): number {
   if (bundle.mergers.some((m) => m.ticker === ticker)) score += 15;
   if (bundle.filings8k.some((f) => f.ticker === ticker)) score += 8;
   if (bundle.earnings.some((e) => e.ticker === ticker)) score += 6;
+
+  const stSentiment = bundle.socialSentiment?.get(ticker);
+  if (stSentiment) {
+    if (stSentiment.sentimentScore > 0.3) score += 8;
+    else if (stSentiment.sentimentScore > 0) score += 4;
+    else if (stSentiment.sentimentScore < -0.3) score -= 4;
+    if (stSentiment.trending) score += 5;
+    if (stSentiment.totalMessages >= 20) score += 3;
+  }
+  if (bundle.trendingStocktwits?.includes(ticker)) score += 4;
 
   return clamp(score);
 }
@@ -920,10 +968,12 @@ export async function scoreForTrading(
 
   console.log(`[Conviction/Trading] Deep scoring ${tickers.length} tickers for KoshPilot...`);
 
-  const [fundamentals, sentimentMap, edgarMap] = await Promise.all([
+  const [fundamentals, sentimentMap, edgarMap, stocktwitsSentiment, finvizSnapshots] = await Promise.all([
     fetchFundamentals(tickers),
     batchSentimentAnalysis(tickers, bundle),
     batchEdgarFilings(tickers).catch(() => new Map<string, import("@/lib/api/edgar").EdgarFiling[]>()),
+    batchStocktwitsSentiment(tickers).catch(() => new Map()),
+    batchFinvizSnapshot(tickers).catch(() => new Map()),
   ]);
 
   for (const [ticker, filings] of edgarMap) {
@@ -935,6 +985,18 @@ export async function scoreForTrading(
       if (f.form === "8-K" && !bundle.filings8k.some((fk) => fk.ticker === ticker)) {
         bundle.filings8k.push({ ticker, title: f.description || "8-K Filing", date: f.filingDate });
       }
+    }
+  }
+
+  bundle.socialSentiment = stocktwitsSentiment;
+  bundle.finvizSnapshots = finvizSnapshots;
+
+  for (const [ticker, fv] of finvizSnapshots) {
+    const fd = fundamentals.get(ticker);
+    if (fd) {
+      if (!fd.analystTarget && fv.analystTarget) fd.analystTarget = fv.analystTarget;
+      if (!fd.forwardPe && fv.peForward) fd.forwardPe = fv.peForward;
+      if (!fd.peg && fv.peg) fd.peg = fv.peg;
     }
   }
 
@@ -1065,9 +1127,26 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
 
   const fundamentalsMap = await fetchFundamentals(qualifiedTickers);
 
-  /* ── AI Sentiment batch ─────────────────────── */
+  /* ── Social + Finviz + AI Sentiment ──────────── */
 
-  const sentimentMap = await batchSentimentAnalysis(qualifiedTickers, bundle);
+  const [sentimentMap, stocktwitsSentiment, finvizSnapshots] = await Promise.all([
+    batchSentimentAnalysis(qualifiedTickers, bundle),
+    batchStocktwitsSentiment(qualifiedTickers).catch(() => new Map()),
+    batchFinvizSnapshot(qualifiedTickers).catch(() => new Map()),
+  ]);
+
+  bundle.socialSentiment = stocktwitsSentiment;
+  bundle.finvizSnapshots = finvizSnapshots;
+
+  for (const [ticker, fv] of finvizSnapshots) {
+    const fd = fundamentalsMap.get(ticker);
+    if (fd) {
+      if (!fd.analystTarget && fv.analystTarget) fd.analystTarget = fv.analystTarget;
+      if (!fd.forwardPe && fv.peForward) fd.forwardPe = fv.peForward;
+      if (!fd.peg && fv.peg) fd.peg = fv.peg;
+    }
+  }
+  console.log(`[Conviction] Stocktwits: ${stocktwitsSentiment.size} tickers | Finviz: ${finvizSnapshots.size} tickers`);
 
   /* ── Layer 3: Score all 7 dimensions ────────── */
 
