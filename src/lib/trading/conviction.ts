@@ -2,6 +2,7 @@ import { discoverOpportunities, getRawSignals, type RawSignalBundle, type Discov
 import { scanMarket, type ScanResult } from "./scanner";
 import { generateSignals, type TradeSignal } from "./signals";
 import { generateCompletion } from "@/lib/ai/claude";
+import { batchEdgarFilings } from "@/lib/api/edgar";
 import {
   getQuote,
   getPriceTargetConsensus,
@@ -15,6 +16,7 @@ import {
   getEarningsSurprises,
   getRatingsSnapshot,
 } from "@/lib/api/fmp";
+import { getPriceTarget as getFinnhubPriceTarget, getEPSEstimates as getFinnhubEPS } from "@/lib/api/finnhub";
 import { prisma } from "@/lib/db";
 
 /* ── Public interfaces ──────────────────────────────────── */
@@ -147,11 +149,13 @@ export function computeDataConfidence(
     const congressHits = bundle.congressBuys.filter((c) => c.ticker === ticker);
     const instHits = bundle.institutional.filter((i) => i.ticker === ticker);
     const gradeHits = bundle.grades.filter((g) => g.ticker === ticker);
+    const edgarHits = bundle.edgarFilings?.filter((f) => f.ticker === ticker) || [];
 
     if (insiderHits.length > 0) earned += Math.min(6, 3 + insiderHits.length);
     if (congressHits.length > 0) earned += Math.min(6, 3 + congressHits.length);
     if (instHits.length > 0) earned += Math.min(4, 2 + instHits.length);
     if (gradeHits.length > 0) earned += Math.min(4, 2 + gradeHits.length);
+    if (edgarHits.length > 0) earned += Math.min(5, 2 + edgarHits.length);
   }
 
   /* ── 5. Catalyst strength — news/events that MOVE stocks (0-25 pts) ── */
@@ -365,6 +369,28 @@ export async function fetchFundamentals(tickers: string[]): Promise<Map<string, 
     batchFetch(tickers, (t) => getProfile(t)).catch((e) => { console.warn("[Conviction] profile batch failed:", e.message); return empty; }),
   ]);
 
+  // Finnhub fallback: price targets + EPS estimates for tickers missing FMP data
+  const finnhubTargetMap = new Map<string, any>();
+  const finnhubEPSMap = new Map<string, any>();
+  const tickersMissingTarget = tickers.filter((t) => !targetMap.has(t) || !(targetMap.get(t) as any)?.targetConsensus);
+  const tickersMissingEPS = tickers.filter((t) => !estimatesMap.has(t) || !(Array.isArray(estimatesMap.get(t)) && (estimatesMap.get(t) as any[])?.[0]?.estimatedEpsAvg));
+
+  if (tickersMissingTarget.length > 0 || tickersMissingEPS.length > 0) {
+    const [fhTargets, fhEPS] = await Promise.all([
+      tickersMissingTarget.length > 0
+        ? batchFetch(tickersMissingTarget.slice(0, 20), (t) => getFinnhubPriceTarget(t))
+            .catch((e) => { console.warn("[Conviction] Finnhub priceTarget fallback failed:", e.message); return empty; })
+        : Promise.resolve(empty),
+      tickersMissingEPS.length > 0
+        ? batchFetch(tickersMissingEPS.slice(0, 20), (t) => getFinnhubEPS(t, "annual"))
+            .catch((e) => { console.warn("[Conviction] Finnhub EPS fallback failed:", e.message); return empty; })
+        : Promise.resolve(empty),
+    ]);
+    for (const [k, v] of fhTargets) finnhubTargetMap.set(k, v);
+    for (const [k, v] of fhEPS) finnhubEPSMap.set(k, v);
+    console.log(`[Conviction] Finnhub fallback: ${finnhubTargetMap.size} price targets, ${finnhubEPSMap.size} EPS estimates`);
+  }
+
   console.log(`[Conviction] Fundamentals data coverage: metrics=${metricsMap.size}/${tickers.length} ratios=${ratiosMap.size}/${tickers.length} income=${incomeMap.size}/${tickers.length} balance=${balanceMap.size}/${tickers.length} dcf=${dcfMap.size}/${tickers.length} targets=${targetMap.size}/${tickers.length} estimates=${estimatesMap.size}/${tickers.length} surprises=${surprisesMap.size}/${tickers.length} ratings=${ratingsMap.size}/${tickers.length} profiles=${profileMap.size}/${tickers.length}`);
 
   for (const ticker of tickers) {
@@ -407,13 +433,22 @@ export async function fetchFundamentals(tickers: string[]): Promise<Map<string, 
     const evToEbitda = m0?.enterpriseValueOverEBITDA || 0;
     const priceToFcf = m0?.pfcfRatio || 0;
 
-    const forwardEps = Array.isArray(estimates) && estimates[0]
+    let forwardEps = Array.isArray(estimates) && estimates[0]
       ? (estimates[0].estimatedEpsAvg || 0) : 0;
+    if (forwardEps === 0) {
+      const fhEps = finnhubEPSMap.get(ticker);
+      const fhData = fhEps?.data;
+      if (Array.isArray(fhData) && fhData[0]?.epsAvg) forwardEps = fhData[0].epsAvg;
+    }
     const currentPrice = p?.price || 0;
     const forwardPe = forwardEps > 0 ? currentPrice / forwardEps : 0;
 
     const dcfVal = Array.isArray(dcf) && dcf[0] ? (dcf[0].dcf || null) : null;
-    const analystTarget = Array.isArray(target) && target[0] ? (target[0].targetConsensus || null) : null;
+    let analystTarget = Array.isArray(target) && target[0] ? (target[0].targetConsensus || null) : null;
+    if (!analystTarget) {
+      const fhTarget = finnhubTargetMap.get(ticker);
+      if (fhTarget?.targetMean && fhTarget.targetMean > 0) analystTarget = fhTarget.targetMean;
+    }
 
     const surprisePct = Array.isArray(surprises) && surprises.length > 0
       ? surprises.slice(0, 4).reduce((sum: number, s: any) => {
@@ -885,10 +920,23 @@ export async function scoreForTrading(
 
   console.log(`[Conviction/Trading] Deep scoring ${tickers.length} tickers for KoshPilot...`);
 
-  const [fundamentals, sentimentMap] = await Promise.all([
+  const [fundamentals, sentimentMap, edgarMap] = await Promise.all([
     fetchFundamentals(tickers),
     batchSentimentAnalysis(tickers, bundle),
+    batchEdgarFilings(tickers).catch(() => new Map<string, import("@/lib/api/edgar").EdgarFiling[]>()),
   ]);
+
+  for (const [ticker, filings] of edgarMap) {
+    for (const f of filings) {
+      bundle.edgarFilings.push(f);
+      if (f.form === "4" && !bundle.insiderBuys.some((ib) => ib.ticker === ticker)) {
+        bundle.insiderBuys.push({ ticker, name: `SEC Form 4 (${f.filingDate})`, value: 0 });
+      }
+      if (f.form === "8-K" && !bundle.filings8k.some((fk) => fk.ticker === ticker)) {
+        bundle.filings8k.push({ ticker, title: f.description || "8-K Filing", date: f.filingDate });
+      }
+    }
+  }
 
   for (const ticker of tickers) {
     const scan = scanMap.get(ticker);
@@ -982,6 +1030,31 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
     console.log("[Conviction] No candidates passed quality gate. Returning empty.");
     return [];
   }
+
+  /* ── EDGAR enrichment ─────────────────────────── */
+
+  const edgarMap = await batchEdgarFilings(qualifiedTickers).catch((e) => {
+    console.warn("[Conviction] EDGAR batch failed:", e.message);
+    return new Map<string, import("@/lib/api/edgar").EdgarFiling[]>();
+  });
+  for (const [ticker, filings] of edgarMap) {
+    for (const f of filings) {
+      bundle.edgarFilings.push(f);
+      if (f.form === "4") {
+        const exists = bundle.insiderBuys.some((ib) => ib.ticker === ticker);
+        if (!exists) {
+          bundle.insiderBuys.push({ ticker, name: `SEC Form 4 (${f.filingDate})`, value: 0 });
+        }
+      }
+      if (f.form === "8-K") {
+        const exists = bundle.filings8k.some((fk) => fk.ticker === ticker);
+        if (!exists) {
+          bundle.filings8k.push({ ticker, title: f.description || "8-K Filing", date: f.filingDate });
+        }
+      }
+    }
+  }
+  console.log(`[Conviction] EDGAR enrichment: ${edgarMap.size} tickers with SEC filings`);
 
   /* ── Technical scan ─────────────────────────── */
 

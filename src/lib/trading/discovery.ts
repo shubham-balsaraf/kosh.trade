@@ -18,6 +18,8 @@ import {
   getInstitutionalOwnershipLatest,
   getLatest8KFilings,
 } from "@/lib/api/fmp";
+import { getTrendingNews as getMarketauxTrending } from "@/lib/api/marketaux";
+import { batchEdgarFilings, type EdgarFiling } from "@/lib/api/edgar";
 
 export interface DiscoveredTicker {
   ticker: string;
@@ -465,13 +467,14 @@ export interface RawSignalBundle {
   institutional: Array<{ ticker: string; investor: string; changeShares: number }>;
   filings8k: Array<{ ticker: string; title: string; date: string }>;
   cryptoNews: Array<{ title: string; ticker: string | null; catalyst: string | null }>;
+  edgarFilings: EdgarFiling[];
 }
 
 export async function getRawSignals(): Promise<RawSignalBundle> {
   const bundle: RawSignalBundle = {
     news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
     grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
-    institutional: [], filings8k: [], cryptoNews: [],
+    institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
   };
 
   const results = await Promise.allSettled([
@@ -496,12 +499,13 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     getLatest8KFilings(30),            // 13
     getCryptoNews(20),                 // 14
     getMarketNews(40),                 // 15 (backup news source)
+    getMarketauxTrending(20),          // 16 (MarketAux trending news with sentiment)
   ]);
 
   const sourceNames = [
     "StockNews", "Insider", "Senate", "House", "Gainers", "Losers", "Active",
     "Earnings", "Grades", "PressReleases", "SectorPerf", "Mergers",
-    "Institutional", "8K-Filings", "CryptoNews", "MarketNews",
+    "Institutional", "8K-Filings", "CryptoNews", "MarketNews", "MarketAux",
   ];
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
@@ -697,11 +701,28 @@ export async function getRawSignals(): Promise<RawSignalBundle> {
     }
   }
 
+  // MarketAux trending news (index 16) — merge into main news feed
+  if (results[16].status === "fulfilled" && Array.isArray(results[16].value)) {
+    for (const article of results[16].value) {
+      const title = article.title || "";
+      if (seenTitles.has(title)) continue;
+      seenTitles.add(title);
+      const catalyst = detectCatalyst(`${title} ${article.description || ""}`);
+      const urgency = catalyst?.urgency || (Math.abs(article.sentiment || 0) > 0.5 ? 5 : 3);
+      bundle.news.push({
+        title: title.slice(0, 120),
+        ticker: article.ticker ? article.ticker.toUpperCase() : null,
+        catalyst: catalyst?.label || (article.sentiment > 0.3 ? "Positive sentiment" : article.sentiment < -0.3 ? "Negative sentiment" : null),
+        urgency,
+      });
+    }
+  }
+
   const totalSignals =
     bundle.news.length + bundle.insiderBuys.length + bundle.congressBuys.length +
     bundle.screenerMoves.length + bundle.earnings.length + bundle.grades.length +
     bundle.pressReleases.length + bundle.mergers.length + bundle.institutional.length +
-    bundle.filings8k.length + bundle.cryptoNews.length;
+    bundle.filings8k.length + bundle.cryptoNews.length + bundle.edgarFilings.length;
   console.log(`[RawSignals] Total signals collected: ${totalSignals} across ${sourceNames.length} sources`);
 
   return bundle;
