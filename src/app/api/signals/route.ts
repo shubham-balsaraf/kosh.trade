@@ -12,7 +12,7 @@ import { generateOraclePicks } from "@/lib/trading/buffett";
 import type { ScanResult } from "@/lib/trading/scanner";
 import type { TradeSignal } from "@/lib/trading/signals";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const CORE_BASELINE = [
   "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA",

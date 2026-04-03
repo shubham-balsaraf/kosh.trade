@@ -226,7 +226,7 @@ export default function FearGreedGauge() {
         </div>
       )}
 
-      {data.brief && (
+      {expanded && data.brief && (
         <div className={`mt-3 pt-3 border-t border-gray-800`}>
           <p className="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1.5">Daily Market Brief</p>
           <p className="text-xs leading-relaxed text-white/50">{data.brief}</p>

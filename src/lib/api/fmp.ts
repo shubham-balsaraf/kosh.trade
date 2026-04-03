@@ -123,9 +123,19 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
       const res = await fetch(url.toString(), { cache: "no-store" });
 
       if (res.status === 429) {
-        console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 1s`);
-        await new Promise((r) => setTimeout(r, 1000));
+        console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 3s`);
+        await new Promise((r) => setTimeout(r, 3000));
         const retry = await fetch(url.toString(), { cache: "no-store" });
+        if (retry.status === 429) {
+          console.warn(`[FMP] ${endpoint} still rate limited — waiting 5s`);
+          await new Promise((r) => setTimeout(r, 5000));
+          const retry2 = await fetch(url.toString(), { cache: "no-store" });
+          if (!retry2.ok) { lastError = `429 rate-limited after 3 retries`; continue; }
+          const json2 = await retry2.json();
+          if (json2 && typeof json2 === "object" && "Error Message" in json2) { lastError = json2["Error Message"]; continue; }
+          setCache(cacheKey, json2, getCacheTTL(endpoint));
+          return json2;
+        }
         if (!retry.ok) { lastError = `${retry.status}`; continue; }
         const retryJson = await retry.json();
         if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {

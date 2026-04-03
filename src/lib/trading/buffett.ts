@@ -137,57 +137,59 @@ async function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function batchFetchWithRetry<T>(
+async function serialFetch<T>(
   tickers: string[],
   fetcher: (t: string) => Promise<T>,
   label: string,
-  batchSize = 2,
-  batchDelay = 600,
+  gapMs = 350,
 ): Promise<Map<string, T>> {
   const map = new Map<string, T>();
   const failed: string[] = [];
 
-  for (let i = 0; i < tickers.length; i += batchSize) {
-    const batch = tickers.slice(i, i + batchSize);
-    const results = await Promise.allSettled(batch.map((t) => fetcher(t)));
-    for (let j = 0; j < batch.length; j++) {
-      const r = results[j];
-      if (r.status === "fulfilled" && r.value != null) {
-        map.set(batch[j], r.value);
+  for (const t of tickers) {
+    try {
+      const result = await fetcher(t);
+      if (result != null && !(Array.isArray(result) && result.length === 0)) {
+        map.set(t, result);
       } else {
-        failed.push(batch[j]);
-        if (r.status === "rejected") {
-          console.warn(`[Oracle] ${label}(${batch[j]}) failed: ${r.reason?.message || r.reason}`);
-        }
+        failed.push(t);
+        console.warn(`[Oracle] ${label}(${t}): empty result`);
       }
+    } catch (e: any) {
+      failed.push(t);
+      console.warn(`[Oracle] ${label}(${t}) error: ${e.message}`);
     }
-    if (i + batchSize < tickers.length) await delay(batchDelay);
+    await delay(gapMs);
   }
 
   if (failed.length > 0) {
-    console.log(`[Oracle] ${label}: retrying ${failed.length} failed tickers...`);
-    await delay(2000);
+    console.log(`[Oracle] ${label}: retrying ${failed.length} failed tickers after backoff...`);
+    await delay(3000);
     for (const t of failed) {
       try {
         const result = await fetcher(t);
-        if (result != null) map.set(t, result);
+        if (result != null && !(Array.isArray(result) && result.length === 0)) {
+          map.set(t, result);
+          console.log(`[Oracle] ${label}(${t}) retry succeeded`);
+        }
       } catch (e: any) {
         console.warn(`[Oracle] ${label}(${t}) retry failed: ${e.message}`);
       }
-      await delay(500);
+      await delay(600);
     }
   }
 
+  console.log(`[Oracle] ${label}: ${map.size}/${tickers.length} succeeded`);
   return map;
 }
 
 /* ── Universe — hardcoded quality names only ──────────── */
 
 const ORACLE_UNIVERSE = [
-  "AAPL", "MSFT", "GOOGL", "AMZN", "JNJ", "UNH", "V", "MA",
-  "PG", "HD", "KO", "PEP", "COST", "MRK", "ABBV", "LLY",
-  "MCD", "TXN", "HON", "SPGI", "WMT", "CAT", "NVDA",
-  "INTU", "ADBE", "ACN", "WM", "CME",
+  "AAPL", "MSFT", "GOOGL", "AMZN", "JNJ", "UNH", "V",
+  "PG", "HD", "KO", "COST", "MRK", "LLY",
+  "MCD", "TXN", "SPGI", "WMT", "NVDA",
+  "INTU", "ACN", "CME",
 ];
 
 /* ── Deep Fundamental Fetch ──────────────────────────────── */
@@ -195,17 +197,32 @@ const ORACLE_UNIVERSE = [
 export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<string, BuffettFundamentals>> {
   const result = new Map<string, BuffettFundamentals>();
 
-  console.log(`[Oracle] Phase 1: fetching core data for ${tickers.length} tickers...`);
+  /* Pre-flight: verify FMP is alive with a single AAPL call */
+  console.log(`[Oracle] Pre-flight: testing FMP API with AAPL profile...`);
+  try {
+    const test = await getProfile("AAPL");
+    if (!test || !test.mktCap) {
+      throw new Error(`FMP returned invalid profile data: ${JSON.stringify(test)?.slice(0, 200)}`);
+    }
+    console.log(`[Oracle] Pre-flight OK: AAPL mktCap=$${(test.mktCap / 1e9).toFixed(0)}B`);
+  } catch (e: any) {
+    throw new Error(`FMP API pre-flight failed — API may be down or key invalid: ${e.message}`);
+  }
 
-  const cfMap = await batchFetchWithRetry(tickers, (t) => getCashFlow(t, "annual", 5), "CF");
-  await delay(800);
-  const isMap = await batchFetchWithRetry(tickers, (t) => getIncomeStatement(t, "annual", 5), "IS");
-  await delay(800);
-  const profMap = await batchFetchWithRetry(tickers, (t) => getProfile(t), "Profile");
+  await delay(500);
+
+  console.log(`[Oracle] Phase 1: fetching core data for ${tickers.length} tickers (serial, 350ms gaps)...`);
+
+  const cfMap = await serialFetch(tickers, (t) => getCashFlow(t, "annual", 5), "CF", 350);
+  await delay(1500);
+  const isMap = await serialFetch(tickers, (t) => getIncomeStatement(t, "annual", 5), "IS", 350);
+  await delay(1500);
+  const profMap = await serialFetch(tickers, (t) => getProfile(t), "Profile", 350);
 
   console.log(`[Oracle] Phase 1 results: CF=${cfMap.size}/${tickers.length} IS=${isMap.size}/${tickers.length} Prof=${profMap.size}/${tickers.length}`);
 
   const phase1Survivors: string[] = [];
+  const skipReasons: string[] = [];
   for (const t of tickers) {
     const cf = cfMap.get(t);
     const is_ = isMap.get(t);
@@ -214,11 +231,15 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     const mktCap = p?.mktCap || 0;
 
     if (!Array.isArray(cf) || cf.length < 2) {
-      console.log(`[Oracle] SKIP ${t}: CF missing or < 2 years (got ${Array.isArray(cf) ? cf.length : "null"})`);
+      const reason = `${t}: CF missing or < 2 years (got ${Array.isArray(cf) ? cf.length : typeof cf})`;
+      console.log(`[Oracle] SKIP ${reason}`);
+      skipReasons.push(reason);
       continue;
     }
     if (!Array.isArray(is_) || is_.length < 2) {
-      console.log(`[Oracle] SKIP ${t}: IS missing or < 2 years (got ${Array.isArray(is_) ? is_.length : "null"})`);
+      const reason = `${t}: IS missing or < 2 years (got ${Array.isArray(is_) ? is_.length : typeof is_})`;
+      console.log(`[Oracle] SKIP ${reason}`);
+      skipReasons.push(reason);
       continue;
     }
     if (mktCap < 5_000_000_000) {
@@ -231,21 +252,21 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
   console.log(`[Oracle] Phase 1 gate: ${phase1Survivors.length}/${tickers.length} survived`);
 
   if (phase1Survivors.length === 0) {
-    console.error("[Oracle] CRITICAL: No tickers passed Phase 1 — FMP API may be down or key invalid");
-    return result;
+    const diag = `CF=${cfMap.size} IS=${isMap.size} Prof=${profMap.size} of ${tickers.length} tickers. First skip reasons: ${skipReasons.slice(0, 3).join("; ")}`;
+    throw new Error(`No tickers passed data quality gate. FMP may be rate-limiting or returning empty data. Diagnostic: ${diag}`);
   }
 
   console.log(`[Oracle] Phase 2: fetching supplementary data for ${phase1Survivors.length} tickers...`);
 
-  const bsMap = await batchFetchWithRetry(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5), "BS");
-  await delay(500);
-  const kmMap = await batchFetchWithRetry(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5), "KM");
-  await delay(500);
-  const rtMap = await batchFetchWithRetry(phase1Survivors, (t) => getRatios(t, "annual", 5), "Ratios");
-  await delay(500);
-  const dcfMap = await batchFetchWithRetry(phase1Survivors, (t) => getDCFValuation(t), "DCF");
-  await delay(500);
-  const surpriseMap = await batchFetchWithRetry(phase1Survivors, (t) => getEarningsSurprises(t), "Surprises");
+  const bsMap = await serialFetch(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5), "BS", 350);
+  await delay(1000);
+  const kmMap = await serialFetch(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5), "KM", 350);
+  await delay(1000);
+  const rtMap = await serialFetch(phase1Survivors, (t) => getRatios(t, "annual", 5), "Ratios", 350);
+  await delay(1000);
+  const dcfMap = await serialFetch(phase1Survivors, (t) => getDCFValuation(t), "DCF", 350);
+  await delay(1000);
+  const surpriseMap = await serialFetch(phase1Survivors, (t) => getEarningsSurprises(t), "Surprises", 350);
 
   console.log(`[Oracle] Phase 2 results: BS=${bsMap.size} KM=${kmMap.size} RT=${rtMap.size} DCF=${dcfMap.size} Surp=${surpriseMap.size}`);
 
