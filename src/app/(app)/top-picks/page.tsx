@@ -179,17 +179,18 @@ function ConfidenceGauge({ value }: { value: number }) {
       </div>
       {showTip && (
         <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 rounded-xl border border-white/10 bg-[#0d0f14] shadow-2xl shadow-black/60 animate-fade-slide-up">
-          <p className="text-[11px] font-bold text-white/80 mb-1.5">Kosh Confidence Score — {value}% ({label})</p>
+          <p className="text-[11px] font-bold text-white/80 mb-1.5">Kosh Confidence — {value}% ({label})</p>
           <p className="text-[10px] leading-relaxed text-white/40">
-            This measures how much real data was available to score this pick across all 7 dimensions
-            (technical, fundamental, valuation, smart money, catalyst, signal diversity, risk).
+            Measures the depth and strength of evidence behind this pick — not just whether data existed,
+            but whether there are real catalysts, insider/congress activity, strong fundamentals, and
+            analyst coverage backing the prediction.
           </p>
           <p className="text-[10px] leading-relaxed text-white/40 mt-1.5">
             {value >= 80
-              ? "Almost all scoring dimensions returned real data — this pick is well-supported."
+              ? "Multiple strong signals (insider buys, catalysts, deep fundamentals, analyst targets) support this pick."
               : value >= 50
-                ? "Most dimensions had data but some gaps exist (e.g. missing insider trades or analyst estimates)."
-                : "Several data sources were unavailable — treat this pick with more caution."}
+                ? "Solid data foundation with some gaps — fewer catalysts or limited smart-money activity."
+                : "Limited supporting evidence — fewer catalysts, sparse fundamentals, or missing analyst coverage. Higher risk."}
           </p>
           <div className="absolute left-1/2 -translate-x-1/2 top-full w-2 h-2 rotate-45 border-b border-r border-white/10 bg-[#0d0f14] -mt-1" />
         </div>
@@ -875,14 +876,18 @@ export default function TopPicksPage() {
                 <Info size={14} className="text-white/20" />
                 <p className="text-[10px] text-white/25 font-semibold uppercase tracking-wider">How Scoring Works</p>
               </div>
-              <div className="grid md:grid-cols-2 gap-4 text-[10px]">
+              <div className="grid md:grid-cols-3 gap-4 text-[10px]">
                 <div>
                   <p className="text-white/50 font-semibold mb-1">Conviction Score</p>
-                  <p className="text-white/25">Weighted blend of 7 dimensions: signal diversity, technicals, fundamentals, valuation, smart money, AI sentiment, and risk-adjusted return. Higher = stronger recommendation.</p>
+                  <p className="text-white/25">Weighted blend of 7 dimensions: signal diversity, technicals, fundamentals, valuation, smart money, AI sentiment, and risk-adjusted return.</p>
                 </div>
                 <div>
                   <p className="text-white/50 font-semibold mb-1">Kosh Confidence <Shield size={10} className="inline text-blue-400" /></p>
-                  <p className="text-white/25">Percentage of scoring dimensions that had real data. 100% means all 7 dimensions had data. Lower confidence means some data sources were unavailable (e.g., fundamental data).</p>
+                  <p className="text-white/25">Measures evidence depth — insider buys, catalysts, fundamental coverage, analyst targets. More signals = higher confidence.</p>
+                </div>
+                <div>
+                  <p className="text-white/50 font-semibold mb-1">Ranking</p>
+                  <p className="text-white/25">Picks are ranked by conviction weighted by confidence. A strong conviction with thin data won&apos;t outrank a solid pick backed by real evidence.</p>
                 </div>
               </div>
             </Card>

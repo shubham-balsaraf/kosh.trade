@@ -97,24 +97,87 @@ const MIN_COMPOSITE_SCORE = 30;
 
 const HOLD_PERIOD_DAYS: Record<string, number> = { SHORT: 21, MEDIUM: 60, LONG: 180 };
 
-export function computeDataConfidence(scores: ScoredCandidate["scores"]): number {
-  const dims = [
-    { key: "signalDiversity", w: WEIGHTS.signalDiversity },
-    { key: "technical", w: WEIGHTS.technical },
-    { key: "fundamental", w: WEIGHTS.fundamental },
-    { key: "valuation", w: WEIGHTS.valuation },
-    { key: "smartMoney", w: WEIGHTS.smartMoney },
-    { key: "catalystSentiment", w: WEIGHTS.catalystSentiment },
-    { key: "riskAdjusted", w: WEIGHTS.riskAdjusted },
-  ] as const;
+export function computeDataConfidence(
+  fd: FundamentalData | undefined,
+  scan: ScanResult | undefined,
+  bundle: RawSignalBundle | undefined,
+  ticker: string,
+): number {
+  let earned = 0;
+  const total = 100;
 
-  let coveredWeight = 0;
-  let totalWeight = 0;
-  for (const d of dims) {
-    totalWeight += d.w;
-    if (scores[d.key] > 0) coveredWeight += d.w;
+  /* ── 1. Technical data quality (0-15 pts) ─────────────── */
+  if (scan && scan.price > 0) {
+    let techPts = 5;
+    if (!isNaN(scan.rsi)) techPts += 2;
+    if (scan.macd && scan.macd.histogram !== 0) techPts += 2;
+    if (!isNaN(scan.adx?.adx)) techPts += 2;
+    if (!isNaN(scan.stoch?.k)) techPts += 2;
+    if (scan.volumeRatio > 0) techPts += 2;
+    earned += Math.min(15, techPts);
   }
-  return totalWeight > 0 ? Math.round((coveredWeight / totalWeight) * 100) : 0;
+
+  /* ── 2. Fundamental data depth (0-15 pts) ─────────────── */
+  if (fd) {
+    let fPts = 0;
+    if (fd.revenueGrowth !== 0) fPts += 2;
+    if (fd.grossMargin > 0) fPts += 2;
+    if (fd.roe !== 0) fPts += 2;
+    if (fd.currentRatio > 0) fPts += 2;
+    if (fd.earningsSurprisePct !== 0) fPts += 2;
+    if (fd.fcfYield !== 0) fPts += 2;
+    if (fd.debtToEquity !== 0) fPts += 2;
+    earned += Math.min(15, fPts);
+  }
+
+  /* ── 3. Valuation data depth (0-15 pts) ───────────────── */
+  if (fd) {
+    let vPts = 0;
+    if (fd.forwardPe > 0) vPts += 3;
+    if (fd.peg > 0) vPts += 3;
+    if (fd.evToEbitda > 0) vPts += 3;
+    if (fd.dcfValue != null && fd.dcfValue > 0) vPts += 3;
+    if (fd.analystTarget != null && fd.analystTarget > 0) vPts += 3;
+    earned += Math.min(15, vPts);
+  }
+
+  /* ── 4. Smart money signals — ACTUAL activity (0-20 pts) ─ */
+  if (bundle) {
+    const insiderHits = bundle.insiderBuys.filter((i) => i.ticker === ticker);
+    const congressHits = bundle.congressBuys.filter((c) => c.ticker === ticker);
+    const instHits = bundle.institutional.filter((i) => i.ticker === ticker);
+    const gradeHits = bundle.grades.filter((g) => g.ticker === ticker);
+
+    if (insiderHits.length > 0) earned += Math.min(6, 3 + insiderHits.length);
+    if (congressHits.length > 0) earned += Math.min(6, 3 + congressHits.length);
+    if (instHits.length > 0) earned += Math.min(4, 2 + instHits.length);
+    if (gradeHits.length > 0) earned += Math.min(4, 2 + gradeHits.length);
+  }
+
+  /* ── 5. Catalyst strength — news/events that MOVE stocks (0-25 pts) ── */
+  if (bundle) {
+    const tickerNews = bundle.news.filter((n) => n.ticker === ticker);
+    const catalystNews = tickerNews.filter((n) => n.catalyst);
+    const highUrgency = tickerNews.filter((n) => n.urgency >= 3);
+    const tickerPress = bundle.pressReleases.filter((p) => p.ticker === ticker);
+    const catalystPress = tickerPress.filter((p) => p.catalyst);
+    const tickerEarnings = bundle.earnings.filter((e) => e.ticker === ticker);
+    const tickerMergers = bundle.mergers.filter((m) => m.ticker === ticker);
+    const ticker8k = bundle.filings8k.filter((f) => f.ticker === ticker);
+
+    if (catalystNews.length > 0) earned += Math.min(6, 2 * catalystNews.length);
+    if (highUrgency.length > 0) earned += Math.min(4, 2 * highUrgency.length);
+    if (catalystPress.length > 0) earned += Math.min(4, 2 * catalystPress.length);
+    if (tickerEarnings.length > 0) earned += 4;
+    if (tickerMergers.length > 0) earned += 5;
+    if (ticker8k.length > 0) earned += Math.min(2, ticker8k.length);
+  }
+
+  /* ── 6. Risk data completeness (0-10 pts) ─────────────── */
+  if (scan && fd) earned += 10;
+  else if (scan || fd) earned += 5;
+
+  return Math.min(100, Math.max(0, Math.round(earned)));
 }
 
 /* ── Helpers ────────────────────────────────────────────── */
@@ -858,7 +921,7 @@ export async function scoreForTrading(
       scores.riskAdjusted * WEIGHTS.riskAdjusted
     );
 
-    const confidence = computeDataConfidence(scores);
+    const confidence = computeDataConfidence(fd, scan, bundle, ticker);
 
     console.log(`[Conviction/Trading] ${ticker}: composite=${composite} confidence=${confidence}% | sig=${sigDiversityScore} tech=${techScore} fund=${fundScore} val=${valScore} smart=${smartScore} cat=${catScore} risk=${riskScore}`);
 
@@ -966,7 +1029,7 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
       ticker,
       scores,
       compositeScore,
-      dataConfidence: computeDataConfidence(scores),
+      dataConfidence: computeDataConfidence(fd, scan, bundle, ticker),
       confidenceBand: confidenceBand(compositeScore),
       sources,
       scan,
@@ -976,12 +1039,19 @@ export async function generateConvictionPicks(): Promise<ConvictionPickResult[]>
     });
   }
 
-  allScored.sort((a, b) => b.compositeScore - a.compositeScore);
+  // Rank by confidence-weighted conviction: a high conviction with thin data
+  // should not outrank a slightly lower conviction backed by strong evidence
+  allScored.sort((a, b) => {
+    const aFinal = a.compositeScore * (0.6 + 0.4 * (a.dataConfidence / 100));
+    const bFinal = b.compositeScore * (0.6 + 0.4 * (b.dataConfidence / 100));
+    return bFinal - aFinal;
+  });
 
   if (allScored.length > 0) {
     const top5 = allScored.slice(0, 5);
     for (const c of top5) {
-      console.log(`[Conviction] ${c.ticker}: composite=${c.compositeScore} div=${c.scores.signalDiversity} tech=${c.scores.technical} fund=${c.scores.fundamental} val=${c.scores.valuation} smart=${c.scores.smartMoney} cat=${c.scores.catalystSentiment} risk=${c.scores.riskAdjusted}`);
+      const finalRank = c.compositeScore * (0.6 + 0.4 * (c.dataConfidence / 100));
+      console.log(`[Conviction] ${c.ticker}: composite=${c.compositeScore} confidence=${c.dataConfidence}% final=${Math.round(finalRank)} | div=${c.scores.signalDiversity} tech=${c.scores.technical} fund=${c.scores.fundamental} val=${c.scores.valuation} smart=${c.scores.smartMoney} cat=${c.scores.catalystSentiment} risk=${c.scores.riskAdjusted}`);
     }
   }
 
