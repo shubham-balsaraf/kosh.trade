@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
         rawSignals = {
           news: [], insiderBuys: [], congressBuys: [], screenerMoves: [], earnings: [],
           grades: [], pressReleases: [], sectorPerformance: [], mergers: [],
-          institutional: [], filings8k: [], cryptoNews: [],
+          institutional: [], filings8k: [], cryptoNews: [], edgarFilings: [],
         };
       }
 
