@@ -883,14 +883,18 @@ export async function scoreForTrading(
   const results = new Map<string, TradingConviction>();
   if (tickers.length === 0) return results;
 
-  console.log(`[Conviction/Trading] Scoring ${tickers.length} tickers for KoshPilot...`);
+  console.log(`[Conviction/Trading] Deep scoring ${tickers.length} tickers for KoshPilot...`);
 
-  const fundamentals = await fetchFundamentals(tickers);
+  const [fundamentals, sentimentMap] = await Promise.all([
+    fetchFundamentals(tickers),
+    batchSentimentAnalysis(tickers, bundle),
+  ]);
 
   for (const ticker of tickers) {
     const scan = scanMap.get(ticker);
     const signal = signalMap.get(ticker);
     const fd = fundamentals.get(ticker);
+    const sentiment = sentimentMap.get(ticker) || 0;
     const currentPrice = scan?.price || fd?.marketCap || 0;
 
     const { score: sigDiversityScore } = scoreSignalDiversity(ticker, bundle, discovered);
@@ -898,7 +902,7 @@ export async function scoreForTrading(
     const fundScore = scoreFundamental(fd);
     const valScore = scoreValuation(fd, currentPrice);
     const smartScore = scoreSmartMoney(ticker, bundle);
-    const catScore = scoreCatalyst(ticker, bundle);
+    const catScore = clamp(scoreCatalyst(ticker, bundle) + (sentiment > 0 ? sentiment * 0.3 : sentiment * 0.15));
     const riskScore = scoreRiskAdjusted(scan, fd, currentPrice);
 
     const scores = {
@@ -923,7 +927,7 @@ export async function scoreForTrading(
 
     const confidence = computeDataConfidence(fd, scan, bundle, ticker);
 
-    console.log(`[Conviction/Trading] ${ticker}: composite=${composite} confidence=${confidence}% | sig=${sigDiversityScore} tech=${techScore} fund=${fundScore} val=${valScore} smart=${smartScore} cat=${catScore} risk=${riskScore}`);
+    console.log(`[Conviction/Trading] ${ticker}: composite=${composite} confidence=${confidence}% sentiment=${sentiment} | sig=${sigDiversityScore} tech=${techScore} fund=${fundScore} val=${valScore} smart=${smartScore} cat=${catScore} risk=${riskScore}`);
 
     results.set(ticker, { compositeScore: composite, dataConfidence: confidence, scores });
   }
