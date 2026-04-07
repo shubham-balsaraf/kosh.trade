@@ -4,6 +4,17 @@ function apiKey(): string {
   return process.env.FMP_API_KEY || "";
 }
 
+/**
+ * FMP stable routes reject many symbols that include dots or odd characters.
+ * Class shares use hyphens on FMP (e.g. BRK.B → BRK-B).
+ */
+export function sanitizeFmpSymbol(raw: string): string {
+  const u = String(raw ?? "").trim().toUpperCase();
+  if (!u) return "";
+  const normalized = u.replace(/\./g, "-");
+  return normalized.replace(/[^A-Z0-9-]/g, "").slice(0, 12);
+}
+
 /* ── In-memory TTL cache ─────────────────────────────── */
 
 interface CacheEntry<T> {
@@ -106,7 +117,17 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   const key = apiKey();
   if (!key) throw new Error("FMP_API_KEY is not configured");
 
-  const cacheKey = buildCacheKey(endpoint, params);
+  const safeParams = { ...params };
+  if (safeParams.symbol) {
+    const s = sanitizeFmpSymbol(safeParams.symbol);
+    if (!s) {
+      console.warn(`[FMP] Skipping request — invalid symbol: ${JSON.stringify(params.symbol)}`);
+      return [] as unknown as T;
+    }
+    safeParams.symbol = s;
+  }
+
+  const cacheKey = buildCacheKey(endpoint, safeParams);
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
@@ -117,7 +138,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
     try {
       const url = new URL(`${base}${endpoint}`);
       url.searchParams.set("apikey", key);
-      for (const [k, v] of Object.entries(params)) {
+      for (const [k, v] of Object.entries(safeParams)) {
         url.searchParams.set(k, v);
       }
 
@@ -183,13 +204,23 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
   const key = apiKey();
   if (!key) throw new Error("FMP_API_KEY is not configured");
 
-  const cacheKey = buildCacheKey(`/stable${endpoint}`, params);
+  const safeParams = { ...params };
+  if (safeParams.symbol) {
+    const s = sanitizeFmpSymbol(safeParams.symbol);
+    if (!s) {
+      console.warn(`[FMP/stable] Skipping request — invalid symbol: ${JSON.stringify(params.symbol)}`);
+      return [] as unknown as T;
+    }
+    safeParams.symbol = s;
+  }
+
+  const cacheKey = buildCacheKey(`/stable${endpoint}`, safeParams);
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
   const url = new URL(`${FMP_STABLE}${endpoint}`);
   url.searchParams.set("apikey", key);
-  for (const [k, v] of Object.entries(params)) {
+  for (const [k, v] of Object.entries(safeParams)) {
     url.searchParams.set(k, v);
   }
 
@@ -217,7 +248,15 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
 
   const json = await res.json();
   if (json && typeof json === "object" && "Error Message" in json) {
-    throw new Error(`FMP stable API error: ${(json as any)["Error Message"]}`);
+    const em = String((json as Record<string, unknown>)["Error Message"] || "");
+    console.warn(`[FMP/stable] ${endpoint}: ${em}`);
+    // Stable API returns 200 + Error Message for bad symbols / validation (e.g. "pattern" errors).
+    const softFail =
+      /pattern|invalid\s+symbol|symbol\s+not\s+found|not\s+available|no\s+data|premium/i.test(em);
+    if (softFail) {
+      return [] as unknown as T;
+    }
+    throw new Error(`FMP stable API error: ${em}`);
   }
 
   setCache(cacheKey, json, getCacheTTL(endpoint));
@@ -301,10 +340,75 @@ function normalizeSearchRow(r: Record<string, unknown>): StockSearchRow | null {
   };
 }
 
-/** True if query looks like a ticker (no spaces, short alphanumeric + optional .- for listings). */
+/**
+ * True if the user is probably typing a ticker, not a company name.
+ * Long all-letter strings ("google", "amazon") are names — not tickers — so we avoid
+ * prefix-matching them against symbols like GOOP (GOOG*).
+ */
 function queryLooksLikeTicker(q: string): boolean {
   const s = q.trim();
-  return s.length >= 1 && s.length <= 12 && /^[A-Za-z0-9][A-Za-z0-9.^*-]*$/.test(s) && !/\s/.test(s);
+  if (!s || /\s/.test(s)) return false;
+  if (s.length > 12) return false;
+  if (!/^[A-Za-z0-9][A-Za-z0-9.^*-]*$/.test(s)) return false;
+  if (s.length >= 6 && /^[A-Za-z]+$/.test(s)) return false;
+  return true;
+}
+
+/** Normalized company / brand → primary US symbols (search disambiguation). */
+const SEARCH_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  google: ["GOOGL", "GOOG"],
+  alphabet: ["GOOGL", "GOOG"],
+  youtube: ["GOOGL", "GOOG"],
+  amazon: ["AMZN"],
+  microsoft: ["MSFT"],
+  apple: ["AAPL"],
+  netflix: ["NFLX"],
+  nvidia: ["NVDA"],
+  tesla: ["TSLA"],
+  facebook: ["META"],
+  meta: ["META"],
+  instagram: ["META"],
+  whatsapp: ["META"],
+};
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Score how well the company name matches a human query (word boundaries). */
+function nameMatchScore(displayName: string, ql: string): number {
+  const name = displayName.toLowerCase();
+  if (!name || !ql) return 0;
+  let score = 0;
+  const words = ql.split(/\s+/).map((w) => w.trim()).filter((w) => w.length > 1);
+  const terms = words.length > 0 ? words : [ql];
+
+  for (const term of terms) {
+    if (term.length < 2) continue;
+    try {
+      const boundary = new RegExp(`\\b${escapeRegExp(term)}\\b`, "i");
+      if (boundary.test(displayName)) score += 220;
+      else if (name.includes(term)) score += 95;
+    } catch {
+      if (name.includes(term)) score += 95;
+    }
+  }
+
+  if (name.startsWith(ql)) score += 45;
+  return score;
+}
+
+function aliasBoostForSymbol(sym: string, ql: string): number {
+  let best = 0;
+  const words = ql.split(/\s+/).map((w) => w.toLowerCase()).filter((w) => w.length >= 2);
+  for (const key of words.length > 0 ? words : [ql]) {
+    const symbols = SEARCH_BRAND_ALIASES[key];
+    if (!symbols) continue;
+    const idx = symbols.indexOf(sym);
+    const b = idx === 0 ? 480 : idx > 0 ? 420 : 0;
+    if (b > best) best = b;
+  }
+  return best;
 }
 
 function exchangeRank(exchangeShortName: string | undefined, stockExchange: string | undefined): number {
@@ -334,16 +438,27 @@ function rankSearchResults(query: string, rows: StockSearchRow[]): StockSearchRo
   const scored = rows.map((r) => {
     let score = 0;
     const sym = r.symbol.toUpperCase();
-    if (sym === qu) score += 500;
-    else if (tickerish && sym.startsWith(qu)) score += 300;
-    else if (sym.includes(qu)) score += 150;
+    const displayName = r.name || "";
 
-    const name = (r.name || "").toLowerCase();
-    if (name.includes(ql)) score += 80;
-    if (name.startsWith(ql)) score += 40;
+    if (sym === qu) score += 520;
+    else if (tickerish && sym.startsWith(qu)) {
+      score += 280;
+      if (qu.length >= 2 && sym.length > qu.length) {
+        score += (sym.length - qu.length) * 22;
+      }
+    } else if (sym.includes(qu) && qu.length >= 2) score += 120;
+
+    score += nameMatchScore(displayName, ql);
+    score += aliasBoostForSymbol(sym, ql);
 
     score += exchangeRank(r.exchangeShortName, r.stockExchange);
     score += symbolListingPenalty(r.symbol);
+
+    if (tickerish && qu.length >= 3 && sym.startsWith(qu) && !displayName.toLowerCase().includes(ql)) {
+      const aliasHit = aliasBoostForSymbol(sym, ql) > 0;
+      if (!aliasHit) score -= 35;
+    }
+
     return { r, score };
   });
 

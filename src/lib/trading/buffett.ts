@@ -7,6 +7,7 @@ import {
   getDCFValuation,
   getProfile,
   getEarningsSurprises,
+  sanitizeFmpSymbol,
 } from "@/lib/api/fmp";
 import { type RawSignalBundle } from "./discovery";
 
@@ -185,12 +186,14 @@ async function serialFetch<T>(
 
 /* ── Universe — hardcoded quality names only ──────────── */
 
-const ORACLE_UNIVERSE = [
+const ORACLE_UNIVERSE_RAW = [
   "AAPL", "MSFT", "GOOGL", "AMZN", "JNJ", "UNH", "V",
   "PG", "HD", "KO", "COST", "MRK", "LLY",
   "MCD", "TXN", "SPGI", "WMT", "NVDA",
   "INTU", "ACN", "CME",
 ];
+
+const ORACLE_UNIVERSE = [...new Set(ORACLE_UNIVERSE_RAW.map(sanitizeFmpSymbol).filter(Boolean))];
 
 /* ── Deep Fundamental Fetch ──────────────────────────────── */
 
@@ -753,10 +756,12 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
   if (bundle) {
     const extras = new Set<string>();
     for (const ib of bundle.insiderBuys) {
-      if (ib.ticker.length <= 5 && !ib.ticker.includes("-") && !universe.includes(ib.ticker)) extras.add(ib.ticker);
+      const sym = sanitizeFmpSymbol(ib.ticker);
+      if (sym && sym.length <= 5 && !universe.includes(sym)) extras.add(sym);
     }
     for (const cb of bundle.congressBuys) {
-      if (cb.ticker.length <= 5 && !cb.ticker.includes("-") && !universe.includes(cb.ticker)) extras.add(cb.ticker);
+      const sym = sanitizeFmpSymbol(cb.ticker);
+      if (sym && sym.length <= 5 && !universe.includes(sym)) extras.add(sym);
     }
     const extraList = [...extras].slice(0, 5);
     universe.push(...extraList);
