@@ -1,4 +1,6 @@
-const FMP_LEGACY = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
+/** @deprecated Legacy v3 endpoints were retired by FMP in Aug 2025. Kept for reference only. */
+const _FMP_LEGACY = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
+void _FMP_LEGACY;
 
 function apiKey(): string {
   const raw = process.env.FMP_API_KEY ?? "";
@@ -149,46 +151,32 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 
 /* ── Core fetch with cache ───────────────────────────── */
 
-const FMP_STABLE = "https://financialmodelingprep.com/stable";
-const FMP_FALLBACK = FMP_LEGACY;
+const FMP_BASE = "https://financialmodelingprep.com/stable";
 
-/**
- * Build the correct URL for an FMP API call.
- *
- * Stable API:  /stable/profile?symbol=AAPL&apikey=...
- * Legacy v3:   /api/v3/profile/AAPL?apikey=...
- *
- * v3 uses path-based symbols; stable uses query params. Getting this wrong
- * causes "The string did not match the expected pattern" from FMP.
- */
-function buildFmpUrl(base: string, endpoint: string, params: Record<string, string>, key: string): URL {
-  const isLegacy = base.includes("/api/v");
-  const symbol = params.symbol || "";
-
-  let path = `${base}${endpoint}`;
-  if (isLegacy && symbol) {
-    path = `${base}${endpoint}/${encodeURIComponent(symbol)}`;
-  }
-
-  const url = new URL(path);
+function buildStableUrl(endpoint: string, params: Record<string, string>, key: string): string {
+  const url = new URL(`${FMP_BASE}${endpoint}`);
   url.searchParams.set("apikey", key);
-
-  for (const [k, v] of Object.entries(params)) {
-    if (isLegacy && k === "symbol") continue;
-    url.searchParams.set(k, v);
-  }
-  return url;
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return url.toString();
 }
 
+/**
+ * Single-base FMP client targeting the stable API only.
+ * (Legacy v3 endpoints are no longer supported by FMP as of Aug 2025.)
+ * NEVER throws — returns empty array on any failure so callers don't crash.
+ */
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
-  if (!key) throw new Error("FMP_API_KEY is not configured");
+  if (!key) {
+    console.error("[FMP] FMP_API_KEY is not configured");
+    return [] as unknown as T;
+  }
 
   const safeParams = { ...params };
   if (safeParams.symbol) {
     const s = sanitizeFmpSymbol(safeParams.symbol);
     if (!s) {
-      console.warn(`[FMP] Skipping request — invalid symbol: ${JSON.stringify(params.symbol)}`);
+      console.warn(`[FMP] Skipping — invalid symbol: ${JSON.stringify(params.symbol)}`);
       return [] as unknown as T;
     }
     safeParams.symbol = s;
@@ -198,183 +186,65 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
-  const bases = [FMP_STABLE, FMP_FALLBACK];
-  let lastError = "";
+  let urlStr: string;
+  try {
+    urlStr = buildStableUrl(endpoint, safeParams, key);
+  } catch (e: any) {
+    console.error(`[FMP] URL build failed for ${endpoint}: ${e.message}`);
+    return [] as unknown as T;
+  }
 
-  for (const base of bases) {
-    try {
-      const url = buildFmpUrl(base, endpoint, safeParams, key);
+  try {
+    let res = await fetch(urlStr, { cache: "no-store" });
 
-      const res = await fetch(url.toString(), { cache: "no-store" });
-
+    if (res.status === 429) {
+      console.warn(`[FMP] ${endpoint} rate limited (429) — waiting 4s`);
+      await new Promise((r) => setTimeout(r, 4000));
+      res = await fetch(urlStr, { cache: "no-store" });
       if (res.status === 429) {
-        console.warn(`[FMP] ${endpoint} rate limited (429) — retrying in 3s`);
-        await new Promise((r) => setTimeout(r, 3000));
-        const retry = await fetch(url.toString(), { cache: "no-store" });
-        if (retry.status === 429) {
-          console.warn(`[FMP] ${endpoint} still rate limited — waiting 5s`);
-          await new Promise((r) => setTimeout(r, 5000));
-          const retry2 = await fetch(url.toString(), { cache: "no-store" });
-          if (!retry2.ok) { lastError = `429 rate-limited after 3 retries`; continue; }
-          const txt2 = await retry2.text();
-          let json2: unknown;
-          try { json2 = txt2 ? JSON.parse(txt2) : null; } catch { lastError = "non-JSON after 429"; continue; }
-          const err2 = readFmpErrorMessage(json2);
-          if (err2) { lastError = err2; continue; }
-          setCache(cacheKey, json2, getCacheTTL(endpoint));
-          return json2 as T;
-        }
-        if (!retry.ok) { lastError = `${retry.status}`; continue; }
-        const txtR = await retry.text();
-        let retryJson: unknown;
-        try { retryJson = txtR ? JSON.parse(txtR) : null; } catch { lastError = "non-JSON after 429"; continue; }
-        const errR = readFmpErrorMessage(retryJson);
-        if (errR) { lastError = errR; continue; }
-        setCache(cacheKey, retryJson, getCacheTTL(endpoint));
-        return retryJson as T;
-      }
-
-      if (res.status === 404 || res.status === 403) {
-        lastError = `${res.status} from ${base}`;
-        continue;
-      }
-
-      if (res.status === 402) {
-        console.warn(`[FMP] ${endpoint} returned 402 (plan limitation) — returning empty`);
+        console.warn(`[FMP] ${endpoint} still 429 — returning empty`);
         return [] as unknown as T;
       }
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        console.warn(`[FMP] ${endpoint} returned ${res.status} from ${base}: ${body.substring(0, 200)}`);
-        if (isFmpSoftErrorMessage(body)) {
-          lastError = body.substring(0, 200);
-        } else {
-          lastError = `${res.status} from ${base}`;
-        }
-        continue;
-      }
-
-      const text = await res.text();
-      let json: unknown;
-      try {
-        json = text ? JSON.parse(text) : null;
-      } catch {
-        console.warn(`[FMP] ${endpoint} non-JSON from ${base}: ${text.substring(0, 120)}`);
-        if (isFmpSoftErrorMessage(text)) { lastError = text.substring(0, 200); continue; }
-        lastError = `non-JSON response from ${base}`;
-        continue;
-      }
-
-      if (typeof json === "string") {
-        if (isFmpSoftErrorMessage(json)) { lastError = json; continue; }
-        lastError = json.substring(0, 200);
-        continue;
-      }
-
-      const errMain = readFmpErrorMessage(json);
-      if (errMain) {
-        lastError = errMain;
-        continue;
-      }
-
-      setCache(cacheKey, json, getCacheTTL(endpoint));
-      return json as T;
-    } catch (e: any) {
-      lastError = e.message || "unknown";
     }
-  }
 
-  console.error(`[FMP] ${endpoint} failed on all bases: ${lastError}`);
-  if (isFmpSoftErrorMessage(lastError)) {
-    console.warn(`[FMP] ${endpoint}: returning empty result after soft error`);
+    if (!res.ok) {
+      console.warn(`[FMP] ${endpoint} returned ${res.status}`);
+      return [] as unknown as T;
+    }
+
+    const text = await res.text();
+    if (!text || !text.trim()) return [] as unknown as T;
+
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      console.warn(`[FMP] ${endpoint} non-JSON: ${text.substring(0, 120)}`);
+      return [] as unknown as T;
+    }
+
+    const errMsg = readFmpErrorMessage(json);
+    if (errMsg) {
+      console.warn(`[FMP] ${endpoint}: ${errMsg.substring(0, 120)}`);
+      return [] as unknown as T;
+    }
+
+    if (typeof json === "string") {
+      console.warn(`[FMP] ${endpoint} returned bare string`);
+      return [] as unknown as T;
+    }
+
+    setCache(cacheKey, json, getCacheTTL(endpoint));
+    return json as T;
+  } catch (e: any) {
+    console.warn(`[FMP] ${endpoint} network error: ${e.message}`);
     return [] as unknown as T;
   }
-  throw new Error(`FMP API error: ${lastError}`);
 }
 
+/** stableFetch is now an alias — everything goes through the stable-only fmpFetch. */
 async function stableFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-  const key = apiKey();
-  if (!key) throw new Error("FMP_API_KEY is not configured");
-
-  const safeParams = { ...params };
-  if (safeParams.symbol) {
-    const s = sanitizeFmpSymbol(safeParams.symbol);
-    if (!s) {
-      console.warn(`[FMP/stable] Skipping request — invalid symbol: ${JSON.stringify(params.symbol)}`);
-      return [] as unknown as T;
-    }
-    safeParams.symbol = s;
-  }
-
-  const cacheKey = buildCacheKey(`/stable${endpoint}`, safeParams);
-  const cached = getFromCache<T>(cacheKey);
-  if (cached !== null) return cached;
-
-  let url: URL;
-  try {
-    url = buildFmpUrl(FMP_STABLE, endpoint, safeParams, key);
-  } catch (e: any) {
-    console.error(`[FMP/stable] URL construction failed for ${endpoint}: ${e.message}`);
-    return [] as unknown as T;
-  }
-
-  const res = await fetch(url.toString(), { cache: "no-store" });
-
-  if (res.status === 429) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const retry = await fetch(url.toString(), { cache: "no-store" });
-    if (!retry.ok) throw new Error(`FMP stable API error: ${retry.status}`);
-    const retryText = await retry.text();
-    let retryJson: unknown;
-    try {
-      retryJson = retryText ? JSON.parse(retryText) : null;
-    } catch {
-      if (isFmpSoftErrorMessage(retryText)) return [] as unknown as T;
-      throw new Error(`FMP stable API error: invalid JSON`);
-    }
-    const err429 = readFmpErrorMessage(retryJson);
-    if (err429) {
-      if (isFmpSoftErrorMessage(err429)) return [] as unknown as T;
-      throw new Error(`FMP stable API error: ${err429}`);
-    }
-    setCache(cacheKey, retryJson, getCacheTTL(endpoint));
-    return retryJson as T;
-  }
-
-  if (res.status === 402 || res.status === 403) {
-    console.warn(`[FMP/stable] ${endpoint} returned ${res.status} (plan limitation) — returning empty`);
-    return [] as unknown as T;
-  }
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    console.warn(`[FMP/stable] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
-    if (isFmpSoftErrorMessage(body)) return [] as unknown as T;
-    throw new Error(`FMP stable API error: ${res.status}`);
-  }
-
-  const text = await res.text();
-  let json: unknown;
-  try {
-    json = text ? JSON.parse(text) : null;
-  } catch {
-    if (isFmpSoftErrorMessage(text)) {
-      console.warn(`[FMP/stable] ${endpoint}: non-JSON soft error`);
-      return [] as unknown as T;
-    }
-    throw new Error(`FMP stable API error: invalid JSON body`);
-  }
-
-  const em = readFmpErrorMessage(json);
-  if (em) {
-    console.warn(`[FMP/stable] ${endpoint}: ${em}`);
-    if (isFmpSoftErrorMessage(em)) return [] as unknown as T;
-    throw new Error(`FMP stable API error: ${em}`);
-  }
-
-  setCache(cacheKey, json, getCacheTTL(endpoint));
-  return json as T;
+  return fmpFetch<T>(endpoint, params);
 }
 
 /* ── Exported API methods ────────────────────────────── */
