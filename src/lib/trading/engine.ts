@@ -141,13 +141,52 @@ async function fetchMarketSentiment(): Promise<MarketSentiment> {
   }
 }
 
-async function getFullWatchlist(userId: string, configWatchlist: string[]): Promise<string[]> {
+interface WatchlistContext {
+  all: string[];
+  configSet: Set<string>;
+  userSet: Set<string>;
+}
+
+async function getWatchlistContext(userId: string, configWatchlist: string[]): Promise<WatchlistContext> {
   const userWatchlist = await prisma.watchlistItem.findMany({
     where: { userId },
     select: { ticker: true },
   });
-  const combined = new Set([...configWatchlist, ...userWatchlist.map((w) => w.ticker)]);
-  return [...combined];
+  const fromConfig = configWatchlist.map((t) => t.toUpperCase());
+  const fromUser = userWatchlist.map((w) => w.ticker.toUpperCase());
+  const combined = new Set([...fromConfig, ...fromUser]);
+  return {
+    all: [...combined],
+    configSet: new Set(fromConfig),
+    userSet: new Set(fromUser),
+  };
+}
+
+function unionScanTickers(lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const t of list) {
+      const u = t.toUpperCase();
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push(u);
+    }
+  }
+  return out;
+}
+
+function signalSource(
+  ticker: string,
+  discoveryMap: Map<string, string>,
+  recommendedSet: Set<string>,
+  ctx: WatchlistContext,
+): "watchlist" | "discovered" | "recommended" {
+  const u = ticker.toUpperCase();
+  if (discoveryMap.has(u)) return "discovered";
+  if (ctx.configSet.has(u) || ctx.userSet.has(u)) return "watchlist";
+  if (recommendedSet.has(u)) return "recommended";
+  return "watchlist";
 }
 
 async function runPaperTradingCycle(userId: string, config: any, email: string | null): Promise<EngineResult> {
@@ -219,7 +258,11 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
       } catch {}
     }
 
-    const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
+    const wlCtx = await getWatchlistContext(userId, config.watchlist);
+    const recRawPaper: string[] = Array.isArray(config.recommendedTickers) ? config.recommendedTickers : [];
+    const recommended = recRawPaper.map((t) => String(t).toUpperCase());
+    const recommendedSet = new Set<string>(recommended);
+    const alreadyInPool = new Set<string>([...wlCtx.all, ...recommended]);
 
     let discovered: DiscoveredTicker[] = [];
     try {
@@ -229,9 +272,11 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     }
     const discoveredTickers = discovered
       .map((d) => d.ticker)
-      .filter((t) => !fullWatchlist.includes(t));
-    const allTickers = [...fullWatchlist, ...discoveredTickers.slice(0, 15)];
-    console.log(`[Engine] Scanning ${allTickers.length} tickers (${fullWatchlist.length} watchlist + ${discoveredTickers.length} discovered)`);
+      .filter((t) => !alreadyInPool.has(t.toUpperCase()));
+    const allTickers = unionScanTickers([wlCtx.all, recommended, discoveredTickers.slice(0, 15)]);
+    console.log(
+      `[Engine] Scanning ${allTickers.length} tickers (${wlCtx.all.length} watchlist + ${recommended.length} recommended + ${discoveredTickers.length} discovered raw)`,
+    );
 
     const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
@@ -258,7 +303,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
 
     const discoveryMap = new Map<string, string>();
     for (const d of discovered) {
-      discoveryMap.set(d.ticker, `${d.source}: ${d.reason}`);
+      discoveryMap.set(d.ticker.toUpperCase(), `${d.source}: ${d.reason}`);
     }
 
     // 7-dimension conviction scoring for top candidates
@@ -288,6 +333,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     const signalMap = new Map<string, any>();
     for (const s of rankedSignals) {
       const cv = convictionScores.get(s.ticker);
+      const src = signalSource(s.ticker, discoveryMap, recommendedSet, wlCtx);
       signalMap.set(s.ticker, {
         ticker: s.ticker,
         action: s.action,
@@ -303,8 +349,8 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           score: ind.score,
           reason: ind.reason,
         })),
-        source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
-        discoveryReason: discoveryMap.get(s.ticker) || null,
+        source: src,
+        discoveryReason: discoveryMap.get(s.ticker.toUpperCase()) || null,
         decision: "NOT_EVALUATED" as string,
         decisionReason: "Beyond max new trades limit" as string | null,
       });
@@ -552,7 +598,11 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
       };
     }
 
-    const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
+    const wlCtxLive = await getWatchlistContext(userId, config.watchlist);
+    const recRawLive: string[] = Array.isArray(config.recommendedTickers) ? config.recommendedTickers : [];
+    const recommendedLive = recRawLive.map((t) => String(t).toUpperCase());
+    const recommendedSetLive = new Set<string>(recommendedLive);
+    const alreadyInPoolLive = new Set<string>([...wlCtxLive.all, ...recommendedLive]);
 
     let discovered: DiscoveredTicker[] = [];
     try {
@@ -562,8 +612,8 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     }
     const discoveredTickers = discovered
       .map((d) => d.ticker)
-      .filter((t) => !fullWatchlist.includes(t));
-    const allTickers = [...fullWatchlist, ...discoveredTickers.slice(0, 15)];
+      .filter((t) => !alreadyInPoolLive.has(t.toUpperCase()));
+    const allTickers = unionScanTickers([wlCtxLive.all, recommendedLive, discoveredTickers.slice(0, 15)]);
 
     const scanResults = await scanMarket(allTickers);
     const rankedSignals = rankSignals(scanResults);
@@ -590,7 +640,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
 
     const discoveryMap = new Map<string, string>();
     for (const d of discovered) {
-      discoveryMap.set(d.ticker, d.reason);
+      discoveryMap.set(d.ticker.toUpperCase(), `${d.source}: ${d.reason}`);
     }
 
     // 7-dimension conviction scoring (replaces AI conviction LLM call)
@@ -622,6 +672,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     const signalMapLive = new Map<string, any>();
     for (const s of rankedSignals) {
       const cv = convictionScoresLive.get(s.ticker);
+      const srcLive = signalSource(s.ticker, discoveryMap, recommendedSetLive, wlCtxLive);
       signalMapLive.set(s.ticker, {
         ticker: s.ticker,
         action: s.action,
@@ -637,8 +688,8 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
           score: ind.score,
           reason: ind.reason,
         })),
-        source: discoveryMap.has(s.ticker) ? "discovered" : "watchlist",
-        discoveryReason: discoveryMap.get(s.ticker) || null,
+        source: srcLive,
+        discoveryReason: discoveryMap.get(s.ticker.toUpperCase()) || null,
         decision: "NOT_EVALUATED" as string,
         decisionReason: "Beyond max new trades limit" as string | null,
       });
@@ -807,8 +858,10 @@ export async function runDailyBriefing(userId: string): Promise<string> {
   if (!user || !user.tradingConfig?.enabled) return "Not enabled";
 
   const config = user.tradingConfig;
-  const fullWatchlist = await getFullWatchlist(userId, config.watchlist);
-  const scanResults = await scanMarket(fullWatchlist);
+  const wlBrief = await getWatchlistContext(userId, config.watchlist);
+  const recBrief = (config.recommendedTickers || []).map((t) => t.toUpperCase());
+  const scanPoolBrief = unionScanTickers([wlBrief.all, recBrief]);
+  const scanResults = await scanMarket(scanPoolBrief);
   const signals = rankSignals(scanResults);
 
   let equity = config.paperBalance || 10000;

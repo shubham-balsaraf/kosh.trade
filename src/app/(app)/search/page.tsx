@@ -82,7 +82,7 @@ export default function SearchPage() {
           <p className="text-xs text-gray-600 px-1">{results.length} results</p>
           {results.map((r: any) => (
             <Card
-              key={r.symbol}
+              key={`${r.symbol}-${r.exchangeShortName || ""}`}
               hover
               onClick={() => goToStock(r.symbol)}
               className="flex items-center justify-between cursor-pointer"

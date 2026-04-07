@@ -32,6 +32,7 @@ const ENDPOINT_TTL: Record<string, number> = {
   "/earnings-surprises": TTL_FUNDAMENTALS,
   "/historical-price-eod/full": TTL_QUOTE,
   "/search-name": TTL_SEARCH,
+  "/search-symbol": TTL_SEARCH,
   "/company-screener": TTL_SEARCH,
   "/earnings-calendar": TTL_FUNDAMENTALS,
   "/insider-trading": TTL_FUNDAMENTALS,
@@ -230,9 +231,23 @@ export async function getQuote(ticker: string) {
   return data?.[0] || null;
 }
 
+/** FMP stable/legacy profile rows use `mktCap` or `marketCap` depending on endpoint/version. */
+function normalizeProfileRow(raw: Record<string, unknown> | null | undefined): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const mcRaw = raw.mktCap ?? raw.marketCap;
+  const mktCap = typeof mcRaw === "number" && Number.isFinite(mcRaw) ? mcRaw : Number(mcRaw);
+  const cap = Number.isFinite(mktCap) ? mktCap : 0;
+  return {
+    ...raw,
+    mktCap: cap,
+    marketCap: typeof raw.marketCap === "number" ? raw.marketCap : cap,
+  };
+}
+
 export async function getProfile(ticker: string) {
   const data = await fmpFetch<any[]>("/profile", { symbol: ticker.toUpperCase() });
-  return data?.[0] || null;
+  const row = data?.[0];
+  return normalizeProfileRow(row as Record<string, unknown>) as any;
 }
 
 export async function getIncomeStatement(ticker: string, period: "annual" | "quarter" = "annual", limit = 10) {
@@ -265,8 +280,102 @@ export async function getHistoricalPrice(ticker: string, from?: string, to?: str
   return [];
 }
 
+export interface StockSearchRow {
+  symbol: string;
+  name: string;
+  currency?: string;
+  stockExchange?: string;
+  exchangeShortName?: string;
+}
+
+function normalizeSearchRow(r: Record<string, unknown>): StockSearchRow | null {
+  const symbol = String(r.symbol || r.ticker || "").trim().toUpperCase();
+  if (!symbol) return null;
+  const name = String(r.name || r.companyName || symbol);
+  return {
+    symbol,
+    name,
+    currency: r.currency as string | undefined,
+    stockExchange: (r.stockExchange || r.exchange) as string | undefined,
+    exchangeShortName: (r.exchangeShortName || r.exchange) as string | undefined,
+  };
+}
+
+/** True if query looks like a ticker (no spaces, short alphanumeric + optional .- for listings). */
+function queryLooksLikeTicker(q: string): boolean {
+  const s = q.trim();
+  return s.length >= 1 && s.length <= 12 && /^[A-Za-z0-9][A-Za-z0-9.^*-]*$/.test(s) && !/\s/.test(s);
+}
+
+function exchangeRank(exchangeShortName: string | undefined, stockExchange: string | undefined): number {
+  const u = `${exchangeShortName || ""} ${stockExchange || ""}`.toUpperCase();
+  if (u.includes("NASDAQ") && !u.includes("OTC")) return 90;
+  if (/\bNYSE\b/.test(u) && !u.includes("OTC")) return 85;
+  if (u.includes("AMEX") || u.includes("ARCA") || u.includes("BATS")) return 70;
+  if (u.includes("NEO") || u.includes("TSX") || u.includes("TORONTO") || u.includes("CBOE CA")) return 15;
+  if (u.includes("LSE") || u.includes("LONDON")) return 20;
+  if (u.includes("OTC")) return 25;
+  return 40;
+}
+
+/** Prefer US primary listings; deprioritize alternate tickers like CSCO.NE */
+function symbolListingPenalty(symbol: string): number {
+  if (/-USD$|-EUR$|-GBP$/i.test(symbol)) return 0;
+  if (/\.[A-Z0-9]{1,5}$/i.test(symbol)) return -120;
+  return 0;
+}
+
+function rankSearchResults(query: string, rows: StockSearchRow[]): StockSearchRow[] {
+  const q = query.trim();
+  const qu = q.toUpperCase();
+  const ql = q.toLowerCase();
+  const tickerish = queryLooksLikeTicker(q);
+
+  const scored = rows.map((r) => {
+    let score = 0;
+    const sym = r.symbol.toUpperCase();
+    if (sym === qu) score += 500;
+    else if (tickerish && sym.startsWith(qu)) score += 300;
+    else if (sym.includes(qu)) score += 150;
+
+    const name = (r.name || "").toLowerCase();
+    if (name.includes(ql)) score += 80;
+    if (name.startsWith(ql)) score += 40;
+
+    score += exchangeRank(r.exchangeShortName, r.stockExchange);
+    score += symbolListingPenalty(r.symbol);
+    return { r, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map((x) => x.r);
+}
+
+/**
+ * Merges FMP name + symbol search, dedupes, ranks (ticker queries and US listings first).
+ */
+export async function searchStocks(query: string): Promise<StockSearchRow[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const [nameRaw, symRaw] = await Promise.all([
+    fmpFetch<any[]>("/search-name", { query: q, limit: "15" }).catch(() => []),
+    stableFetch<any[]>("/search-symbol", { query: q, limit: "20" }).catch(() => []),
+  ]);
+
+  const merged = new Map<string, StockSearchRow>();
+  for (const raw of [...(Array.isArray(symRaw) ? symRaw : []), ...(Array.isArray(nameRaw) ? nameRaw : [])]) {
+    const row = normalizeSearchRow(raw as Record<string, unknown>);
+    if (!row) continue;
+    if (!merged.has(row.symbol)) merged.set(row.symbol, row);
+  }
+
+  return rankSearchResults(q, [...merged.values()]).slice(0, 15);
+}
+
+/** @deprecated Use searchStocks — kept for any direct imports */
 export async function searchTicker(query: string) {
-  return fmpFetch<any[]>("/search-name", { query, limit: "10" });
+  return searchStocks(query);
 }
 
 export async function getStockScreener(params: Record<string, string>) {

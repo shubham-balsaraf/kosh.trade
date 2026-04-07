@@ -275,6 +275,8 @@ model TradingConfig {
   riskProfile       String   @default("MODERATE")
   weeklyTargetPct   Float    @default(10)
   watchlist         String[] @default(["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "TSLA", "AMD", "NFLX", "JPM", "BTC-USD", "ETH-USD", "SOL-USD"])
+  /// Rolling suggestions (Top 10, discovery); merged into scan universe, max length enforced in app code
+  recommendedTickers String[] @default([])
   strategies        String[] @default(["MOMENTUM", "MEAN_REVERSION", "SWING"])
   lastCronAt        DateTime?
   lastCronResult    String?

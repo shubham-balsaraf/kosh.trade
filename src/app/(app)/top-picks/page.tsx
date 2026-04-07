@@ -796,6 +796,8 @@ export default function TopPicksPage() {
   const [bestPicks, setBestPicks] = useState<{ sprint: BestPick[]; marathon: BestPick[]; legacy: BestPick[] } | null>(null);
   const [bestPicksLoading, setBestPicksLoading] = useState(false);
   const [bestPicksStats, setBestPicksStats] = useState<{ scanned: number; totalBuySignals: number; totalPicks: number; signalDerived?: number } | null>(null);
+  const [koshpilotRecLoading, setKoshpilotRecLoading] = useState(false);
+  const [koshpilotRecMsg, setKoshpilotRecMsg] = useState<string | null>(null);
 
   async function fetchLatestPicks(): Promise<boolean> {
     try {
@@ -956,6 +958,30 @@ export default function TopPicksPage() {
     } catch {}
   }
 
+  async function sendToKoshPilot() {
+    setKoshpilotRecLoading(true);
+    setKoshpilotRecMsg(null);
+    try {
+      const res = await fetch("/api/trading/auto/recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "top10" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setKoshpilotRecMsg(data.error || "Could not merge into KoshPilot");
+        return;
+      }
+      setKoshpilotRecMsg(
+        `Merged ${data.added} ticker${data.added === 1 ? "" : "s"} into KoshPilot scan queue (${data.recommendedTickers?.length ?? 0} total recommended).`,
+      );
+    } catch {
+      setKoshpilotRecMsg("Request failed");
+    } finally {
+      setKoshpilotRecLoading(false);
+    }
+  }
+
   return (
     <ProGate feature="Top Picks">
     <div className="space-y-6">
@@ -969,14 +995,32 @@ export default function TopPicksPage() {
             Deep multi-source analysis to surface the highest-conviction opportunities in the market right now.
           </p>
         </div>
-        <button
-          onClick={generatePicks}
-          disabled={generating}
-          className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:hover:scale-100"
-        >
-          {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
-          {generating ? "Generating..." : picks.length > 0 ? "Regenerate Picks" : "Generate Picks"}
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
+            {picks.length > 0 && (
+              <button
+                type="button"
+                onClick={sendToKoshPilot}
+                disabled={koshpilotRecLoading}
+                className="flex items-center gap-2 px-4 py-2.5 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/25 text-cyan-200 text-sm font-semibold rounded-xl transition-all disabled:opacity-40"
+              >
+                {koshpilotRecLoading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                Send to KoshPilot
+              </button>
+            )}
+            <button
+              onClick={generatePicks}
+              disabled={generating}
+              className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-semibold rounded-xl shadow-lg shadow-indigo-500/20 transition-all hover:scale-105 disabled:hover:scale-100"
+            >
+              {generating ? <RefreshCw size={16} className="animate-spin" /> : <Sparkles size={16} />}
+              {generating ? "Generating..." : picks.length > 0 ? "Regenerate Picks" : "Generate Picks"}
+            </button>
+          </div>
+          {koshpilotRecMsg && (
+            <p className="text-[11px] text-cyan-400/70 text-right max-w-sm">{koshpilotRecMsg}</p>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl w-fit">

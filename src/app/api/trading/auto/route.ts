@@ -351,6 +351,7 @@ export async function PATCH(req: NextRequest) {
   if (body.riskProfile !== undefined) updates.riskProfile = body.riskProfile;
   if (body.weeklyTargetPct !== undefined) updates.weeklyTargetPct = body.weeklyTargetPct;
   if (body.watchlist !== undefined) updates.watchlist = body.watchlist;
+  if (body.recommendedTickers !== undefined) updates.recommendedTickers = body.recommendedTickers;
   if (body.strategies !== undefined) updates.strategies = body.strategies;
 
   const config = await prisma.tradingConfig.upsert({

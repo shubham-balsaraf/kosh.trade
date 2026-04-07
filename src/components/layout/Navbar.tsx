@@ -87,7 +87,7 @@ export default function Navbar() {
             <div className="absolute top-full left-0 right-0 mt-2 bg-[#0a0a0f]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl overflow-hidden z-50">
               {suggestions.map((s: any) => (
                 <button
-                  key={s.symbol}
+                  key={`${s.symbol}-${s.exchangeShortName || ""}`}
                   onClick={() => goToStock(s.symbol)}
                   className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-white/[0.04] transition-colors text-left"
                 >

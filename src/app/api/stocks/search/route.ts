@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchTicker } from "@/lib/api/fmp";
+import { searchStocks } from "@/lib/api/fmp";
 
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get("q");
@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const data = await searchTicker(q);
+    const data = await searchStocks(q);
     return NextResponse.json({ results: data || [] });
   } catch {
     return NextResponse.json({ results: [] });

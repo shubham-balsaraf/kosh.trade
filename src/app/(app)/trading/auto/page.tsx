@@ -13,8 +13,9 @@ import {
   Search, Brain, ShieldCheck, ArrowRight, ArrowLeft, Sparkles,
   X, Plus, ChevronRight, AlertTriangle, RotateCcw,
   Wallet, Lock, ChevronDown, ChevronUp, Plane, Eye, Radio,
-  Newspaper, Users, Landmark, CalendarDays, Radar,
+  Newspaper, Users, Landmark, CalendarDays, Radar, Trophy,
 } from "lucide-react";
+import { MAX_KOSHPILOT_RECOMMENDED_TICKERS } from "@/lib/trading/koshpilot-recommended";
 import ProGate from "@/components/ui/ProGate";
 import { useTrackView } from "@/hooks/useTrackView";
 
@@ -28,6 +29,7 @@ interface TradingConfig {
   riskProfile: string;
   weeklyTargetPct: number;
   watchlist: string[];
+  recommendedTickers?: string[];
   strategies: string[];
   updatedAt?: string;
   createdAt?: string;
@@ -90,7 +92,7 @@ interface ScannedSignal {
   stopLoss: number;
   takeProfit: number;
   indicators: SignalIndicator[];
-  source: "watchlist" | "discovered";
+  source: "watchlist" | "discovered" | "recommended";
   discoveryReason: string | null;
   decision: "TRADED" | "SKIPPED" | "NOT_EVALUATED" | "ADD_ON";
   decisionReason: string | null;
@@ -1015,12 +1017,14 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
                 SKIPPED
               </span>
             )}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+            <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border ${
               signal.source === "discovered"
-                ? "bg-purple-500/10 text-purple-400/80 border border-purple-500/20"
-                : "bg-white/[0.04] text-white/30"
+                ? "bg-purple-500/10 text-purple-400/80 border-purple-500/20"
+                : signal.source === "recommended"
+                  ? "bg-cyan-500/10 text-cyan-400/80 border-cyan-500/20"
+                  : "bg-white/[0.04] text-white/30 border-white/[0.06]"
             }`}>
-              {signal.source === "discovered" ? "Discovered" : "Watchlist"}
+              {signal.source === "discovered" ? "Discovered" : signal.source === "recommended" ? "Recommended" : "Watchlist"}
             </span>
           </div>
           <div className="flex items-center gap-3 mt-0.5 text-[10px] text-white/25">
@@ -1131,7 +1135,7 @@ function SignalCard({ signal, defaultExpanded = false }: { signal: ScannedSignal
 
 function MissionReport({ result, onClose }: { result: RunResult; onClose: () => void }) {
   const [showAllSignals, setShowAllSignals] = useState(false);
-  const [filterSource, setFilterSource] = useState<"all" | "watchlist" | "discovered">("all");
+  const [filterSource, setFilterSource] = useState<"all" | "watchlist" | "discovered" | "recommended">("all");
   const [filterDecision, setFilterDecision] = useState<"all" | "traded" | "skipped">("all");
 
   if (result.status === "ERROR") {
@@ -1161,10 +1165,18 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
   const signals = result.allSignals || [];
   const watchlistSignals = signals.filter((s) => s.source === "watchlist");
   const discoveredSignals = signals.filter((s) => s.source === "discovered");
+  const recommendedSignals = signals.filter((s) => s.source === "recommended");
   const tradedSignals = signals.filter((s) => s.decision === "TRADED" || s.decision === "ADD_ON");
   const skippedSignals = signals.filter((s) => s.decision === "SKIPPED");
 
-  let filteredSignals = filterSource === "all" ? signals : filterSource === "watchlist" ? watchlistSignals : discoveredSignals;
+  let filteredSignals =
+    filterSource === "all"
+      ? signals
+      : filterSource === "watchlist"
+        ? watchlistSignals
+        : filterSource === "discovered"
+          ? discoveredSignals
+          : recommendedSignals;
   if (filterDecision === "traded") filteredSignals = filteredSignals.filter((s) => s.decision === "TRADED" || s.decision === "ADD_ON");
   else if (filterDecision === "skipped") filteredSignals = filteredSignals.filter((s) => s.decision === "SKIPPED");
   const shownSignals = showAllSignals ? filteredSignals : filteredSignals.slice(0, 8);
@@ -1242,18 +1254,22 @@ function MissionReport({ result, onClose }: { result: RunResult; onClose: () => 
               </p>
               <div className="flex items-center gap-1">
                 {([
-                  { id: "all", label: "All", count: signals.length },
-                  { id: "watchlist", label: "Watchlist", count: watchlistSignals.length },
-                  { id: "discovered", label: "Discovered", count: discoveredSignals.length },
-                ] as const).map(({ id, label, count }) => (
+                  { id: "all" as const, label: "All", count: signals.length },
+                  { id: "watchlist" as const, label: "Watchlist", count: watchlistSignals.length },
+                  { id: "recommended" as const, label: "Recommended", count: recommendedSignals.length },
+                  { id: "discovered" as const, label: "Discovered", count: discoveredSignals.length },
+                ]).map(({ id, label, count }) => (
                   <button
                     key={id}
                     onClick={(e) => { e.stopPropagation(); setFilterSource(id); }}
-                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+                    className={`px-2 py-1 rounded-md text-[10px] font-medium transition-all border ${
                       filterSource === id
-                        ? id === "discovered" ? "bg-purple-500/15 text-purple-400/80 border border-purple-500/20"
-                          : "bg-amber-500/10 text-amber-400/80 border border-amber-500/20"
-                        : "bg-white/[0.03] text-white/25 border border-white/[0.04] hover:border-white/[0.08]"
+                        ? id === "discovered"
+                          ? "bg-purple-500/15 text-purple-400/80 border-purple-500/20"
+                          : id === "recommended"
+                            ? "bg-cyan-500/15 text-cyan-400/80 border-cyan-500/20"
+                            : "bg-amber-500/10 text-amber-400/80 border-amber-500/20"
+                        : "bg-white/[0.03] text-white/25 border-white/[0.04] hover:border-white/[0.08]"
                     }`}
                   >
                     {label} ({count})
@@ -1939,6 +1955,8 @@ export default function AutoTradingPage() {
   const [discoveries, setDiscoveries] = useState<DiscoveredTicker[]>([]);
   const [cronStatus, setCronStatus] = useState<CronStatus | null>(null);
   const [marketSentiment, setMarketSentiment] = useState<{ score: number; rating: string; brief: string } | null>(null);
+  const [recommendBusy, setRecommendBusy] = useState<string | null>(null);
+  const [recommendMsg, setRecommendMsg] = useState<string | null>(null);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -2050,6 +2068,39 @@ export default function AutoTradingPage() {
       const res = await fetch("/api/trading/auto", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(updates) });
       setConfig(await res.json());
     } catch {}
+  };
+
+  const mergeRecommendations = async (source: "top10" | "discover") => {
+    setRecommendBusy(source);
+    setRecommendMsg(null);
+    try {
+      const res = await fetch("/api/trading/auto/recommendations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(source === "discover" ? { source, limit: 10 } : { source }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRecommendMsg(data.error || "Could not update recommendations");
+        return;
+      }
+      await fetchData();
+      setRecommendMsg(
+        data.added > 0
+          ? `Added ${data.added} ticker${data.added === 1 ? "" : "s"} to your scan queue (${data.recommendedTickers?.length ?? 0}/${MAX_KOSHPILOT_RECOMMENDED_TICKERS}).`
+          : (data.message as string) || "Queue updated.",
+      );
+    } catch {
+      setRecommendMsg("Request failed");
+    } finally {
+      setRecommendBusy(null);
+    }
+  };
+
+  const clearRecommended = async () => {
+    setRecommendMsg(null);
+    await updateConfig({ recommendedTickers: [] });
+    setRecommendMsg("Recommended queue cleared.");
   };
 
   const resetSetup = async () => {
@@ -2183,6 +2234,66 @@ export default function AutoTradingPage() {
         createdAt={config?.createdAt}
         onRefresh={fetchCronStatus}
       />
+
+      {/* ─── Recommended scan queue (capped) ─── */}
+      <div className="glass-card p-5 border border-cyan-500/10 animate-fade-slide-up-1 space-y-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles size={14} className="text-cyan-400/70" />
+              <h3 className="text-sm font-semibold text-white/70">Recommended for scans</h3>
+            </div>
+            <p className="text-[11px] text-white/25 mt-1 max-w-xl leading-relaxed">
+              Add tickers beyond your core watchlist. New batches are merged at the front; the list is capped at{" "}
+              {MAX_KOSHPILOT_RECOMMENDED_TICKERS} so scan time stays predictable. Also use{" "}
+              <span className="text-white/40">Top Picks &rarr; Send to KoshPilot</span> for the latest Top 10.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!!recommendBusy}
+              onClick={() => mergeRecommendations("discover")}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-cyan-500/10 text-cyan-300/90 border border-cyan-500/20 hover:bg-cyan-500/15 disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {recommendBusy === "discover" ? <RefreshCw size={12} className="animate-spin" /> : <Radar size={12} />}
+              Recommend from market
+            </button>
+            <button
+              type="button"
+              disabled={!!recommendBusy}
+              onClick={() => mergeRecommendations("top10")}
+              className="px-3 py-2 rounded-xl text-xs font-semibold bg-white/[0.04] text-white/50 border border-white/[0.08] hover:bg-white/[0.06] disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {recommendBusy === "top10" ? <RefreshCw size={12} className="animate-spin" /> : <Trophy size={12} />}
+              Merge latest Top 10
+            </button>
+            {(config?.recommendedTickers?.length ?? 0) > 0 && (
+              <button
+                type="button"
+                disabled={!!recommendBusy}
+                onClick={() => clearRecommended()}
+                className="px-3 py-2 rounded-xl text-xs font-medium text-white/30 hover:text-red-400/80 border border-white/[0.06] hover:border-red-500/20"
+              >
+                Clear queue
+              </button>
+            )}
+          </div>
+        </div>
+        {recommendMsg && <p className="text-[11px] text-cyan-400/70">{recommendMsg}</p>}
+        {(config?.recommendedTickers?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {(config?.recommendedTickers || []).map((t) => (
+              <span
+                key={t}
+                className="inline-flex items-center gap-1 bg-cyan-500/8 border border-cyan-500/15 rounded-lg px-2 py-1 text-[10px] text-cyan-200/70"
+              >
+                <StockLogo ticker={t} size={12} /> {t}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ─── Data Freshness ─── */}
       <div className="flex justify-end">
@@ -2455,6 +2566,45 @@ export default function AutoTradingPage() {
                 </span>
               ))}
             </div>
+          </div>
+
+          <div className="pt-2 border-t border-white/[0.04]">
+            <label className="text-xs text-white/25 block mb-1.5">
+              Recommended queue ({config.recommendedTickers?.length ?? 0}/{MAX_KOSHPILOT_RECOMMENDED_TICKERS})
+            </label>
+            <p className="text-[10px] text-white/20 mb-2">
+              Same controls as on the main card — merges Top 10 or discovery ideas without growing your core watchlist.
+            </p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                disabled={!!recommendBusy}
+                onClick={() => mergeRecommendations("discover")}
+                className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-cyan-500/10 text-cyan-300/80 border border-cyan-500/15"
+              >
+                {recommendBusy === "discover" ? "…" : "From market"}
+              </button>
+              <button
+                type="button"
+                disabled={!!recommendBusy}
+                onClick={() => mergeRecommendations("top10")}
+                className="px-2.5 py-1.5 rounded-lg text-[10px] font-semibold bg-white/[0.04] text-white/40 border border-white/[0.08]"
+              >
+                {recommendBusy === "top10" ? "…" : "Top 10"}
+              </button>
+              {(config.recommendedTickers?.length ?? 0) > 0 && (
+                <button type="button" onClick={() => clearRecommended()} className="px-2.5 py-1.5 rounded-lg text-[10px] text-red-400/60">
+                  Clear
+                </button>
+              )}
+            </div>
+            {(config.recommendedTickers?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {(config.recommendedTickers || []).map((t) => (
+                  <span key={t} className="text-[10px] text-cyan-400/50">{t}</span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

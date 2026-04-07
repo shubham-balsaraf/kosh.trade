@@ -201,10 +201,11 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
   console.log(`[Oracle] Pre-flight: testing FMP API with AAPL profile...`);
   try {
     const test = await getProfile("AAPL");
-    if (!test || !test.mktCap) {
+    const mc = Number(test?.mktCap ?? test?.marketCap ?? 0);
+    if (!test || !Number.isFinite(mc) || mc < 1e6) {
       throw new Error(`FMP returned invalid profile data: ${JSON.stringify(test)?.slice(0, 200)}`);
     }
-    console.log(`[Oracle] Pre-flight OK: AAPL mktCap=$${(test.mktCap / 1e9).toFixed(0)}B`);
+    console.log(`[Oracle] Pre-flight OK: AAPL mktCap=$${(mc / 1e9).toFixed(0)}B`);
   } catch (e: any) {
     throw new Error(`FMP API pre-flight failed — API may be down or key invalid: ${e.message}`);
   }
@@ -228,7 +229,7 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     const is_ = isMap.get(t);
     const prof = profMap.get(t);
     const p = Array.isArray(prof) ? prof[0] : prof;
-    const mktCap = p?.mktCap || 0;
+    const mktCap = Number(p?.mktCap ?? p?.marketCap ?? 0) || 0;
 
     if (!Array.isArray(cf) || cf.length < 2) {
       const reason = `${t}: CF missing or < 2 years (got ${Array.isArray(cf) ? cf.length : typeof cf})`;
@@ -284,7 +285,7 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     if (!Array.isArray(is_) || is_.length < 2) continue;
 
     const p = Array.isArray(prof) ? prof[0] : prof;
-    const marketCap = p?.mktCap || 0;
+    const marketCap = Number(p?.mktCap ?? p?.marketCap ?? 0) || 0;
     if (marketCap < 5_000_000_000) continue;
 
     const cashFlows = cf.slice(0, 5).map((c: any) => ({
