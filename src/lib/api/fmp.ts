@@ -5,11 +5,16 @@ function apiKey(): string {
   return String(raw).trim().replace(/^["']|["']$/g, "");
 }
 
-/** Normalize FMP JSON error fields (stable vs legacy shapes). */
+/** Normalize FMP JSON error fields (stable vs legacy shapes, incl. array wrapping). */
 function readFmpErrorMessage(json: unknown): string {
-  if (!json || typeof json !== "object") return "";
-  const o = json as Record<string, unknown>;
-  for (const k of ["Error Message", "error", "message"] as const) {
+  if (!json) return "";
+  if (typeof json === "string") {
+    return isFmpSoftErrorMessage(json) ? json.trim() : "";
+  }
+  const first = Array.isArray(json) ? json[0] : json;
+  if (!first || typeof first !== "object") return "";
+  const o = first as Record<string, unknown>;
+  for (const k of ["Error Message", "error", "message", "errorMessage"] as const) {
     const v = o[k];
     if (typeof v === "string" && v.trim()) return v.trim();
     if (Array.isArray(v) && typeof v[0] === "string" && v[0].trim()) return v[0].trim();
@@ -187,18 +192,22 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
           await new Promise((r) => setTimeout(r, 5000));
           const retry2 = await fetch(url.toString(), { cache: "no-store" });
           if (!retry2.ok) { lastError = `429 rate-limited after 3 retries`; continue; }
-          const json2 = await retry2.json();
+          const txt2 = await retry2.text();
+          let json2: unknown;
+          try { json2 = txt2 ? JSON.parse(txt2) : null; } catch { lastError = "non-JSON after 429"; continue; }
           const err2 = readFmpErrorMessage(json2);
           if (err2) { lastError = err2; continue; }
           setCache(cacheKey, json2, getCacheTTL(endpoint));
-          return json2;
+          return json2 as T;
         }
         if (!retry.ok) { lastError = `${retry.status}`; continue; }
-        const retryJson = await retry.json();
+        const txtR = await retry.text();
+        let retryJson: unknown;
+        try { retryJson = txtR ? JSON.parse(txtR) : null; } catch { lastError = "non-JSON after 429"; continue; }
         const errR = readFmpErrorMessage(retryJson);
         if (errR) { lastError = errR; continue; }
         setCache(cacheKey, retryJson, getCacheTTL(endpoint));
-        return retryJson;
+        return retryJson as T;
       }
 
       if (res.status === 404 || res.status === 403) {
@@ -213,11 +222,32 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
 
       if (!res.ok) {
         const body = await res.text().catch(() => "");
-        console.error(`[FMP] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
-        throw new Error(`FMP API error: ${res.status}`);
+        console.warn(`[FMP] ${endpoint} returned ${res.status} from ${base}: ${body.substring(0, 200)}`);
+        if (isFmpSoftErrorMessage(body)) {
+          lastError = body.substring(0, 200);
+        } else {
+          lastError = `${res.status} from ${base}`;
+        }
+        continue;
       }
 
-      const json = await res.json();
+      const text = await res.text();
+      let json: unknown;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        console.warn(`[FMP] ${endpoint} non-JSON from ${base}: ${text.substring(0, 120)}`);
+        if (isFmpSoftErrorMessage(text)) { lastError = text.substring(0, 200); continue; }
+        lastError = `non-JSON response from ${base}`;
+        continue;
+      }
+
+      if (typeof json === "string") {
+        if (isFmpSoftErrorMessage(json)) { lastError = json; continue; }
+        lastError = json.substring(0, 200);
+        continue;
+      }
+
       const errMain = readFmpErrorMessage(json);
       if (errMain) {
         lastError = errMain;
@@ -225,9 +255,8 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
       }
 
       setCache(cacheKey, json, getCacheTTL(endpoint));
-      return json;
+      return json as T;
     } catch (e: any) {
-      if (e.message?.includes("FMP API error")) throw e;
       lastError = e.message || "unknown";
     }
   }
@@ -294,7 +323,8 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    console.error(`[FMP/stable] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
+    console.warn(`[FMP/stable] ${endpoint} returned ${res.status}: ${body.substring(0, 200)}`);
+    if (isFmpSoftErrorMessage(body)) return [] as unknown as T;
     throw new Error(`FMP stable API error: ${res.status}`);
   }
 

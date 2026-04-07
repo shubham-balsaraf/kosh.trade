@@ -511,10 +511,16 @@ export async function GET(req: NextRequest) {
         });
       } catch (e: any) {
         console.error("[Signals/Oracle] generateOraclePicks FAILED:", e.message, e.stack);
+        const raw = e.message || "Unknown error";
+        const isApiNoise =
+          /pattern|did not match|invalid.*symbol|rate.?limit|api.*error|pre.?flight/i.test(raw);
+        const userMsg = isApiNoise
+          ? "FMP data provider returned an error — this usually resolves on retry. Check your FMP API key and plan limits."
+          : raw;
         return NextResponse.json({
           picks: [],
           total: 0,
-          error: e.message,
+          error: userMsg,
           generatedAt: new Date().toISOString(),
         });
       }
