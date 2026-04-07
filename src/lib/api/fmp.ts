@@ -1,7 +1,41 @@
 const FMP_LEGACY = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
 
 function apiKey(): string {
-  return process.env.FMP_API_KEY || "";
+  const raw = process.env.FMP_API_KEY ?? "";
+  return String(raw).trim().replace(/^["']|["']$/g, "");
+}
+
+/** Normalize FMP JSON error fields (stable vs legacy shapes). */
+function readFmpErrorMessage(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const o = json as Record<string, unknown>;
+  for (const k of ["Error Message", "error", "message"] as const) {
+    const v = o[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+    if (Array.isArray(v) && typeof v[0] === "string" && v[0].trim()) return v[0].trim();
+  }
+  return "";
+}
+
+/**
+ * Treat as empty-data, not fatal — FMP often returns these on strict validation, plan limits, or bad params.
+ * Avoid surfacing raw "pattern" validation text to users.
+ */
+function isFmpSoftErrorMessage(message: string): boolean {
+  const m = message.toLowerCase();
+  if (!m) return false;
+  return (
+    /\bpattern\b/.test(m) ||
+    /\bdid not match\b/.test(m) ||
+    /invalid\s+symbol/.test(m) ||
+    /symbol\s+not\s+found/.test(m) ||
+    /not\s+available/.test(m) ||
+    /\bno\s+data\b/.test(m) ||
+    /\bpremium\b/.test(m) ||
+    /limit\s+exceeded|rate\s+limit/.test(m) ||
+    /\bunauthorized\b|\bforbidden\b/.test(m) ||
+    /invalid\s+api/.test(m)
+  );
 }
 
 /**
@@ -154,15 +188,15 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
           const retry2 = await fetch(url.toString(), { cache: "no-store" });
           if (!retry2.ok) { lastError = `429 rate-limited after 3 retries`; continue; }
           const json2 = await retry2.json();
-          if (json2 && typeof json2 === "object" && "Error Message" in json2) { lastError = json2["Error Message"]; continue; }
+          const err2 = readFmpErrorMessage(json2);
+          if (err2) { lastError = err2; continue; }
           setCache(cacheKey, json2, getCacheTTL(endpoint));
           return json2;
         }
         if (!retry.ok) { lastError = `${retry.status}`; continue; }
         const retryJson = await retry.json();
-        if (retryJson && typeof retryJson === "object" && "Error Message" in retryJson) {
-          lastError = retryJson["Error Message"]; continue;
-        }
+        const errR = readFmpErrorMessage(retryJson);
+        if (errR) { lastError = errR; continue; }
         setCache(cacheKey, retryJson, getCacheTTL(endpoint));
         return retryJson;
       }
@@ -184,8 +218,10 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
       }
 
       const json = await res.json();
-      if (json && typeof json === "object" && "Error Message" in json) {
-        lastError = json["Error Message"]; continue;
+      const errMain = readFmpErrorMessage(json);
+      if (errMain) {
+        lastError = errMain;
+        continue;
       }
 
       setCache(cacheKey, json, getCacheTTL(endpoint));
@@ -197,6 +233,10 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
   }
 
   console.error(`[FMP] ${endpoint} failed on all bases: ${lastError}`);
+  if (isFmpSoftErrorMessage(lastError)) {
+    console.warn(`[FMP] ${endpoint}: returning empty result after soft error`);
+    return [] as unknown as T;
+  }
   throw new Error(`FMP API error: ${lastError}`);
 }
 
@@ -230,9 +270,21 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
     await new Promise((r) => setTimeout(r, 1000));
     const retry = await fetch(url.toString(), { cache: "no-store" });
     if (!retry.ok) throw new Error(`FMP stable API error: ${retry.status}`);
-    const json = await retry.json();
-    setCache(cacheKey, json, getCacheTTL(endpoint));
-    return json;
+    const retryText = await retry.text();
+    let retryJson: unknown;
+    try {
+      retryJson = retryText ? JSON.parse(retryText) : null;
+    } catch {
+      if (isFmpSoftErrorMessage(retryText)) return [] as unknown as T;
+      throw new Error(`FMP stable API error: invalid JSON`);
+    }
+    const err429 = readFmpErrorMessage(retryJson);
+    if (err429) {
+      if (isFmpSoftErrorMessage(err429)) return [] as unknown as T;
+      throw new Error(`FMP stable API error: ${err429}`);
+    }
+    setCache(cacheKey, retryJson, getCacheTTL(endpoint));
+    return retryJson as T;
   }
 
   if (res.status === 402 || res.status === 403) {
@@ -246,21 +298,27 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
     throw new Error(`FMP stable API error: ${res.status}`);
   }
 
-  const json = await res.json();
-  if (json && typeof json === "object" && "Error Message" in json) {
-    const em = String((json as Record<string, unknown>)["Error Message"] || "");
-    console.warn(`[FMP/stable] ${endpoint}: ${em}`);
-    // Stable API returns 200 + Error Message for bad symbols / validation (e.g. "pattern" errors).
-    const softFail =
-      /pattern|invalid\s+symbol|symbol\s+not\s+found|not\s+available|no\s+data|premium/i.test(em);
-    if (softFail) {
+  const text = await res.text();
+  let json: unknown;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    if (isFmpSoftErrorMessage(text)) {
+      console.warn(`[FMP/stable] ${endpoint}: non-JSON soft error`);
       return [] as unknown as T;
     }
+    throw new Error(`FMP stable API error: invalid JSON body`);
+  }
+
+  const em = readFmpErrorMessage(json);
+  if (em) {
+    console.warn(`[FMP/stable] ${endpoint}: ${em}`);
+    if (isFmpSoftErrorMessage(em)) return [] as unknown as T;
     throw new Error(`FMP stable API error: ${em}`);
   }
 
   setCache(cacheKey, json, getCacheTTL(endpoint));
-  return json;
+  return json as T;
 }
 
 /* ── Exported API methods ────────────────────────────── */
@@ -343,7 +401,7 @@ function normalizeSearchRow(r: Record<string, unknown>): StockSearchRow | null {
 /**
  * True if the user is probably typing a ticker, not a company name.
  * Long all-letter strings ("google", "amazon") are names — not tickers — so we avoid
- * prefix-matching them against symbols like GOOP (GOOG*).
+ * treating them like symbol prefixes (filters noise like GOOP vs GOOG).
  */
 function queryLooksLikeTicker(q: string): boolean {
   const s = q.trim();
@@ -354,28 +412,11 @@ function queryLooksLikeTicker(q: string): boolean {
   return true;
 }
 
-/** Normalized company / brand → primary US symbols (search disambiguation). */
-const SEARCH_BRAND_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  google: ["GOOGL", "GOOG"],
-  alphabet: ["GOOGL", "GOOG"],
-  youtube: ["GOOGL", "GOOG"],
-  amazon: ["AMZN"],
-  microsoft: ["MSFT"],
-  apple: ["AAPL"],
-  netflix: ["NFLX"],
-  nvidia: ["NVDA"],
-  tesla: ["TSLA"],
-  facebook: ["META"],
-  meta: ["META"],
-  instagram: ["META"],
-  whatsapp: ["META"],
-};
-
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Score how well the company name matches a human query (word boundaries). */
+/** Score how well the company name matches a human query (word boundaries + token prefixes). */
 function nameMatchScore(displayName: string, ql: string): number {
   const name = displayName.toLowerCase();
   if (!name || !ql) return 0;
@@ -395,20 +436,41 @@ function nameMatchScore(displayName: string, ql: string): number {
   }
 
   if (name.startsWith(ql)) score += 45;
+
+  const nameTokens = displayName.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 1);
+  for (const w of nameTokens) {
+    if (ql.length >= 2 && w.startsWith(ql)) score += 185;
+  }
+
   return score;
 }
 
-function aliasBoostForSymbol(sym: string, ql: string): number {
-  let best = 0;
-  const words = ql.split(/\s+/).map((w) => w.toLowerCase()).filter((w) => w.length >= 2);
-  for (const key of words.length > 0 ? words : [ql]) {
-    const symbols = SEARCH_BRAND_ALIASES[key];
-    if (!symbols) continue;
-    const idx = symbols.indexOf(sym);
-    const b = idx === 0 ? 480 : idx > 0 ? 420 : 0;
-    if (b > best) best = b;
-  }
-  return best;
+/**
+ * For name-style queries, require a real tie to the company name or a tight symbol anchor
+ * (first 4 chars of query vs symbol prefix) so arbitrary tickers do not outrank real matches.
+ */
+function symbolAnchorPrefix(qu: string): string {
+  const u = qu.toUpperCase().trim();
+  if (u.length <= 1) return u;
+  const len = Math.min(4, Math.max(2, u.length));
+  return u.slice(0, len);
+}
+
+function isSearchRowRelevant(query: string, row: StockSearchRow, tickerish: boolean): boolean {
+  if (tickerish) return true;
+  const q = query.trim();
+  const ql = q.toLowerCase();
+  const qu = q.toUpperCase();
+  const sym = row.symbol.toUpperCase();
+  const displayName = row.name || "";
+
+  if (sym === qu) return true;
+  if (nameMatchScore(displayName, ql) > 0) return true;
+
+  const anchor = symbolAnchorPrefix(qu);
+  if (anchor.length >= 2 && sym.startsWith(anchor)) return true;
+
+  return false;
 }
 
 function exchangeRank(exchangeShortName: string | undefined, stockExchange: string | undefined): number {
@@ -434,6 +496,7 @@ function rankSearchResults(query: string, rows: StockSearchRow[]): StockSearchRo
   const qu = q.toUpperCase();
   const ql = q.toLowerCase();
   const tickerish = queryLooksLikeTicker(q);
+  const anchor = symbolAnchorPrefix(qu);
 
   const scored = rows.map((r) => {
     let score = 0;
@@ -446,17 +509,20 @@ function rankSearchResults(query: string, rows: StockSearchRow[]): StockSearchRo
       if (qu.length >= 2 && sym.length > qu.length) {
         score += (sym.length - qu.length) * 22;
       }
-    } else if (sym.includes(qu) && qu.length >= 2) score += 120;
+    } else if (tickerish && sym.includes(qu) && qu.length >= 2) score += 120;
+    else if (!tickerish && qu.length <= 5 && sym.includes(qu) && qu.length >= 2) score += 95;
 
     score += nameMatchScore(displayName, ql);
-    score += aliasBoostForSymbol(sym, ql);
+
+    if (!tickerish && anchor.length >= 2 && sym.startsWith(anchor)) {
+      score += 170 + Math.min(8, sym.length - anchor.length) * 10;
+    }
 
     score += exchangeRank(r.exchangeShortName, r.stockExchange);
     score += symbolListingPenalty(r.symbol);
 
     if (tickerish && qu.length >= 3 && sym.startsWith(qu) && !displayName.toLowerCase().includes(ql)) {
-      const aliasHit = aliasBoostForSymbol(sym, ql) > 0;
-      if (!aliasHit) score -= 35;
+      score -= 35;
     }
 
     return { r, score };
@@ -466,26 +532,58 @@ function rankSearchResults(query: string, rows: StockSearchRow[]): StockSearchRo
   return scored.map((x) => x.r);
 }
 
+const SEARCH_NAME_LIMIT = "45";
+const SEARCH_SYMBOL_LIMIT = "45";
+const SEARCH_RESULT_CAP = 20;
+
 /**
- * Merges FMP name + symbol search, dedupes, ranks (ticker queries and US listings first).
+ * Stock search engine: parallel name + symbol queries (stable + legacy via fmpFetch),
+ * name-first merge, relevance filter for company-name queries, then ranked US-primary bias.
  */
 export async function searchStocks(query: string): Promise<StockSearchRow[]> {
   const q = query.trim();
   if (!q) return [];
 
-  const [nameRaw, symRaw] = await Promise.all([
-    fmpFetch<any[]>("/search-name", { query: q, limit: "15" }).catch(() => []),
-    stableFetch<any[]>("/search-symbol", { query: q, limit: "20" }).catch(() => []),
-  ]);
+  const qUpper = q.toUpperCase();
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const firstToken = tokens[0] || q;
+  const firstUpper = firstToken.toUpperCase();
 
-  const merged = new Map<string, StockSearchRow>();
-  for (const raw of [...(Array.isArray(symRaw) ? symRaw : []), ...(Array.isArray(nameRaw) ? nameRaw : [])]) {
-    const row = normalizeSearchRow(raw as Record<string, unknown>);
-    if (!row) continue;
-    if (!merged.has(row.symbol)) merged.set(row.symbol, row);
+  const nameQueries = new Set<string>([q]);
+  if (firstToken !== q && firstToken.length >= 2) nameQueries.add(firstToken);
+
+  const symQueries = new Set<string>([q, qUpper]);
+  if (firstToken !== q && firstToken.length >= 2) {
+    symQueries.add(firstToken);
+    symQueries.add(firstUpper);
   }
 
-  return rankSearchResults(q, [...merged.values()]).slice(0, 15);
+  const nameJobs = [...nameQueries].map((nq) =>
+    fmpFetch<any[]>("/search-name", { query: nq, limit: SEARCH_NAME_LIMIT }).catch(() => []),
+  );
+  const symJobs = [...symQueries].map((sq) =>
+    fmpFetch<any[]>("/search-symbol", { query: sq, limit: SEARCH_SYMBOL_LIMIT }).catch(() => []),
+  );
+
+  const [nameChunks, symChunks] = await Promise.all([Promise.all(nameJobs), Promise.all(symJobs)]);
+
+  const merged = new Map<string, StockSearchRow>();
+
+  for (const raw of nameChunks.flat()) {
+    const row = normalizeSearchRow(raw as Record<string, unknown>);
+    if (row) merged.set(row.symbol, row);
+  }
+  for (const raw of symChunks.flat()) {
+    const row = normalizeSearchRow(raw as Record<string, unknown>);
+    if (row && !merged.has(row.symbol)) merged.set(row.symbol, row);
+  }
+
+  const all = [...merged.values()];
+  const tickerish = queryLooksLikeTicker(q);
+  const relevant = all.filter((r) => isSearchRowRelevant(q, r, tickerish));
+  const pool = relevant.length > 0 ? relevant : all;
+
+  return rankSearchResults(q, pool).slice(0, SEARCH_RESULT_CAP);
 }
 
 /** @deprecated Use searchStocks — kept for any direct imports */
@@ -661,6 +759,7 @@ export async function getStockPeers(ticker: string) {
 
 /* ── DCF Valuation ──────────────────────────────────── */
 
+/** Uses stable + v3 fallback (stable-only DCF often returns validation errors on some plans/symbols). */
 export async function getDCFValuation(ticker: string) {
-  return stableFetch<any[]>("/discounted-cash-flow", { symbol: ticker.toUpperCase() });
+  return fmpFetch<any[]>("/discounted-cash-flow", { symbol: ticker });
 }

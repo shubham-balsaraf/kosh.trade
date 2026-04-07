@@ -200,17 +200,28 @@ const ORACLE_UNIVERSE = [...new Set(ORACLE_UNIVERSE_RAW.map(sanitizeFmpSymbol).f
 export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<string, BuffettFundamentals>> {
   const result = new Map<string, BuffettFundamentals>();
 
-  /* Pre-flight: verify FMP is alive with a single AAPL call */
-  console.log(`[Oracle] Pre-flight: testing FMP API with AAPL profile...`);
-  try {
-    const test = await getProfile("AAPL");
-    const mc = Number(test?.mktCap ?? test?.marketCap ?? 0);
-    if (!test || !Number.isFinite(mc) || mc < 1e6) {
-      throw new Error(`FMP returned invalid profile data: ${JSON.stringify(test)?.slice(0, 200)}`);
+  /* Pre-flight: verify FMP returns usable profiles (trimmed key, alternate ticker if one fails) */
+  console.log(`[Oracle] Pre-flight: testing FMP profile endpoint...`);
+  let preflightOk = false;
+  let lastErr = "";
+  for (const sym of ["AAPL", "MSFT"]) {
+    try {
+      const test = await getProfile(sym);
+      const mc = Number(test?.mktCap ?? test?.marketCap ?? 0);
+      if (test && Number.isFinite(mc) && mc >= 1e6) {
+        console.log(`[Oracle] Pre-flight OK: ${sym} mktCap=$${(mc / 1e9).toFixed(0)}B`);
+        preflightOk = true;
+        break;
+      }
+      lastErr = `Unusable profile for ${sym} (missing mktCap)`;
+    } catch (e: any) {
+      lastErr = e?.message || String(e);
     }
-    console.log(`[Oracle] Pre-flight OK: AAPL mktCap=$${(mc / 1e9).toFixed(0)}B`);
-  } catch (e: any) {
-    throw new Error(`FMP API pre-flight failed — API may be down or key invalid: ${e.message}`);
+  }
+  if (!preflightOk) {
+    throw new Error(
+      `FMP pre-flight failed — check FMP_API_KEY (no spaces or quotes in .env) and plan access to company profile. ${lastErr}`,
+    );
   }
 
   await delay(500);
