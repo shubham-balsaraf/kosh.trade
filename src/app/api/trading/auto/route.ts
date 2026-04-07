@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/options";
 import { prisma } from "@/lib/db";
 import { runTradingCycle, runDailyBriefing, runDailySummary } from "@/lib/trading/engine";
+import { recalibrate, getLearningStats, updateLedger } from "@/lib/trading/learning";
 
 export async function POST(req: NextRequest) {
   const cronSecret = req.headers.get("x-cron-secret");
@@ -75,6 +76,16 @@ export async function POST(req: NextRequest) {
   if (action === "summary") {
     await runDailySummary(userId);
     return NextResponse.json({ sent: true });
+  }
+
+  if (action === "recalibrate") {
+    try {
+      await updateLedger(userId);
+      const result = await recalibrate(userId);
+      return NextResponse.json(result);
+    } catch (e: any) {
+      return NextResponse.json({ updated: false, reason: e.message }, { status: 500 });
+    }
   }
 
   const existingConfig = await prisma.tradingConfig.findUnique({ where: { userId } });
@@ -285,6 +296,15 @@ export async function GET(req: NextRequest) {
         exitAt: t.exitAt?.toISOString(),
       })),
     });
+  }
+
+  if (action === "learning-stats") {
+    try {
+      const stats = await getLearningStats(userId);
+      return NextResponse.json(stats);
+    } catch (e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
+    }
   }
 
   if (action === "equity-history") {

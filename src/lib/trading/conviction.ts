@@ -20,6 +20,7 @@ import { getPriceTarget as getFinnhubPriceTarget, getEPSEstimates as getFinnhubE
 import { batchStocktwitsSentiment } from "@/lib/api/stocktwits";
 import { batchFinvizSnapshot } from "@/lib/api/finviz";
 import { prisma } from "@/lib/db";
+import { type ConvictionWeights, DEFAULT_WEIGHTS } from "./learning";
 
 /* ── Public interfaces ──────────────────────────────────── */
 
@@ -86,15 +87,7 @@ export interface ScoredCandidate {
   sentimentScore: number;
 }
 
-export const WEIGHTS = {
-  signalDiversity: 0.15,
-  technical: 0.15,
-  fundamental: 0.15,
-  valuation: 0.15,
-  smartMoney: 0.15,
-  catalystSentiment: 0.15,
-  riskAdjusted: 0.10,
-};
+export const WEIGHTS: ConvictionWeights = { ...DEFAULT_WEIGHTS };
 
 const MAX_PER_SECTOR = 3;
 const MIN_COMPOSITE_SCORE = 30;
@@ -982,10 +975,12 @@ export async function scoreForTrading(
   signalMap: Map<string, TradeSignal>,
   bundle: RawSignalBundle,
   discovered: DiscoveredTicker[],
+  weights?: ConvictionWeights,
 ): Promise<Map<string, TradingConviction>> {
   const results = new Map<string, TradingConviction>();
   if (tickers.length === 0) return results;
 
+  const w = weights || WEIGHTS;
   console.log(`[Conviction/Trading] Deep scoring ${tickers.length} tickers for KoshPilot...`);
 
   const [fundamentals, sentimentMap, edgarMap, stocktwitsSentiment, finvizSnapshots] = await Promise.all([
@@ -1046,13 +1041,13 @@ export async function scoreForTrading(
     };
 
     const composite = Math.round(
-      scores.signalDiversity * WEIGHTS.signalDiversity +
-      scores.technical * WEIGHTS.technical +
-      scores.fundamental * WEIGHTS.fundamental +
-      scores.valuation * WEIGHTS.valuation +
-      scores.smartMoney * WEIGHTS.smartMoney +
-      scores.catalystSentiment * WEIGHTS.catalystSentiment +
-      scores.riskAdjusted * WEIGHTS.riskAdjusted
+      scores.signalDiversity * w.signalDiversity +
+      scores.technical * w.technical +
+      scores.fundamental * w.fundamental +
+      scores.valuation * w.valuation +
+      scores.smartMoney * w.smartMoney +
+      scores.catalystSentiment * w.catalystSentiment +
+      scores.riskAdjusted * w.riskAdjusted
     );
 
     const confidence = computeDataConfidence(fd, scan, bundle, ticker);

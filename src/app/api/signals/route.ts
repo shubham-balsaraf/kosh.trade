@@ -502,28 +502,26 @@ export async function GET(req: NextRequest) {
         console.warn("[Signals/Oracle] getRawSignals failed:", (e as Error).message);
       }
 
+      let picks: Awaited<ReturnType<typeof generateOraclePicks>> = [];
+      let oracleErr: string | undefined;
+
       try {
-        const picks = await generateOraclePicks(rawSignals);
-        return NextResponse.json({
-          picks,
-          total: picks.length,
-          generatedAt: new Date().toISOString(),
-        });
+        picks = await generateOraclePicks(rawSignals);
       } catch (e: any) {
         console.error("[Signals/Oracle] generateOraclePicks FAILED:", e.message, e.stack);
-        const raw = e.message || "Unknown error";
-        const isApiNoise =
-          /pattern|did not match|invalid.*symbol|rate.?limit|api.*error|pre.?flight/i.test(raw);
-        const userMsg = isApiNoise
-          ? "FMP data provider returned an error — this usually resolves on retry. Check your FMP API key and plan limits."
-          : raw;
-        return NextResponse.json({
-          picks: [],
-          total: 0,
-          error: userMsg,
-          generatedAt: new Date().toISOString(),
-        });
+        oracleErr = "Oracle analysis failed — FMP data may be temporarily unavailable. Try again in a minute.";
       }
+
+      if (picks.length === 0 && !oracleErr) {
+        oracleErr = "No picks could be generated — FMP may be rate-limiting or returning incomplete data. Try again shortly.";
+      }
+
+      return NextResponse.json({
+        picks,
+        total: picks.length,
+        ...(oracleErr ? { error: oracleErr } : {}),
+        generatedAt: new Date().toISOString(),
+      });
     }
 
     const [macro] = await Promise.all([
@@ -589,6 +587,10 @@ export async function GET(req: NextRequest) {
       ticker,
     });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[Signals] Outer catch:", e.message, e.stack);
+    return NextResponse.json(
+      { error: "Something went wrong processing your request. Please try again." },
+      { status: 500 },
+    );
   }
 }

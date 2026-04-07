@@ -1933,6 +1933,229 @@ function EquityChart({ points, paperBalance, liveEquity }: { points: EquityPoint
   );
 }
 
+interface LearningStatsData {
+  totalClosedTrades: number;
+  snapshotCoverage: number;
+  currentWeights: Record<string, number>;
+  weightVersion: number;
+  lastRecalibration: string | null;
+  strategyPerformance: Array<{ strategy: string; trades: number; winRate: number; avgPnl: number; totalPnl: number }>;
+  sourcePerformance: Array<{ source: string; trades: number; winRate: number; avgPnl: number }>;
+  convictionPerformance: Array<{ bucket: string; trades: number; winRate: number; avgPnl: number }>;
+  driftAlerts: string[];
+}
+
+function LearningPanel() {
+  const [expanded, setExpanded] = useState(false);
+  const [stats, setLearningStats] = useState<LearningStatsData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [recalibrating, setRecalibrating] = useState(false);
+  const [recalResult, setRecalResult] = useState<string | null>(null);
+
+  const fetchStats = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/trading/auto?action=learning-stats");
+      if (res.ok) setLearningStats(await res.json());
+    } catch {}
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (expanded && !stats) fetchStats();
+  }, [expanded, stats, fetchStats]);
+
+  const handleRecalibrate = async () => {
+    setRecalibrating(true); setRecalResult(null);
+    try {
+      const res = await fetch("/api/trading/auto?action=recalibrate", { method: "POST" });
+      const data = await res.json();
+      setRecalResult(data.updated ? `Recalibrated v${data.version}: ${data.reason}` : data.reason);
+      if (data.updated) fetchStats();
+    } catch (e: any) { setRecalResult(e.message); }
+    setRecalibrating(false);
+  };
+
+  const DEFAULT_WEIGHT_VALUES: Record<string, number> = {
+    signalDiversity: 0.15, technical: 0.15, fundamental: 0.15,
+    valuation: 0.15, smartMoney: 0.15, catalystSentiment: 0.15, riskAdjusted: 0.10,
+  };
+
+  return (
+    <div className="glass-card overflow-hidden animate-fade-slide-up-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-5 py-4 flex items-center justify-between hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <Brain size={14} className="text-purple-400/70" />
+          <h3 className="text-sm font-semibold text-white/60">Learning Engine</h3>
+          {stats && stats.weightVersion > 0 && (
+            <Badge variant="gold">v{stats.weightVersion}</Badge>
+          )}
+          {stats && stats.driftAlerts.length > 0 && (
+            <Badge variant="red">{stats.driftAlerts.length} alert{stats.driftAlerts.length !== 1 ? "s" : ""}</Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {stats && (
+            <span className="text-[10px] text-white/20">
+              {stats.totalClosedTrades} trades | {stats.snapshotCoverage}% coverage
+            </span>
+          )}
+          {expanded ? <ChevronUp size={14} className="text-white/20" /> : <ChevronDown size={14} className="text-white/20" />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="px-5 pb-5 space-y-4 border-t border-white/[0.04]">
+          {loading && !stats ? (
+            <div className="py-6 text-center text-white/15 text-xs">Loading learning data...</div>
+          ) : stats ? (
+            <>
+              {stats.driftAlerts.length > 0 && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/[0.04] p-3 space-y-1.5 mt-3">
+                  <div className="flex items-center gap-2 text-red-400/80 text-xs font-semibold">
+                    <AlertTriangle size={12} /> Drift Alerts
+                  </div>
+                  {stats.driftAlerts.map((a, i) => (
+                    <p key={i} className="text-[10px] text-red-300/60 leading-relaxed">{a}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                {stats.strategyPerformance.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-white/40 mb-2 flex items-center gap-1.5">
+                      <Zap size={10} /> Strategy Performance
+                    </h4>
+                    <div className="space-y-1.5">
+                      {stats.strategyPerformance.map((s) => (
+                        <div key={s.strategy} className="flex items-center justify-between bg-white/[0.02] rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-white/50 font-medium">{s.strategy}</span>
+                            <span className="text-[9px] text-white/15">{s.trades} trades</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-semibold ${s.winRate >= 50 ? "text-emerald-400/80" : "text-red-400/70"}`}>
+                              {s.winRate.toFixed(0)}% win
+                            </span>
+                            <span className={`text-[10px] font-medium ${s.totalPnl >= 0 ? "text-emerald-400/60" : "text-red-400/60"}`}>
+                              {s.totalPnl >= 0 ? "+" : ""}${s.totalPnl.toFixed(0)}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {stats.sourcePerformance.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-white/40 mb-2 flex items-center gap-1.5">
+                      <Radar size={10} /> Source Quality
+                    </h4>
+                    <div className="space-y-1.5">
+                      {stats.sourcePerformance.map((s) => (
+                        <div key={s.source} className="flex items-center justify-between bg-white/[0.02] rounded-lg px-3 py-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] text-white/50 font-medium capitalize">{s.source}</span>
+                            <span className="text-[9px] text-white/15">{s.trades} trades</span>
+                          </div>
+                          <span className={`text-[10px] font-semibold ${s.winRate >= 50 ? "text-emerald-400/80" : "text-red-400/70"}`}>
+                            {s.winRate.toFixed(0)}% win
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {stats.convictionPerformance.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-white/40 mb-2 flex items-center gap-1.5">
+                    <Target size={10} /> Conviction Buckets
+                  </h4>
+                  <div className="flex gap-2">
+                    {stats.convictionPerformance.map((c) => (
+                      <div key={c.bucket} className="flex-1 bg-white/[0.02] rounded-lg px-3 py-2 text-center">
+                        <p className="text-[10px] text-white/40 capitalize font-medium">{c.bucket}</p>
+                        <p className={`text-sm font-bold ${c.winRate >= 50 ? "text-emerald-400" : c.winRate >= 35 ? "text-amber-400" : "text-red-400"}`}>
+                          {c.winRate.toFixed(0)}%
+                        </p>
+                        <p className="text-[9px] text-white/15">{c.trades} trades</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h4 className="text-xs font-semibold text-white/40 mb-2 flex items-center gap-1.5">
+                  <Brain size={10} /> Conviction Weights
+                  {stats.weightVersion > 0 && (
+                    <span className="text-[9px] text-purple-400/50">
+                      v{stats.weightVersion} — {stats.lastRecalibration
+                        ? `updated ${new Date(stats.lastRecalibration).toLocaleDateString()}`
+                        : "learned"}
+                    </span>
+                  )}
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(stats.currentWeights).map(([dim, weight]) => {
+                    const defaultVal = DEFAULT_WEIGHT_VALUES[dim] ?? 0.15;
+                    const diff = (weight as number) - defaultVal;
+                    const color = Math.abs(diff) < 0.005 ? "text-white/30" : diff > 0 ? "text-emerald-400/70" : "text-red-400/70";
+                    return (
+                      <span key={dim} className="inline-flex items-center gap-1 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2 py-1 text-[10px]">
+                        <span className="text-white/40">{dim.replace("catalystSentiment", "catalyst")}</span>
+                        <span className={`font-mono font-semibold ${color}`}>{((weight as number) * 100).toFixed(1)}%</span>
+                        {Math.abs(diff) >= 0.005 && (
+                          <span className={`text-[8px] ${color}`}>
+                            ({diff > 0 ? "+" : ""}{(diff * 100).toFixed(1)})
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  onClick={handleRecalibrate}
+                  disabled={recalibrating || stats.totalClosedTrades < 20}
+                  className="px-3 py-2 rounded-xl text-xs font-semibold bg-purple-500/10 text-purple-300/90 border border-purple-500/20 hover:bg-purple-500/15 disabled:opacity-40 flex items-center gap-1.5"
+                >
+                  {recalibrating ? <RefreshCw size={12} className="animate-spin" /> : <Brain size={12} />}
+                  Recalibrate Weights
+                </button>
+                <button
+                  onClick={fetchStats}
+                  disabled={loading}
+                  className="px-3 py-2 rounded-xl text-xs font-medium text-white/30 border border-white/[0.06] hover:text-white/50 disabled:opacity-40"
+                >
+                  <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+                </button>
+                {stats.totalClosedTrades < 20 && (
+                  <span className="text-[10px] text-white/15">Need 20+ closed trades to recalibrate</span>
+                )}
+              </div>
+              {recalResult && (
+                <p className="text-[10px] text-purple-400/70 mt-1">{recalResult}</p>
+              )}
+            </>
+          ) : (
+            <div className="py-6 text-center text-white/15 text-xs">No learning data yet</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AutoTradingPage() {
   useTrackView("KoshPilot");
   const [config, setConfig] = useState<TradingConfig | null>(null);
@@ -2399,6 +2622,9 @@ export default function AutoTradingPage() {
 
       {/* ─── Prediction Accuracy ─── */}
       <AccuracyPanel />
+
+      {/* ─── Learning Engine ─── */}
+      <LearningPanel />
 
       {/* ─── Mission Report ─── */}
       {runResult && <MissionReport result={runResult} onClose={() => setRunResult(null)} />}

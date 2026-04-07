@@ -1,3 +1,5 @@
+import { recordApiFailure, recordApiSuccess, isApiHealthy } from "./api-health";
+
 /** @deprecated Legacy v3 endpoints were retired by FMP in Aug 2025. Kept for reference only. */
 const _FMP_LEGACY = process.env.FMP_API_BASE || "https://financialmodelingprep.com/api/v3";
 void _FMP_LEGACY;
@@ -166,6 +168,10 @@ function buildStableUrl(endpoint: string, params: Record<string, string>, key: s
  * NEVER throws — returns empty array on any failure so callers don't crash.
  */
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
+  if (!isApiHealthy(endpoint)) {
+    return [] as unknown as T;
+  }
+
   const key = apiKey();
   if (!key) {
     console.error("[FMP] FMP_API_KEY is not configured");
@@ -209,6 +215,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
 
     if (!res.ok) {
       console.warn(`[FMP] ${endpoint} returned ${res.status}`);
+      recordApiFailure(endpoint);
       return [] as unknown as T;
     }
 
@@ -234,10 +241,12 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
       return [] as unknown as T;
     }
 
+    recordApiSuccess(endpoint);
     setCache(cacheKey, json, getCacheTTL(endpoint));
     return json as T;
   } catch (e: any) {
     console.warn(`[FMP] ${endpoint} network error: ${e.message}`);
+    recordApiFailure(endpoint);
     return [] as unknown as T;
   }
 }

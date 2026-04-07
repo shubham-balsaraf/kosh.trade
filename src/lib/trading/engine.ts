@@ -7,6 +7,7 @@ import { getDailyBriefing } from "./ai-analyst";
 import { sendTradeNotification, sendDailySummary } from "./notifications";
 import { discoverOpportunities, getRawSignals, type DiscoveredTicker } from "./discovery";
 import { scoreForTrading } from "./conviction";
+import { getLearnedWeights, saveTradeSnapshot, updateLedger, type ConvictionWeights } from "./learning";
 
 interface EngineResult {
   status: "OK" | "SKIPPED" | "ERROR";
@@ -194,6 +195,12 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     console.log(`[Engine] Paper cycle for ${email || userId} | profile=${config.riskProfile || "MODERATE"} | watchlist=${config.watchlist?.length || 0} tickers`);
     const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
+    let learnedWeights: ConvictionWeights | undefined;
+    try {
+      learnedWeights = await getLearnedWeights(userId);
+      console.log(`[Engine] Loaded learned weights v${learnedWeights ? "custom" : "default"}`);
+    } catch { /* fall back to defaults */ }
+
     const openTrades = await prisma.autoTrade.findMany({
       where: { userId, status: "OPEN" },
     });
@@ -256,6 +263,10 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           });
         }
       } catch {}
+    }
+
+    if (exits.length > 0) {
+      updateLedger(userId).catch((e) => console.warn("[Engine] updateLedger failed (non-fatal):", e));
     }
 
     const wlCtx = await getWatchlistContext(userId, config.watchlist);
@@ -323,7 +334,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
     let convictionScores = new Map<string, { compositeScore: number; dataConfidence: number; scores: Record<string, number> }>();
     if (bundle && topCandidateTickers.length > 0) {
       try {
-        convictionScores = await scoreForTrading(topCandidateTickers, scanLookup, signalLookup, bundle, discovered);
+        convictionScores = await scoreForTrading(topCandidateTickers, scanLookup, signalLookup, bundle, discovered, learnedWeights);
         console.log(`[Engine] Conviction scores: ${[...convictionScores.entries()].map(([t, c]) => `${t}=${c.compositeScore}`).join(", ")}`);
       } catch (e) {
         console.warn("[Engine] scoreForTrading failed (non-fatal):", e);
@@ -467,7 +478,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         continue;
       }
 
-      await prisma.autoTrade.create({
+      const createdTrade = await prisma.autoTrade.create({
         data: {
           userId,
           ticker: signal.ticker,
@@ -484,6 +495,17 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
           entryAt: new Date(),
         },
       });
+
+      saveTradeSnapshot({
+        autoTradeId: createdTrade.id,
+        signal,
+        scan: scanLookup.get(signal.ticker),
+        conviction: cv ?? undefined,
+        signalSource: signalSource(signal.ticker, discoveryMap, recommendedSet, wlCtx),
+        discoveryReason: discoveryMap.get(signal.ticker.toUpperCase()) || null,
+        fearGreed: sentiment?.score,
+        sector: cv?.scores ? undefined : undefined,
+      }).catch(() => {});
 
       if (held) {
         held.count++;
@@ -579,10 +601,19 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
   const alpacaConfig = getAlpacaConfig(user);
   const riskProfile = getRiskProfile(config.riskProfile || "MODERATE");
 
+  let learnedWeightsLive: ConvictionWeights | undefined;
+  try {
+    learnedWeightsLive = await getLearnedWeights(userId);
+  } catch { /* fall back to defaults */ }
+
   try {
     const exits = await checkExits(alpacaConfig, userId);
     for (const exit of exits) {
       sendTradeNotification(user.email, exit).catch(() => {});
+    }
+
+    if (exits.length > 0) {
+      updateLedger(userId).catch((e) => console.warn("[Engine] updateLedger failed (non-fatal):", e));
     }
 
     const marketOpen = isMarketHours();
@@ -660,7 +691,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
     let convictionScoresLive = new Map<string, { compositeScore: number; dataConfidence: number; scores: Record<string, number> }>();
     if (bundleLive && topCandidateTickersLive.length > 0) {
       try {
-        convictionScoresLive = await scoreForTrading(topCandidateTickersLive, scanLookupLive, signalLookupLive, bundleLive, discovered);
+        convictionScoresLive = await scoreForTrading(topCandidateTickersLive, scanLookupLive, signalLookupLive, bundleLive, discovered, learnedWeightsLive);
         console.log(`[Engine] Live conviction scores: ${[...convictionScoresLive.entries()].map(([t, c]) => `${t}=${c.compositeScore}`).join(", ")}`);
       } catch (e) {
         console.warn("[Engine] scoreForTrading failed (non-fatal):", e);
@@ -814,6 +845,23 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         openTickers.add(signal.ticker);
         tradesExecuted++;
         sendTradeNotification(user.email, { ...result, action: actionLabel }).catch(() => {});
+
+        const recentTrade = await prisma.autoTrade.findFirst({
+          where: { userId, ticker: signal.ticker, status: { in: ["OPEN", "PENDING"] } },
+          orderBy: { createdAt: "desc" },
+        });
+        if (recentTrade) {
+          saveTradeSnapshot({
+            autoTradeId: recentTrade.id,
+            signal,
+            scan: scanLookupLive.get(signal.ticker),
+            conviction: cvLive ?? undefined,
+            signalSource: signalSource(signal.ticker, discoveryMap, recommendedSetLive, wlCtxLive),
+            discoveryReason: discoveryMap.get(signal.ticker.toUpperCase()) || null,
+            fearGreed: sentimentLive?.score,
+          }).catch(() => {});
+        }
+
         const sm = signalMapLive.get(signal.ticker);
         if (sm) {
           sm.decision = isAddOn ? "ADD_ON" : "TRADED";

@@ -821,7 +821,20 @@ export default function SignalsPage() {
     setOracleError(null);
     try {
       const res = await fetch("/api/signals?mode=oracle-picks");
-      const json = await res.json();
+      if (!res.ok) {
+        console.error("[Oracle] HTTP error:", res.status);
+        setOracleError("Oracle analysis temporarily unavailable. Please try again in a moment.");
+        setOracleLoading(false);
+        return;
+      }
+      let json: any;
+      try {
+        json = await res.json();
+      } catch {
+        setOracleError("Received an invalid response from the server. Please try again.");
+        setOracleLoading(false);
+        return;
+      }
       if (json.error) {
         setOracleError(json.error);
         console.error("[Oracle] API error:", json.error);
@@ -834,7 +847,7 @@ export default function SignalsPage() {
       }
     } catch (e: any) {
       console.error("[Oracle] Fetch failed:", e);
-      setOracleError(e.message || "Network error");
+      setOracleError("Network error — could not reach the server. Check your connection and try again.");
       setOraclePicks([]);
     }
     setOracleLoading(false);

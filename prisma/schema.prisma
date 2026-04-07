@@ -205,11 +205,82 @@ model AutoTrade {
   exitAt        DateTime?
   createdAt     DateTime        @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  snapshot TradeSnapshot?
 
   @@index([userId, status])
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, mode])
+}
+
+/// Rich feature vector captured at trade entry — the training data for the learning engine.
+model TradeSnapshot {
+  id              String   @id @default(cuid())
+  autoTradeId     String   @unique
+  autoTrade       AutoTrade @relation(fields: [autoTradeId], references: [id], onDelete: Cascade)
+
+  // Signal sub-scores (8 dimensions from signals.ts)
+  rsiScore        Float?
+  macdScore       Float?
+  bollingerScore  Float?
+  trendScore      Float?
+  volumeScore     Float?
+  momentumScore   Float?
+  vwapScore       Float?
+  srScore         Float?
+  compositeSignal Float?
+
+  // Conviction sub-scores (7 dimensions from conviction.ts)
+  cvTechnical     Float?
+  cvFundamental   Float?
+  cvValuation     Float?
+  cvSmartMoney    Float?
+  cvCatalyst      Float?
+  cvRisk          Float?
+  cvDiversity     Float?
+  cvComposite     Float?
+  dataConfidence  Float?
+
+  // Market context at entry
+  rsi             Float?
+  atr             Float?
+  volumeRatio     Float?
+  fearGreed       Float?
+  signalSource    String?
+  discoveryReason String?
+  strategy        String?
+  sector          String?
+
+  createdAt       DateTime @default(now())
+
+  @@index([autoTradeId])
+}
+
+/// Aggregated performance stats per strategy / source / sector / conviction bucket.
+model StrategyLedger {
+  id            String   @id @default(cuid())
+  userId        String
+  period        String
+  dimension     String
+  trades        Int      @default(0)
+  wins          Int      @default(0)
+  totalPnl      Float    @default(0)
+  avgPnl        Float    @default(0)
+  winRate       Float    @default(0)
+  avgHoldDays   Float    @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([userId, period, dimension])
+  @@index([userId, dimension])
+}
+
+/// Per-user learned weights that override hardcoded defaults, updated by recalibration.
+model LearningWeights {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  weights   Json
+  version   Int      @default(1)
+  updatedAt DateTime @updatedAt
 }
 
 model ConvictionPick {

@@ -219,9 +219,8 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     }
   }
   if (!preflightOk) {
-    throw new Error(
-      `FMP pre-flight failed — check FMP_API_KEY (no spaces or quotes in .env) and plan access to company profile. ${lastErr}`,
-    );
+    console.error(`[Oracle] FMP pre-flight failed: ${lastErr}. Check FMP_API_KEY and plan access.`);
+    return result;
   }
 
   await delay(500);
@@ -268,7 +267,8 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
 
   if (phase1Survivors.length === 0) {
     const diag = `CF=${cfMap.size} IS=${isMap.size} Prof=${profMap.size} of ${tickers.length} tickers. First skip reasons: ${skipReasons.slice(0, 3).join("; ")}`;
-    throw new Error(`No tickers passed data quality gate. FMP may be rate-limiting or returning empty data. Diagnostic: ${diag}`);
+    console.error(`[Oracle] No tickers passed data quality gate. Diagnostic: ${diag}`);
+    return result;
   }
 
   console.log(`[Oracle] Phase 2: fetching supplementary data for ${phase1Survivors.length} tickers...`);
@@ -762,6 +762,15 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
   console.log("[Oracle] Starting Buffett-style long-term analysis...");
   const startTime = Date.now();
 
+  try {
+    return await _generateOraclePicksInner(bundle, startTime);
+  } catch (e: any) {
+    console.error(`[Oracle] UNEXPECTED top-level error (${(Date.now() - startTime) / 1000}s): ${e.message}`);
+    return [];
+  }
+}
+
+async function _generateOraclePicksInner(bundle: RawSignalBundle | null, startTime: number): Promise<OraclePick[]> {
   const universe = [...ORACLE_UNIVERSE];
 
   if (bundle) {
@@ -781,7 +790,13 @@ export async function generateOraclePicks(bundle: RawSignalBundle | null): Promi
 
   console.log(`[Oracle] Universe: ${universe.length} candidates`);
 
-  const fundamentals = await fetchBuffettFundamentals(universe);
+  let fundamentals: Map<string, BuffettFundamentals>;
+  try {
+    fundamentals = await fetchBuffettFundamentals(universe);
+  } catch (e: any) {
+    console.error(`[Oracle] fetchBuffettFundamentals threw: ${e.message}`);
+    return [];
+  }
   console.log(`[Oracle] ${fundamentals.size} tickers with deep fundamentals`);
 
   if (fundamentals.size === 0) {
