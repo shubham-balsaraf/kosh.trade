@@ -138,46 +138,29 @@ async function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function serialFetch<T>(
+const BATCH_CONCURRENCY = 5;
+
+async function batchFetch<T>(
   tickers: string[],
   fetcher: (t: string) => Promise<T>,
   label: string,
-  gapMs = 350,
 ): Promise<Map<string, T>> {
   const map = new Map<string, T>();
-  const failed: string[] = [];
 
-  for (const t of tickers) {
-    try {
-      const result = await fetcher(t);
-      if (result != null && !(Array.isArray(result) && result.length === 0)) {
-        map.set(t, result);
-      } else {
-        failed.push(t);
-        console.warn(`[Oracle] ${label}(${t}): empty result`);
-      }
-    } catch (e: any) {
-      failed.push(t);
-      console.warn(`[Oracle] ${label}(${t}) error: ${e.message}`);
-    }
-    await delay(gapMs);
-  }
+  for (let i = 0; i < tickers.length; i += BATCH_CONCURRENCY) {
+    const batch = tickers.slice(i, i + BATCH_CONCURRENCY);
+    const results = await Promise.allSettled(batch.map((t) => fetcher(t).then((r) => ({ t, r }))));
 
-  if (failed.length > 0) {
-    console.log(`[Oracle] ${label}: retrying ${failed.length} failed tickers after backoff...`);
-    await delay(3000);
-    for (const t of failed) {
-      try {
-        const result = await fetcher(t);
-        if (result != null && !(Array.isArray(result) && result.length === 0)) {
-          map.set(t, result);
-          console.log(`[Oracle] ${label}(${t}) retry succeeded`);
+    for (const res of results) {
+      if (res.status === "fulfilled") {
+        const { t, r } = res.value;
+        if (r != null && !(Array.isArray(r) && r.length === 0)) {
+          map.set(t, r);
         }
-      } catch (e: any) {
-        console.warn(`[Oracle] ${label}(${t}) retry failed: ${e.message}`);
       }
-      await delay(600);
     }
+
+    if (i + BATCH_CONCURRENCY < tickers.length) await delay(200);
   }
 
   console.log(`[Oracle] ${label}: ${map.size}/${tickers.length} succeeded`);
@@ -223,15 +206,13 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
     return result;
   }
 
-  await delay(500);
+  console.log(`[Oracle] Phase 1: fetching core data for ${tickers.length} tickers (batched, ${BATCH_CONCURRENCY} concurrent)...`);
 
-  console.log(`[Oracle] Phase 1: fetching core data for ${tickers.length} tickers (serial, 350ms gaps)...`);
-
-  const cfMap = await serialFetch(tickers, (t) => getCashFlow(t, "annual", 5), "CF", 350);
-  await delay(1500);
-  const isMap = await serialFetch(tickers, (t) => getIncomeStatement(t, "annual", 5), "IS", 350);
-  await delay(1500);
-  const profMap = await serialFetch(tickers, (t) => getProfile(t), "Profile", 350);
+  const [cfMap, isMap, profMap] = await Promise.all([
+    batchFetch(tickers, (t) => getCashFlow(t, "annual", 5), "CF"),
+    batchFetch(tickers, (t) => getIncomeStatement(t, "annual", 5), "IS"),
+    batchFetch(tickers, (t) => getProfile(t), "Profile"),
+  ]);
 
   console.log(`[Oracle] Phase 1 results: CF=${cfMap.size}/${tickers.length} IS=${isMap.size}/${tickers.length} Prof=${profMap.size}/${tickers.length}`);
 
@@ -273,15 +254,13 @@ export async function fetchBuffettFundamentals(tickers: string[]): Promise<Map<s
 
   console.log(`[Oracle] Phase 2: fetching supplementary data for ${phase1Survivors.length} tickers...`);
 
-  const bsMap = await serialFetch(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5), "BS", 350);
-  await delay(1000);
-  const kmMap = await serialFetch(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5), "KM", 350);
-  await delay(1000);
-  const rtMap = await serialFetch(phase1Survivors, (t) => getRatios(t, "annual", 5), "Ratios", 350);
-  await delay(1000);
-  const dcfMap = await serialFetch(phase1Survivors, (t) => getDCFValuation(t), "DCF", 350);
-  await delay(1000);
-  const surpriseMap = await serialFetch(phase1Survivors, (t) => getEarningsSurprises(t), "Surprises", 350);
+  const [bsMap, kmMap, rtMap, dcfMap, surpriseMap] = await Promise.all([
+    batchFetch(phase1Survivors, (t) => getBalanceSheet(t, "annual", 5), "BS"),
+    batchFetch(phase1Survivors, (t) => getKeyMetrics(t, "annual", 5), "KM"),
+    batchFetch(phase1Survivors, (t) => getRatios(t, "annual", 5), "Ratios"),
+    batchFetch(phase1Survivors, (t) => getDCFValuation(t), "DCF"),
+    batchFetch(phase1Survivors, (t) => getEarningsSurprises(t), "Surprises"),
+  ]);
 
   console.log(`[Oracle] Phase 2 results: BS=${bsMap.size} KM=${kmMap.size} RT=${rtMap.size} DCF=${dcfMap.size} Surp=${surpriseMap.size}`);
 
