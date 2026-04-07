@@ -823,10 +823,11 @@ export default function SignalsPage() {
       const res = await fetch("/api/signals?mode=oracle-picks");
       let json: any;
       try {
-        json = await res.json();
-      } catch {
-        console.error("[Oracle] Non-JSON response, status:", res.status);
-        setOracleError("Oracle analysis temporarily unavailable — server returned an unexpected response. Try again in a moment.");
+        const text = await res.text();
+        json = JSON.parse(text);
+      } catch (parseErr: any) {
+        console.error("[Oracle] Non-JSON response, status:", res.status, "parseErr:", parseErr.message);
+        setOracleError(`Server error (${res.status}) — the server may need a rebuild. Check logs for details.`);
         setOracleLoading(false);
         return;
       }
