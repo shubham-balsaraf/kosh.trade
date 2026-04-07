@@ -821,28 +821,25 @@ export default function SignalsPage() {
     setOracleError(null);
     try {
       const res = await fetch("/api/signals?mode=oracle-picks");
-      if (!res.ok) {
-        console.error("[Oracle] HTTP error:", res.status);
-        setOracleError("Oracle analysis temporarily unavailable. Please try again in a moment.");
-        setOracleLoading(false);
-        return;
-      }
       let json: any;
       try {
         json = await res.json();
       } catch {
-        setOracleError("Received an invalid response from the server. Please try again.");
+        console.error("[Oracle] Non-JSON response, status:", res.status);
+        setOracleError("Oracle analysis temporarily unavailable — server returned an unexpected response. Try again in a moment.");
         setOracleLoading(false);
         return;
       }
       if (json.error) {
         setOracleError(json.error);
         console.error("[Oracle] API error:", json.error);
+      } else if (!res.ok) {
+        setOracleError("Oracle analysis temporarily unavailable. Please try again in a moment.");
       }
       if (json.picks && json.picks.length > 0) {
         setOraclePicks(json.picks);
         saveToSession(CACHE_KEYS.oracle, { picks: json.picks });
-      } else if (!json.error) {
+      } else if (!json.error && res.ok) {
         setOracleError("No picks returned — FMP API may be rate-limiting. Try again in a minute.");
       }
     } catch (e: any) {

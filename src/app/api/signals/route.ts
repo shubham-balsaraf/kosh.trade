@@ -589,7 +589,7 @@ export async function GET(req: NextRequest) {
   } catch (e: any) {
     console.error("[Signals] Outer catch:", e.message, e.stack);
     return NextResponse.json(
-      { error: "Something went wrong processing your request. Please try again." },
+      { error: "Something went wrong — please try again. If this persists, check the server logs." },
       { status: 500 },
     );
   }
