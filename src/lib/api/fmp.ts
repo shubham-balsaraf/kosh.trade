@@ -152,6 +152,34 @@ function setCache<T>(key: string, data: T, ttl: number): void {
 const FMP_STABLE = "https://financialmodelingprep.com/stable";
 const FMP_FALLBACK = FMP_LEGACY;
 
+/**
+ * Build the correct URL for an FMP API call.
+ *
+ * Stable API:  /stable/profile?symbol=AAPL&apikey=...
+ * Legacy v3:   /api/v3/profile/AAPL?apikey=...
+ *
+ * v3 uses path-based symbols; stable uses query params. Getting this wrong
+ * causes "The string did not match the expected pattern" from FMP.
+ */
+function buildFmpUrl(base: string, endpoint: string, params: Record<string, string>, key: string): URL {
+  const isLegacy = base.includes("/api/v");
+  const symbol = params.symbol || "";
+
+  let path = `${base}${endpoint}`;
+  if (isLegacy && symbol) {
+    path = `${base}${endpoint}/${encodeURIComponent(symbol)}`;
+  }
+
+  const url = new URL(path);
+  url.searchParams.set("apikey", key);
+
+  for (const [k, v] of Object.entries(params)) {
+    if (isLegacy && k === "symbol") continue;
+    url.searchParams.set(k, v);
+  }
+  return url;
+}
+
 async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const key = apiKey();
   if (!key) throw new Error("FMP_API_KEY is not configured");
@@ -175,11 +203,7 @@ async function fmpFetch<T>(endpoint: string, params: Record<string, string> = {}
 
   for (const base of bases) {
     try {
-      const url = new URL(`${base}${endpoint}`);
-      url.searchParams.set("apikey", key);
-      for (const [k, v] of Object.entries(safeParams)) {
-        url.searchParams.set(k, v);
-      }
+      const url = buildFmpUrl(base, endpoint, safeParams, key);
 
       const res = await fetch(url.toString(), { cache: "no-store" });
 
@@ -287,10 +311,12 @@ async function stableFetch<T>(endpoint: string, params: Record<string, string> =
   const cached = getFromCache<T>(cacheKey);
   if (cached !== null) return cached;
 
-  const url = new URL(`${FMP_STABLE}${endpoint}`);
-  url.searchParams.set("apikey", key);
-  for (const [k, v] of Object.entries(safeParams)) {
-    url.searchParams.set(k, v);
+  let url: URL;
+  try {
+    url = buildFmpUrl(FMP_STABLE, endpoint, safeParams, key);
+  } catch (e: any) {
+    console.error(`[FMP/stable] URL construction failed for ${endpoint}: ${e.message}`);
+    return [] as unknown as T;
   }
 
   const res = await fetch(url.toString(), { cache: "no-store" });
