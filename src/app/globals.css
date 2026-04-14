@@ -665,3 +665,54 @@ select {
   background-position: right 12px center;
   padding-right: 2.5rem;
 }
+
+/* ─── Kosh Query ─── */
+
+.kosh-query-box {
+  position: relative;
+  overflow: hidden;
+}
+
+.kosh-query-box::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(251,191,36,0.08), transparent 40%, transparent 60%, rgba(251,191,36,0.04));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.kosh-query-scanning-bar {
+  animation: koshScanSlide 1.5s ease-in-out infinite;
+}
+
+@keyframes koshScanSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.kosh-query-result-card {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: koshResultReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes koshResultReveal {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kosh-query-results {
+  animation: koshResultsFadeIn 0.3s ease-out;
+}
+
+@keyframes koshResultsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

@@ -18,6 +18,8 @@ import {
 import { MAX_KOSHPILOT_RECOMMENDED_TICKERS } from "@/lib/trading/koshpilot-recommended";
 import ProGate from "@/components/ui/ProGate";
 import { useTrackView } from "@/hooks/useTrackView";
+import KoshQueryBox from "@/components/kosh-query/KoshQueryBox";
+import KoshQueryResults from "@/components/kosh-query/KoshQueryResults";
 
 interface TradingConfig {
   enabled: boolean;
@@ -2180,6 +2182,30 @@ export default function AutoTradingPage() {
   const [marketSentiment, setMarketSentiment] = useState<{ score: number; rating: string; brief: string } | null>(null);
   const [recommendBusy, setRecommendBusy] = useState<string | null>(null);
   const [recommendMsg, setRecommendMsg] = useState<string | null>(null);
+  const [koshQueryLoading, setKoshQueryLoading] = useState(false);
+  const [koshQueryResults, setKoshQueryResults] = useState<any>(null);
+
+  const handleKoshQuery = useCallback(async (query: string, horizon: string, amount: number) => {
+    setKoshQueryLoading(true);
+    setKoshQueryResults(null);
+    try {
+      const res = await fetch("/api/kosh-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, horizon, amount }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setKoshQueryResults({ error: data.error });
+      } else {
+        setKoshQueryResults(data);
+      }
+    } catch {
+      setKoshQueryResults({ error: "Analysis failed. Please try again." });
+    } finally {
+      setKoshQueryLoading(false);
+    }
+  }, []);
 
   const openTickers = useMemo(() => [...new Set(openTrades.map((t) => t.ticker))], [openTrades]);
 
@@ -2448,6 +2474,22 @@ export default function AutoTradingPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ─── Ask Kosh ─── */}
+      <KoshQueryBox onSubmit={handleKoshQuery} loading={koshQueryLoading} />
+      {koshQueryResults?.error && (
+        <div className="glass-card p-4 border border-red-500/10">
+          <p className="text-xs text-red-400/60">{koshQueryResults.error}</p>
+        </div>
+      )}
+      {koshQueryResults?.results && (
+        <KoshQueryResults
+          results={koshQueryResults.results}
+          verdict={koshQueryResults.verdict}
+          riskWarning={koshQueryResults.riskWarning}
+          meta={koshQueryResults.meta}
+        />
       )}
 
       {/* ─── Cron / Autopilot Status ─── */}
