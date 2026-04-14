@@ -38,6 +38,7 @@ export interface RiskProfileParams {
   addToLoserMaxDropPct: number;
   addScoreMultiplier: number;
   addOnSizeMultiplier: number;
+  riskPerTradePct: number;
 }
 
 export function getRiskProfile(profile: string): RiskProfileParams {
@@ -60,25 +61,27 @@ export function getRiskProfile(profile: string): RiskProfileParams {
         addToLoserMaxDropPct: 0,
         addScoreMultiplier: 999,
         addOnSizeMultiplier: 0,
+        riskPerTradePct: 0.5,
       };
     case "AGGRESSIVE":
       return {
-        minScore: 4,
-        minConfidence: 15,
-        positionMultiplier: 1.4,
-        riskRewardRatio: 1.5,
-        atrMultiplier: 2,
-        maxHoldDays: 5,
-        maxPositionPct: 10,
-        maxDailyLossPct: 5,
-        maxOpenPositions: 10,
-        weeklyTargetPct: 20,
+        minScore: 3,
+        minConfidence: 10,
+        positionMultiplier: 1.8,
+        riskRewardRatio: 2.5,
+        atrMultiplier: 2.5,
+        maxHoldDays: 10,
+        maxPositionPct: 15,
+        maxDailyLossPct: 6,
+        maxOpenPositions: 12,
+        weeklyTargetPct: 25,
         maxPositionsPerTicker: 3,
-        maxTickerExposurePct: 20,
-        addToWinnerMinGainPct: 2,
+        maxTickerExposurePct: 25,
+        addToWinnerMinGainPct: 1.5,
         addToLoserMaxDropPct: 8,
         addScoreMultiplier: 1.0,
-        addOnSizeMultiplier: 0.6,
+        addOnSizeMultiplier: 0.7,
+        riskPerTradePct: 3,
       };
     default: // MODERATE
       return {
@@ -98,8 +101,33 @@ export function getRiskProfile(profile: string): RiskProfileParams {
         addToLoserMaxDropPct: 5,
         addScoreMultiplier: 1.3,
         addOnSizeMultiplier: 0.5,
+        riskPerTradePct: 1,
       };
   }
+}
+
+/**
+ * Adjust a signal's stop loss and take profit based on the risk profile's
+ * atrMultiplier and riskRewardRatio. The default signal uses hardcoded
+ * 1.5x ATR stop and 2:1 R:R — this overrides those with profile values.
+ */
+function applyRiskProfileToSignal(signal: TradeSignal, profile: RiskProfileParams): TradeSignal {
+  const defaultAtrMult = 1.5;
+  const defaultRR = 2;
+
+  const riskPerShare = signal.price - signal.stopLoss;
+  if (riskPerShare <= 0) return signal;
+
+  const impliedAtr = riskPerShare / defaultAtrMult;
+  const adjustedStop = signal.price - impliedAtr * profile.atrMultiplier;
+  const adjustedRisk = signal.price - adjustedStop;
+  const adjustedTarget = signal.price + adjustedRisk * profile.riskRewardRatio;
+
+  return {
+    ...signal,
+    stopLoss: Math.round(adjustedStop * 100) / 100,
+    takeProfit: Math.round(adjustedTarget * 100) / 100,
+  };
 }
 
 function getAlpacaConfig(user: any) {
@@ -458,8 +486,9 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         continue;
       }
 
+      const adjustedSignal = applyRiskProfileToSignal(signal, riskProfile);
       const positionPctMultiplier = isAddOn ? riskProfile.addOnSizeMultiplier : 1;
-      const position = calculatePosition(signal, {
+      const position = calculatePosition(adjustedSignal, {
         portfolioValue: currentEquity,
         maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier * positionPctMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
@@ -468,6 +497,7 @@ async function runPaperTradingCycle(userId: string, config: any, email: string |
         dayTradesUsed: 0,
         dailyPnl,
         isPaper: true,
+        riskPerTradePct: riskProfile.riskPerTradePct,
       }, convictionScore);
 
       if (position.rejected) {
@@ -810,8 +840,9 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         continue;
       }
 
+      const adjustedSignalLive = applyRiskProfileToSignal(signal, riskProfile);
       const positionPctMultiplier = isAddOn ? riskProfile.addOnSizeMultiplier : 1;
-      const position = calculatePosition(signal, {
+      const position = calculatePosition(adjustedSignalLive, {
         portfolioValue: portfolio.equity,
         maxPositionPct: config.maxPositionPct * riskProfile.positionMultiplier * positionPctMultiplier,
         maxDailyLossPct: config.maxDailyLossPct,
@@ -820,6 +851,7 @@ export async function runTradingCycle(userId: string): Promise<EngineResult> {
         dayTradesUsed: portfolio.dayTradesUsed,
         dailyPnl: portfolio.dailyPnl,
         isPaper: alpacaConfig.paper,
+        riskPerTradePct: riskProfile.riskPerTradePct,
       }, convictionScore);
 
       const result = await executeEntry(

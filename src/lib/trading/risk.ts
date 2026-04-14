@@ -9,6 +9,7 @@ export interface RiskConfig {
   dayTradesUsed: number; // rolling 5-day count
   dailyPnl: number; // today's realized + unrealized P&L
   isPaper: boolean;
+  riskPerTradePct?: number; // max portfolio % risked per trade (default 1%)
 }
 
 export interface PositionSize {
@@ -97,8 +98,8 @@ export function calculatePosition(
 
   const maxDollars = config.portfolioValue * (adjustedPct / 100);
 
-  // Also limit by risk: don't risk more than 1% of portfolio on a single trade
-  const maxRiskDollars = config.portfolioValue * 0.01;
+  const riskPct = config.riskPerTradePct ?? 1;
+  const maxRiskDollars = config.portfolioValue * (riskPct / 100);
   const qtyByRisk = Math.floor(maxRiskDollars / riskPerShare);
   const qtyByDollars = Math.floor(maxDollars / signal.price);
   const qty = Math.max(1, Math.min(qtyByRisk, qtyByDollars));
@@ -141,10 +142,10 @@ export function shouldExitPosition(
   }
 
   const gainPct = ((currentPrice - entryPrice) / entryPrice) * 100;
-  if (gainPct > 5) {
-    const trailingStop = entryPrice * 1.01;
+  if (gainPct > 8) {
+    const trailingStop = entryPrice * (1 + gainPct * 0.005);
     if (currentPrice < trailingStop) {
-      return { exit: true, reason: `Trailing stop triggered after ${gainPct.toFixed(1)}% gain` };
+      return { exit: true, reason: `Trailing stop triggered — locked in ${((trailingStop - entryPrice) / entryPrice * 100).toFixed(1)}% of ${gainPct.toFixed(1)}% gain` };
     }
   }
 
