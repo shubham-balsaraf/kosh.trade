@@ -19,9 +19,6 @@ import {
   type ScoredCandidate,
 } from "@/lib/trading/conviction";
 import { getChart } from "@/lib/api/yahoo";
-import { getPriceTargetConsensus } from "@/lib/api/fmp";
-import { getPriceTarget as getFinnhubPriceTarget } from "@/lib/api/finnhub";
-import { batchStocktwitsSentiment } from "@/lib/api/stocktwits";
 import { batchFinvizSnapshot } from "@/lib/api/finviz";
 import { type ConvictionWeights } from "@/lib/trading/learning";
 
@@ -204,30 +201,50 @@ export async function POST(req: NextRequest) {
     for (const g of bundle.grades) allTickers.add(g.ticker);
     for (const inst of bundle.institutional) allTickers.add(inst.ticker);
 
-    const rawPool = [...allTickers].filter((t) => !t.includes("-") && t.length <= 5).slice(0, 60);
+    const rawPool = [...allTickers].filter((t) => !t.includes("-") && t.length <= 5).slice(0, 40);
     console.log(`[KoshQuery] Candidate pool: ${rawPool.length} tickers`);
 
     if (rawPool.length === 0) {
       return NextResponse.json({ error: "No candidates found in current market scan" }, { status: 200 });
     }
 
+    // Phase 1: cheap technical scan + signal diversity to pre-filter (no FMP calls)
     const scanResults = await scanMarket(rawPool).catch((e) => {
       console.error("[KoshQuery] scanMarket failed:", e.message);
       return [] as ScanResult[];
     });
     const scanMap = new Map(scanResults.map((s) => [s.ticker, s]));
 
-    const fundamentalsMap = await fetchFundamentals(rawPool).catch((e) => {
-      console.error("[KoshQuery] fetchFundamentals failed:", e.message);
-      return new Map<string, FundamentalData>();
-    });
+    const preScored: Array<{ ticker: string; quickScore: number; sources: string[] }> = [];
+    for (const ticker of rawPool) {
+      const { score: diversityScore, sources } = scoreSignalDiversity(ticker, bundle, discovered);
+      if (sources.length === 0) continue;
+      const scan = scanMap.get(ticker);
+      const signal = scan ? generateSignals(scan) : undefined;
+      const currentPrice = scan?.price || 0;
+      if (currentPrice < 5) continue;
+      const techScore = scoreTechnical(scan, signal);
+      const smartScore = scoreSmartMoney(ticker, bundle);
+      const quickScore = diversityScore * 0.4 + techScore * 0.3 + smartScore * 0.3;
+      preScored.push({ ticker, quickScore, sources });
+    }
+    preScored.sort((a, b) => b.quickScore - a.quickScore);
+    const shortlist = preScored.slice(0, 12).map((p) => p.ticker);
+    console.log(`[KoshQuery] Pre-filter: ${preScored.length} → ${shortlist.length} shortlisted`);
 
-    const [stocktwitsSentiment, finvizSnapshots] = await Promise.all([
-      batchStocktwitsSentiment(rawPool).catch(() => new Map()),
-      batchFinvizSnapshot(rawPool).catch(() => new Map()),
+    if (shortlist.length === 0) {
+      return NextResponse.json({ error: "No strong candidates found after scoring" }, { status: 200 });
+    }
+
+    // Phase 2: expensive fundamentals only for shortlisted tickers
+    const [fundamentalsMap, finvizSnapshots] = await Promise.all([
+      fetchFundamentals(shortlist).catch((e) => {
+        console.error("[KoshQuery] fetchFundamentals failed:", e.message);
+        return new Map<string, FundamentalData>();
+      }),
+      batchFinvizSnapshot(shortlist).catch(() => new Map()),
     ]);
 
-    bundle.socialSentiment = stocktwitsSentiment;
     bundle.finvizSnapshots = finvizSnapshots;
 
     for (const [ticker, fv] of finvizSnapshots) {
@@ -239,41 +256,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const priceTargetResults = await Promise.allSettled(
-      rawPool.slice(0, 20).map(async (ticker) => {
-        const [fmpTarget, finnhubTarget] = await Promise.allSettled([
-          getPriceTargetConsensus(ticker),
-          getFinnhubPriceTarget(ticker),
-        ]);
-        const fmpVal = fmpTarget.status === "fulfilled" ? fmpTarget.value : null;
-        const finnVal = finnhubTarget.status === "fulfilled" ? finnhubTarget.value : null;
-        const target = (Array.isArray(fmpVal) && fmpVal[0]?.targetConsensus) || finnVal?.targetMean || null;
-        return { ticker, target };
-      }),
-    );
-
-    for (const r of priceTargetResults) {
-      if (r.status === "fulfilled" && r.value.target) {
-        const fd = fundamentalsMap.get(r.value.ticker);
-        if (fd && !fd.analystTarget) fd.analystTarget = r.value.target;
-      }
-    }
-
+    // Phase 3: full 7-dimension scoring on shortlist only
     const w = HORIZON_WEIGHTS[horizon];
 
     const allScored: ScoredCandidate[] = [];
-    for (const ticker of rawPool) {
-      const { score: diversityScore, sources } = scoreSignalDiversity(ticker, bundle, discovered);
-      if (sources.length === 0) continue;
-
+    for (const ticker of shortlist) {
+      const pre = preScored.find((p) => p.ticker === ticker);
       const scan = scanMap.get(ticker);
       const signal = scan ? generateSignals(scan) : undefined;
       const fd = fundamentalsMap.get(ticker);
       const currentPrice = scan?.price || 0;
-      if (currentPrice < 5) continue;
 
       const scores = {
-        signalDiversity: diversityScore,
+        signalDiversity: scoreSignalDiversity(ticker, bundle, discovered).score,
         technical: scoreTechnical(scan, signal),
         fundamental: scoreFundamental(fd),
         valuation: scoreValuation(fd, currentPrice),
@@ -298,7 +293,7 @@ export async function POST(req: NextRequest) {
         compositeScore,
         dataConfidence: computeDataConfidence(fd, scan, bundle, ticker),
         confidenceBand: compositeScore >= 45 ? "VERY_HIGH" : compositeScore >= 25 ? "HIGH" : "MODERATE",
-        sources,
+        sources: pre?.sources || [],
         scan,
         tradeSignal: signal,
         fundamentals: fd,
