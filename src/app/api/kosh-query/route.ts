@@ -233,7 +233,7 @@ export async function POST(req: NextRequest) {
         ]);
         const fmpVal = fmpTarget.status === "fulfilled" ? fmpTarget.value : null;
         const finnVal = finnhubTarget.status === "fulfilled" ? finnhubTarget.value : null;
-        const target = fmpVal?.targetConsensus || finnVal?.targetMean || null;
+        const target = (Array.isArray(fmpVal) && fmpVal[0]?.targetConsensus) || finnVal?.targetMean || null;
         return { ticker, target };
       }),
     );
