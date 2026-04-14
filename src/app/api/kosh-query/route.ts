@@ -181,10 +181,18 @@ export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    const [discovered, bundle] = await Promise.all([
+    const [discoveredResult, bundleResult] = await Promise.allSettled([
       discoverOpportunities(),
       getRawSignals(),
     ]);
+
+    if (bundleResult.status === "rejected") {
+      console.error("[KoshQuery] getRawSignals failed:", bundleResult.reason);
+      return NextResponse.json({ error: "Market data unavailable. Try again shortly." }, { status: 503 });
+    }
+
+    const bundle = bundleResult.value;
+    const discovered = discoveredResult.status === "fulfilled" ? discoveredResult.value : [];
 
     const allTickers = new Set<string>();
     for (const d of discovered) allTickers.add(d.ticker);
@@ -203,10 +211,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No candidates found in current market scan" }, { status: 200 });
     }
 
-    const scanResults = await scanMarket(rawPool);
+    const scanResults = await scanMarket(rawPool).catch((e) => {
+      console.error("[KoshQuery] scanMarket failed:", e.message);
+      return [] as ScanResult[];
+    });
     const scanMap = new Map(scanResults.map((s) => [s.ticker, s]));
 
-    const fundamentalsMap = await fetchFundamentals(rawPool);
+    const fundamentalsMap = await fetchFundamentals(rawPool).catch((e) => {
+      console.error("[KoshQuery] fetchFundamentals failed:", e.message);
+      return new Map<string, FundamentalData>();
+    });
 
     const [stocktwitsSentiment, finvizSnapshots] = await Promise.all([
       batchStocktwitsSentiment(rawPool).catch(() => new Map()),
@@ -304,7 +318,10 @@ export async function POST(req: NextRequest) {
     }
 
     const topTickers = top5.map((c) => c.ticker);
-    const sparklines = await fetchSparklines(topTickers);
+    const sparklines = await fetchSparklines(topTickers).catch((e) => {
+      console.error("[KoshQuery] Sparkline fetch failed:", e.message);
+      return new Map<string, number[]>();
+    });
 
     const totalConviction = top5.reduce((s, c) => s + Math.max(c.compositeScore, 1), 0);
 
@@ -352,7 +369,9 @@ export async function POST(req: NextRequest) {
       return parts.join("\n");
     }).join("\n\n");
 
-    const aiResponse = await generateCompletion(
+    let aiResponse = "";
+    try {
+      aiResponse = await generateCompletion(
       `You are Kosh, a brutally honest, data-driven investment advisor. The user has $${amount} to invest over a ${HORIZON_LABELS[horizon]} horizon. You must be precise, unflinching, and back every claim with numbers from the data provided.
 
 Your response must be valid JSON with this exact structure:
@@ -376,6 +395,9 @@ Rules:
       `User question: "${query}"\nHorizon: ${HORIZON_LABELS[horizon]}\nAmount: $${amount}\n\nTop picks from Kosh's full market scan:\n\n${contextForAI}`,
       4096,
     );
+    } catch (e: any) {
+      console.error("[KoshQuery] Claude AI call failed:", e.message);
+    }
 
     let aiData: { verdict: string; theses: Array<{ ticker: string; thesis: string }>; riskWarning: string } = {
       verdict: "",
@@ -413,9 +435,10 @@ Rules:
       },
     });
   } catch (error: any) {
-    console.error("[KoshQuery] Error:", error);
+    const msg = error?.message || String(error);
+    console.error("[KoshQuery] Error:", msg, error?.stack);
     return NextResponse.json(
-      { error: "Analysis failed. Please try again." },
+      { error: `Analysis failed: ${msg.slice(0, 200)}` },
       { status: 500 },
     );
   }
